@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background linear lighting gradient matching the finalized logo -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#48484a"/>
+      <stop offset="35%" stop-color="#3c3c3e"/>
+      <stop offset="70%" stop-color="#323234"/>
+      <stop offset="100%" stop-color="#28282a"/>
+    </linearGradient>
+
+    <!-- Subtle rim border highlight (specular top lighting) -->
+    <linearGradient id="rimGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.45"/>
+    </linearGradient>
+
+    <!-- Squircle clip path for the internal reticle -->
+    <clipPath id="squircleClip">
+      <rect x="1" y="1" width="510" height="510" rx="115" ry="115"/>
+    </clipPath>
+  </defs>
+
+  <!-- Dark charcoal squircle tile: self-contained background keeps the icon
+       legible on both light and dark browser tab themes. -->
+  <rect
+    x="1"
+    y="1"
+    width="510"
+    height="510"
+    rx="115"
+    ry="115"
+    fill="url(#bgGradient)"
+    stroke="url(#rimGradient)"
+    stroke-width="2"
+  />
+
+  <!-- Muted instrument reticle at the zero-crossing (256, 256); recedes at
+       favicon scale. -->
+  <g id="gridlines" clip-path="url(#squircleClip)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.75">
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+  </g>
+
+  <!-- Sine wave with 3rd-order harmonic distortion: gold #fcc603, stroke
+       tuned for visibility down to 16px favicon rasterization. -->
+  <path
+    d="M 129.57 256.00 C 129.57 197.87, 143.68 120.00, 185.00 120.00 C 255.40 120.00, 256.60 392.00, 327.00 392.00 C 368.32 392.00, 382.43 314.13, 382.43 256.00"
+    fill="none"
+    stroke="#fcc603"
+    stroke-width="40"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

@@ -1,0 +1,634 @@
+{
+  "schemaVersion": 2,
+  "description": "Committed synthetic mirror fixture corpus per ADR 0006. Every fixture is a byte-exact output of crates/fvf-wasm/examples/synth.rs, which is fully deterministic; tests/synth_repro.rs regenerates each file and byte-diffs it against the committed copy. Empirical captures remain local-only under test-data/real-captures/ and are described by empirical-local.manifest.json. Schema 2 adds per-channel vertical-metadata expectations (unit, unitFamily, windowMin/Max, scale, perDiv) and the stored time-axis block (tAxis) to accepted fixtures; issue #105 migrates the center-formula timestamps blocks.",
+  "synthesizer": "crates/fvf-wasm/examples/synth.rs",
+  "fixtures": [
+    {
+      "file": "synthetic/accepted-en-4ch-10000-10ms-div.fvf.bin",
+      "size": 162259,
+      "sha256": "deb4936711d23be71ead1e07b8480193e5561cbf9145de044116c66f0782b63e",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "accepted-en-4ch-10000-10ms-div",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A", "Input B", "Input C", "Input D"],
+          "samplesPerChannel": 10000,
+          "timebaseRaw": "10 ms/Div",
+          "payloadStartOffset": 827,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "10 ms/Div",
+        "secondsPerDiv": 0.01,
+        "tAxis": {
+          "tLeft": -0.05,
+          "tRight": 0.05
+        },
+        "warnings": [],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Input A",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "B",
+            "label": "Input B",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "C",
+            "label": "Input C",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "D",
+            "label": "Input D",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          }
+        ],
+        "timestamps": {
+          "deltaT": 1e-5,
+          "tFirst": -0.05,
+          "tLast": 0.04999000000000001,
+          "tCenter": 0.0,
+          "samples": 10000
+        }
+      }
+    },
+    {
+      "file": "synthetic/accepted-de-eingang-1ch-3000-comma-decimal.fvf.bin",
+      "size": 12899,
+      "sha256": "65019a24d69fa32a68570745fe3dc21a2729ba6119be1c4776fa7ab083dff598",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "accepted-de-eingang-1ch-3000-comma-decimal",
+        "parameters": {
+          "locale": "de",
+          "channelLabels": ["Eingang A"],
+          "samplesPerChannel": 3000,
+          "timebaseRaw": "0,1 s/Div",
+          "payloadStartOffset": 830,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "0,1 s/Div",
+        "secondsPerDiv": 0.1,
+        "tAxis": {
+          "tLeft": -0.5,
+          "tRight": 0.5
+        },
+        "warnings": [],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Eingang A",
+            "samples": 3000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          }
+        ],
+        "timestamps": {
+          "deltaT": 0.0003333333333333333,
+          "tFirst": -0.5,
+          "tLast": 0.4996666666666666,
+          "tCenter": 0.0,
+          "samples": 3000
+        }
+      }
+    },
+    {
+      "file": "synthetic/accepted-en-2ch-10000-1min-div.fvf.bin",
+      "size": 81271,
+      "sha256": "847ad1c62cf8b159055a98ca7e05a99bf74a7879fdc06f29fc7e8f8d6bfca48f",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "accepted-en-2ch-10000-1min-div",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A", "Input B"],
+          "samplesPerChannel": 10000,
+          "timebaseRaw": "1 min/Div",
+          "payloadStartOffset": 749,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "1 min/Div",
+        "secondsPerDiv": 60.0,
+        "tAxis": {
+          "tLeft": -300.0,
+          "tRight": 300.0
+        },
+        "warnings": [],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Input A",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "B",
+            "label": "Input B",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          }
+        ],
+        "timestamps": {
+          "deltaT": 0.06,
+          "tFirst": -300.0,
+          "tLast": 299.93999999999994,
+          "tCenter": 0.0,
+          "samples": 10000
+        }
+      }
+    },
+    {
+      "file": "synthetic/rejected-invalid-magic-1ch-1000.fvf.bin",
+      "size": 4897,
+      "sha256": "eb08c1c3b23efaaeb2c31adba7e506438e9c6b472161806355fbc1573812de92",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "rejected-invalid-magic-1ch-1000",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A"],
+          "samplesPerChannel": 1000,
+          "timebaseRaw": "10 ms/Div",
+          "payloadStartOffset": 830,
+          "timestamp": "12000020260101",
+          "mutation": "bytes 0..6 replaced with 'XX.XVF'"
+        }
+      },
+      "expected": {
+        "outcome": "rejected",
+        "expectedErrorCode": "invalid_signature",
+        "detectedMagic": "XX.XVF"
+      }
+    },
+    {
+      "file": "synthetic/rejected-timebase-format-1ch-1000.fvf.bin",
+      "size": 4897,
+      "sha256": "8f58b55a4c15cf15758130dd37d5c5e84d65795eddb7060621bb080d0108db29",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "rejected-timebase-format-1ch-1000",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A"],
+          "samplesPerChannel": 1000,
+          "timebaseRaw": "abc us/div",
+          "payloadStartOffset": 830,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "rejected",
+        "expectedErrorCode": "invalid_timebase_format",
+        "timebaseRaw": "abc us/div"
+      }
+    },
+    {
+      "file": "synthetic/rejected-timebase-range-1ch-1000.fvf.bin",
+      "size": 4897,
+      "sha256": "0f1a30b9179e1eca3ed36b42079b555453b701506f5d21eb0587c50ca9c5794d",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "rejected-timebase-range-1ch-1000",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A"],
+          "samplesPerChannel": 1000,
+          "timebaseRaw": "500 min/div",
+          "payloadStartOffset": 830,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "rejected",
+        "expectedErrorCode": "invalid_timebase_range",
+        "timebaseRaw": "500 min/div"
+      }
+    },
+    {
+      "file": "synthetic/nonsequential-abd-3ch-10000-20ms-div.fvf.bin",
+      "size": 121804,
+      "sha256": "cc78a856be9f074709fa7cbfbbcf6ac10a961c14948abfca82c2a415a4965f89",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "nonsequential-abd-3ch-10000-20ms-div",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A", "Input B", "Input D"],
+          "samplesPerChannel": 10000,
+          "timebaseRaw": "20 ms/Div",
+          "payloadStartOffset": 827,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "20 ms/Div",
+        "secondsPerDiv": 0.02,
+        "tAxis": {
+          "tLeft": -0.1,
+          "tRight": 0.1
+        },
+        "warnings": [],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Input A",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "B",
+            "label": "Input B",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "D",
+            "label": "Input D",
+            "samples": 10000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          }
+        ],
+        "timestamps": {
+          "deltaT": 2e-5,
+          "tFirst": -0.1,
+          "tLast": 0.09998000000000001,
+          "tCenter": 0.0,
+          "samples": 10000
+        }
+      }
+    },
+    {
+      "file": "synthetic/derived-mathematik-2ch-3000-10ms-div.fvf.bin",
+      "size": 25276,
+      "sha256": "d1f5efa23952db8828bcc42055e01135828b3102ca3fefafdeb43afc7c90aefe",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "derived-mathematik-2ch-3000-10ms-div",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A", "Mathematik A"],
+          "samplesPerChannel": 3000,
+          "timebaseRaw": "10 ms/Div",
+          "payloadStartOffset": 749,
+          "timestamp": "12000020260101",
+          "derivedRule": "record 2 payload = record 1 payload + 4096 raw counts (legacy +0.0625 estimate; physical record decodes as raw x S since issue #104)"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "10 ms/Div",
+        "secondsPerDiv": 0.01,
+        "tAxis": {
+          "tLeft": -0.05,
+          "tRight": 0.05
+        },
+        "warnings": ["derived_legacy_values"],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Input A",
+            "samples": 3000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": null,
+            "label": "Mathematik A",
+            "samples": 3000,
+            "derived": true,
+            "sourceChannels": ["A"]
+          }
+        ],
+        "timestamps": {
+          "deltaT": 3.3333333333333335e-5,
+          "tFirst": -0.05,
+          "tLast": 0.04996666666666667,
+          "tCenter": 0.0,
+          "samples": 3000
+        }
+      }
+    },
+    {
+      "file": "synthetic/extreme-envelope-4ch-500-10ms-div.fvf.bin",
+      "size": 10259,
+      "sha256": "195750614344ff7fd7cd5fecf30e3540b04cdf8f3e6e205a4e4d8016d6debeb1",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "extreme-envelope-4ch-500-10ms-div",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A", "Input B", "Input C", "Input D"],
+          "samplesPerChannel": 500,
+          "timebaseRaw": "10 ms/Div",
+          "payloadStartOffset": 827,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "10 ms/Div",
+        "secondsPerDiv": 0.01,
+        "tAxis": {
+          "tLeft": -0.05,
+          "tRight": 0.05
+        },
+        "warnings": [],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Input A",
+            "samples": 500,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "B",
+            "label": "Input B",
+            "samples": 500,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "C",
+            "label": "Input C",
+            "samples": 500,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          },
+          {
+            "letter": "D",
+            "label": "Input D",
+            "samples": 500,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          }
+        ],
+        "timestamps": {
+          "deltaT": 0.0002,
+          "tFirst": -0.05,
+          "tLast": 0.0498,
+          "tCenter": 0.0,
+          "samples": 500
+        }
+      }
+    },
+    {
+      "file": "synthetic/extreme-envelope-1ch-250000-10ms-div.fvf.bin",
+      "size": 1000897,
+      "sha256": "20538217312dbbeb05e15729d80ac50423e2aa2a8e5e157f64562f030168c6e5",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "extreme-envelope-1ch-250000-10ms-div",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A"],
+          "samplesPerChannel": 250000,
+          "timebaseRaw": "10 ms/Div",
+          "payloadStartOffset": 830,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "10 ms/Div",
+        "secondsPerDiv": 0.01,
+        "tAxis": {
+          "tLeft": -0.05,
+          "tRight": 0.05
+        },
+        "warnings": [],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Input A",
+            "samples": 250000,
+            "derived": false,
+            "unit": "V",
+            "unitFamily": 3,
+            "windowMin": -800.0,
+            "windowMax": 800.0,
+            "scale": 0.0625,
+            "perDiv": 200.0
+          }
+        ],
+        "timestamps": {
+          "deltaT": 4.0000000000000003e-7,
+          "tFirst": -0.05,
+          "tLast": 0.049999600000000005,
+          "tCenter": 0.0,
+          "samples": 250000
+        }
+      }
+    },
+    {
+      "file": "synthetic/unsupported-variant-settings.fvf.bin",
+      "size": 4096,
+      "sha256": "081e06929937840cb19aca66e67994f2cffcb9c9008836ccb03a4031be1f4693",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "unsupported-variant-settings",
+        "parameters": {
+          "outerMagic": "FV.FVF",
+          "innerTag": "FV.FVS",
+          "u32At0x24": 2
+        }
+      },
+      "expected": {
+        "outcome": "unsupported",
+        "expectedErrorCode": "unsupported_capture_variant"
+      }
+    },
+    {
+      "file": "synthetic/accepted-en-2ch-current-offcenter-1s-div.fvf.bin",
+      "size": 78359,
+      "sha256": "fd7662eed485bf59220148a745a288425ac86cf7415d4e7ad58dd8890caacaff",
+      "provenance": {
+        "kind": "synthetic",
+        "spec": "accepted-en-2ch-current-offcenter-1s-div",
+        "parameters": {
+          "locale": "en",
+          "channelLabels": ["Input A", "Input B"],
+          "samplesPerChannel": 9636,
+          "timebaseRaw": "1 s/Div",
+          "payloadStartOffset": 749,
+          "timestamp": "12000020260101"
+        }
+      },
+      "expected": {
+        "outcome": "accepted",
+        "timebaseRaw": "1 s/Div",
+        "secondsPerDiv": 1.0,
+        "warnings": [],
+        "channels": [
+          {
+            "letter": "A",
+            "label": "Input A",
+            "samples": 9636,
+            "derived": false,
+            "unit": "A",
+            "unitFamily": 10,
+            "windowMin": -250.0,
+            "windowMax": 150.0,
+            "scale": 0.015625,
+            "perDiv": 50.0,
+            "rawMax": 32759,
+            "rawMin": -32736,
+            "physicalMax": 511.859375,
+            "physicalMin": -511.5
+          },
+          {
+            "letter": "B",
+            "label": "Input B",
+            "samples": 9636,
+            "derived": false,
+            "unit": "mA",
+            "unitFamily": 10,
+            "windowMin": -0.3,
+            "windowMax": 0.5,
+            "scale": 3.125e-5,
+            "perDiv": 0.1,
+            "rawMax": 32762,
+            "rawMin": -32759,
+            "physicalMax": 1.0238125,
+            "physicalMin": -1.02371875
+          }
+        ],
+        "tAxis": {
+          "tLeft": -3.996,
+          "tRight": 6.004
+        },
+        "timestamps": {
+          "deltaT": 0.0010377750103777502,
+          "tFirst": -3.996,
+          "tLast": 6.0029622249896235,
+          "tCenter": 1.004000000000001,
+          "samples": 9636
+        }
+      }
+    }
+  ],
+  "documents": [
+    "manifest.json",
+    "timebase-tokens.json",
+    "error-taxonomy.json",
+    "empirical-local.manifest.json",
+    "README.md"
+  ],
+  "regenerableNotCommitted": [
+    {
+      "file": "extreme-envelope-4ch-250000-10ms-div.fvf.bin",
+      "approxSizeBytes": 4002259,
+      "command": "cargo run -p fvf-wasm --example synth -- --out <dir> --oversized",
+      "parameters": {
+        "locale": "en",
+        "channelLabels": ["Input A", "Input B", "Input C", "Input D"],
+        "samplesPerChannel": 250000,
+        "timebaseRaw": "10 ms/Div",
+        "payloadStartOffset": 827,
+        "timestamp": "12000020260101"
+      }
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "source": "docs/architecture.md §3.1 Timebase Token Grammar fixture table (8 accepted rows incl. comma-decimals and minute roll-mode, 6 rejected rows) plus one empirical extra row observed in a local corpus capture.",
+  "grammar": "^(?i)([0-9]+(?:[.,][0-9]{1,6})?)\\s*(ns|us|µs|ms|s|min)\\s*/\\s*div$",
+  "processing": "grammar match → comma-to-dot decimal normalization → unit scaling (ns 1e-9, us/µs 1e-6, ms 1e-3, s 1.0, min 60.0) → physical range check (1.0 ns/div .. 120.0 s/div) → step-sequence validation",
+  "physicalRangeSecondsPerDiv": {
+    "min": 1e-9,
+    "max": 120.0
+  },
+  "standardSteps": {
+    "subSecondMantissas": [1.0, 1.25, 1.333, 2.0, 2.5, 4.0, 5.0, 6.667],
+    "minuteRollModeValues": [1, 2, 4, 5],
+    "outsideBehavior": "parse succeeds with non_standard_timebase warning flag, never an error"
+  },
+  "tokens": [
+    {
+      "input": "1,333 us/Div",
+      "outcome": "accepted",
+      "secondsPerDiv": 1.333e-6,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": null
+    },
+    {
+      "input": "666,7 ns/Div",
+      "outcome": "accepted",
+      "secondsPerDiv": 6.667e-7,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": null
+    },
+    {
+      "input": "10 ms/div",
+      "outcome": "accepted",
+      "secondsPerDiv": 0.01,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": "accepted-en-4ch-10000-10ms-div.fvf.bin"
+    },
+    {
+      "input": "500 ns/DIV",
+      "outcome": "accepted",
+      "secondsPerDiv": 5e-7,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": null
+    },
+    {
+      "input": "2.5 s/div",
+      "outcome": "accepted",
+      "secondsPerDiv": 2.5,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": null
+    },
+    {
+      "input": "20 ms / div",
+      "outcome": "accepted",
+      "secondsPerDiv": 0.02,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": "nonsequential-abd-3ch-10000-20ms-div.fvf.bin"
+    },
+    {
+      "input": "1 min/Div",
+      "outcome": "accepted",
+      "secondsPerDiv": 60.0,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": "accepted-en-2ch-10000-1min-div.fvf.bin"
+    },
+    {
+      "input": "2 min/div",
+      "outcome": "accepted",
+      "secondsPerDiv": 120.0,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": null
+    },
+    {
+      "input": "0,1 s/Div",
+      "outcome": "accepted",
+      "secondsPerDiv": 0.1,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": "accepted-de-eingang-1ch-3000-comma-decimal.fvf.bin",
+      "origin": "empirical extra row: embedded timebase of a local corpus capture"
+    },
+    {
+      "input": "400 us/Div",
+      "outcome": "accepted",
+      "secondsPerDiv": 0.0004,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": null,
+      "origin": "empirical extra row: embedded timebase of a local corpus capture"
+    },
+    {
+      "input": "4 us/Div",
+      "outcome": "accepted",
+      "secondsPerDiv": 4e-6,
+      "standardStep": true,
+      "warning": null,
+      "carrierFixture": null,
+      "origin": "empirical extra row: embedded timebase of a local corpus capture"
+    },
+    {
+      "input": "10,000,000 us/Div",
+      "outcome": "rejected",
+      "reason": "invalid_timebase_format",
+      "secondsPerDiv": null,
+      "standardStep": null,
+      "warning": null,
+      "carrierFixture": null,
+      "rejectionCause": "multiple decimal separators"
+    },
+    {
+      "input": "10.0.0 ms/div",
+      "outcome": "rejected",
+      "reason": "invalid_timebase_format",
+      "secondsPerDiv": null,
+      "standardStep": null,
+      "warning": null,
+      "carrierFixture": null,
+      "rejectionCause": "multiple decimal separators"
+    },
+    {
+      "input": "abc us/div",
+      "outcome": "rejected",
+      "reason": "invalid_timebase_format",
+      "secondsPerDiv": null,
+      "standardStep": null,
+      "warning": null,
+      "carrierFixture": "rejected-timebase-format-1ch-1000.fvf.bin",
+      "rejectionCause": "non-numeric mantissa"
+    },
+    {
+      "input": "0.0001 ns/div",
+      "outcome": "rejected",
+      "reason": "invalid_timebase_range",
+      "secondsPerDiv": null,
+      "standardStep": null,
+      "warning": null,
+      "carrierFixture": null,
+      "rejectionCause": "1e-13 s/div below the 1 ns/div physical limit"
+    },
+    {
+      "input": "500 min/div",
+      "outcome": "rejected",
+      "reason": "invalid_timebase_range",
+      "secondsPerDiv": null,
+      "standardStep": null,
+      "warning": null,
+      "carrierFixture": "rejected-timebase-range-1ch-1000.fvf.bin",
+      "rejectionCause": "30000 s/div exceeds the 120 s/div physical limit"
+    },
+    {
+      "input": "10 ms",
+      "outcome": "rejected",
+      "reason": "invalid_timebase_format",
+      "secondsPerDiv": null,
+      "standardStep": null,
+      "warning": null,
+      "carrierFixture": null,
+      "rejectionCause": "missing division token"
+    }
+  ],
+  "carrierNote": "carrierFixture names a committed synthetic fixture embedding the token (case/whitespace variants allowed by the grammar, e.g. row '10 ms/div' is carried as '10 ms/Div'). tests/synth_repro.rs asserts each carrier exists in manifest.json with matching outcome and normalized secondsPerDiv.",
+  "propertyTest": {
+    "algorithm": "lcg32: x_{n+1} = (1664525 * x_n + 1013904223) mod 2^32; mantissa bits taken from bits 8..23 of each state word",
+    "seeds": [1, 24301, 3735928559, 4294967295],
+    "iterationsPerSeed": 512,
+    "expectation": "mantissas are classified into the sub-second step set vs non-standard warning deterministically; minute-domain values classify against minuteRollModeValues",
+    "consumedBy": "Issue 1.3 property test (random mantissa classification)"
+  }
+}
