@@ -1,0 +1,55 @@
+# Cloud Build pipeline for the FVF Viewer production service.
+# Build context: repository root (gcloud builds submit --config deploy/cloudbuild.yaml .)
+# Required APIs: cloudbuild.googleapis.com, run.googleapis.com, and
+# artifactregistry.googleapis.com (see deploy/README.md).
+
+substitutions:
+  _REGION: europe-west3 # owner decision 2026-09-20: operator in Germany, single region
+  _SERVICE: fvf-viewer
+  _AR_REPO: fvf-viewer
+  # Image path is spelled out in step args: Cloud Build does not expand
+  # user substitutions inside another substitution's value.
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 2400s
+
+steps:
+  - id: build-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${COMMIT_SHA}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:latest
+      - -f
+      - deploy/Dockerfile
+      - .
+
+  - id: push-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}
+
+  - id: deploy-cloud-run
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${COMMIT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --port=8080
+      - --max-instances=5 # hard cost ceiling
+      - --min-instances=0 # scale to zero when idle
+      - --concurrency=80
+      - --cpu=1
+      - --memory=512Mi
+      - --timeout=60s
+      - --allow-unauthenticated # public viewer; see README before changing

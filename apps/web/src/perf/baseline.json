@@ -1,0 +1,11 @@
+{
+  "interaction.box-zoom-drag.p95FrameDeltaMs": 16.7,
+  "interaction.box-zoom-drag-event.p95EventMs": 0.1,
+  "interaction.cursor-drag.p95FrameDeltaMs": 33.4,
+  "interaction.cursor-drag-event.p95EventMs": 0.05,
+  "interaction.zoom-commit.commitMs": 2.4,
+  "parse.envelope-500.p95Ms": 0.11,
+  "parse.envelope-3000.p95Ms": 0.09,
+  "parse.envelope-10000.p95Ms": 0.67,
+  "parse.envelope-250000.p95Ms": 4.6
+}

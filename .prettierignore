@@ -1,0 +1,11 @@
+dist
+pkg
+target
+node_modules
+coverage
+pnpm-lock.yaml
+
+# Prose documentation authored before tooling landed; keep diffs churn-free
+docs
+.agents
+

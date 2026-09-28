@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background linear lighting gradient -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#48484a"/>
+      <stop offset="35%" stop-color="#3c3c3e"/>
+      <stop offset="70%" stop-color="#323234"/>
+      <stop offset="100%" stop-color="#28282a"/>
+    </linearGradient>
+
+    <!-- Subtle rim border highlight -->
+    <linearGradient id="rimGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.45"/>
+    </linearGradient>
+
+    <!-- Squircle clip path for internal reticle -->
+    <clipPath id="squircleClip">
+      <rect x="1" y="1" width="510" height="510" rx="115" ry="115"/>
+    </clipPath>
+
+    <!-- Broad phosphor bloom (outer halo spills 48px onto charcoal tile) -->
+    <radialGradient id="phosphorBloom" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff4b8" stop-opacity="0.9"/>
+      <stop offset="30%" stop-color="#fcc603" stop-opacity="0.5"/>
+      <stop offset="65%" stop-color="#fcc603" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#fcc603" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="wakeBlur" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+
+    <path id="animWavePath" d="M 129.57 256.00 C 129.57 197.87, 143.68 120.00, 185.00 120.00 C 255.40 120.00, 256.60 392.00, 327.00 392.00 C 368.32 392.00, 382.43 314.13, 382.43 256.00" pathLength="1000" fill="none"/>
+  </defs>
+
+  <style>
+    @media (prefers-reduced-motion: reduce) {
+      .animated-element { display: none !important; }
+    }
+  </style>
+
+  <!-- Dark charcoal squircle tile -->
+  <rect x="1" y="1" width="510" height="510" rx="115" ry="115" fill="url(#bgGradient)" stroke="url(#rimGradient)" stroke-width="2"/>
+
+  <!-- Reticle -->
+  <g id="gridlines" clip-path="url(#squircleClip)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.75">
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+  </g>
+
+  <!-- Base Resting Sine Wave -->
+  <path d="M 129.57 256.00 C 129.57 197.87, 143.68 120.00, 185.00 120.00 C 255.40 120.00, 256.60 392.00, 327.00 392.00 C 368.32 392.00, 382.43 314.13, 382.43 256.00" fill="none" stroke="#fcc603" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Layer 1: Wide Phosphor Wake (Stroke 56px, spills outside wave onto dark charcoal) -->
+  <path
+    class="animated-element"
+    d="M 129.57 256.00 C 129.57 197.87, 143.68 120.00, 185.00 120.00 C 255.40 120.00, 256.60 392.00, 327.00 392.00 C 368.32 392.00, 382.43 314.13, 382.43 256.00"
+    pathLength="1000"
+    fill="none"
+    stroke="#fcc603"
+    stroke-width="56"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-dasharray="160 1000"
+    stroke-dashoffset="160"
+    opacity="0"
+    filter="url(#wakeBlur)"
+  >
+    <animate attributeName="stroke-dashoffset" values="160; -840; -840; -840" keyTimes="0; 0.455; 0.456; 1" dur="5.5s" repeatCount="indefinite" calcMode="linear"/>
+    <animate attributeName="opacity" values="0; 0.5; 0.5; 0; 0; 0" keyTimes="0; 0.036; 0.427; 0.455; 0.456; 1" dur="5.5s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- Layer 2: Intense inner core excitation trail (stroke 36px, #fffbe8) -->
+  <path
+    class="animated-element"
+    d="M 129.57 256.00 C 129.57 197.87, 143.68 120.00, 185.00 120.00 C 255.40 120.00, 256.60 392.00, 327.00 392.00 C 368.32 392.00, 382.43 314.13, 382.43 256.00"
+    pathLength="1000"
+    fill="none"
+    stroke="#fffbe8"
+    stroke-width="36"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-dasharray="100 1000"
+    stroke-dashoffset="100"
+    opacity="0"
+  >
+    <animate attributeName="stroke-dashoffset" values="100; -900; -900; -900" keyTimes="0; 0.455; 0.456; 1" dur="5.5s" repeatCount="indefinite" calcMode="linear"/>
+    <animate attributeName="opacity" values="0; 0.85; 0.85; 0; 0; 0" keyTimes="0; 0.036; 0.427; 0.455; 0.456; 1" dur="5.5s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- Layer 3: Traveling Head (Outer Phosphor Halo + Dark Contrast Collar + Pure White Core) -->
+  <g class="animated-element" opacity="0">
+    <!-- Outer radial halo: radius 46px spills well outside the 36px stroke -->
+    <circle r="46" fill="url(#phosphorBloom)"/>
+
+    <!-- Dark contrast collar (isolates the white spark from the yellow line) -->
+    <circle r="15" fill="#18181c" fill-opacity="0.75" stroke="#fcc603" stroke-width="1.5"/>
+
+    <!-- Brilliant specular core -->
+    <circle r="8.5" fill="#ffffff"/>
+
+    <animateMotion dur="5.5s" repeatCount="indefinite" keyPoints="0; 1; 1; 1" keyTimes="0; 0.455; 0.456; 1" calcMode="linear">
+      <mpath href="#animWavePath"/>
+    </animateMotion>
+
+    <animate attributeName="opacity" values="0; 1; 1; 0; 0; 0" keyTimes="0; 0.036; 0.427; 0.455; 0.456; 1" dur="5.5s" repeatCount="indefinite"/>
+  </g>
+</svg>
