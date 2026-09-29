@@ -23,7 +23,7 @@ function installFakeMatchMedia(initialMatches: boolean): FakeMediaQueryList {
     get matches() {
       return state.matches;
     },
-    media: "(max-width: 1899px)",
+    media: "(max-width: 1023px)",
     onchange: null,
     addEventListener(type: string, listener: ChangeListener) {
       if (type === "change") listeners.add(listener);

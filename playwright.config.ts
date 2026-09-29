@@ -25,9 +25,9 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {
     baseURL,
-    // 1920x1080 clears the 1900px desktop minimum (issue #179 raised the
-    // roadblock breakpoint from 1024px to 1900px).
-    viewport: { width: 1920, height: 1080 },
+    // 1440x900 clears the 1024px desktop minimum (issue #179's brief 1900px
+    // raise was corrected back to 1024px on 2026-09-29).
+    viewport: { width: 1440, height: 900 },
   },
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],
   webServer: againstDeployment
