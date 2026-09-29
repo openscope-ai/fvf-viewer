@@ -7,6 +7,10 @@
  * Geist SemiBold wordmark, icon-only GitHub repository link) and the animated
  * phosphor hero logo in the drop zone, plus a local-processing notice; the
  * Fluke product reference lives only in the legal footer.
+ *
+ * Issue #193: the hero also offers the shipped sample capture as a muted
+ * link-style tertiary action below the privacy notice — deliberately not a
+ * second button, so the drop zone stays the primary affordance.
  */
 
 import React, { useEffect } from "react";
@@ -18,6 +22,10 @@ import {
   GITHUB_REPOSITORY_URL,
   GithubCircleIcon,
 } from "../branding/brandAssets";
+import {
+  SAMPLE_CAPTURE_FILE_NAME,
+  SAMPLE_CAPTURE_URL,
+} from "../../sample/sampleCapture";
 
 export { GITHUB_REPOSITORY_URL };
 
@@ -60,12 +68,14 @@ export interface HeroDropZoneProps {
   isDragActive: boolean;
   parseState: ParseState;
   onActivate: () => void;
+  onUseSample: () => void;
 }
 
 export function HeroDropZone({
   isDragActive,
   parseState,
   onActivate,
+  onUseSample,
 }: HeroDropZoneProps) {
   const isParsing = parseState === "parsing";
 
@@ -110,6 +120,27 @@ export function HeroDropZone({
             Captures are processed locally in your browser — nothing is uploaded
             to fvf-viewer or any server.
           </p>
+          <button
+            type="button"
+            className="hero-sample"
+            data-testid="hero-sample-button"
+            onClick={(event) => {
+              // Keep activation local to this control: the surrounding
+              // drop zone is itself a click target (file picker).
+              event.stopPropagation();
+              onUseSample();
+            }}
+            onKeyDown={(event) => {
+              // Enter/Space activate this button natively; stopping the
+              // keydown here keeps the enclosing drop-zone handler from
+              // also opening the file picker.
+              if (event.key === "Enter" || event.key === " ") {
+                event.stopPropagation();
+              }
+            }}
+          >
+            Try a sample capture
+          </button>
         </div>
       )}
     </div>
@@ -141,7 +172,8 @@ export default function FileIngestion({
 }: FileIngestionProps) {
   const capture = useCaptureStore((state) => state.capture);
   const parseState = useCaptureStore((state) => state.parseState);
-  const { fileInputRef, ingestFiles, openFileDialog } = useFileIngestion();
+  const { fileInputRef, ingestFiles, ingestUrl, openFileDialog } =
+    useFileIngestion();
 
   useEffect(() => {
     if (onOpenFileRef) {
@@ -182,6 +214,9 @@ export default function FileIngestion({
             isDragActive={isDragActive}
             parseState={parseState}
             onActivate={openFileDialog}
+            onUseSample={() => {
+              void ingestUrl(SAMPLE_CAPTURE_URL, SAMPLE_CAPTURE_FILE_NAME);
+            }}
           />
         </>
       ) : (

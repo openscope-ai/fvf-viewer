@@ -205,6 +205,34 @@ body,
   color: #7a7a7a;
 }
 
+/* Issue #193: shipped-sample action — a tertiary, link-style control that
+   deliberately mirrors the muted privacy line instead of competing with the
+   drop zone's primary button affordance. */
+.hero-sample {
+  margin: 16px 0 0 0;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: #7a7a7a;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.hero-sample:hover {
+  color: #00bfff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hero-sample:focus-visible {
+  color: #00bfff;
+  outline: 2px solid #00bfff;
+  outline-offset: 3px;
+}
+
 .hero-parsing {
   display: flex;
   flex-direction: column;

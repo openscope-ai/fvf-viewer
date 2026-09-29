@@ -288,6 +288,72 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     ).toContain("4 channels");
   });
 
+  it("issue #193: hero sample control loads the shipped sample through the production parse path", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const sampleButton = hostElement.querySelector(
+      "[data-testid='hero-sample-button']",
+    ) as HTMLButtonElement;
+    expect(sampleButton).not.toBeNull();
+    expect(sampleButton.textContent).toBe("Try a sample capture");
+
+    // Activation stays local: neither click nor keyboard activation of the
+    // sample control may open the native file picker.
+    const input = hostElement.querySelector(
+      "[data-testid='file-picker-input']",
+    ) as HTMLInputElement;
+    const inputClickSpy = vi.spyOn(input, "click");
+
+    await act(async () => {
+      sampleButton.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    expect(inputClickSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sampleButton.click();
+      await waitForStoreCondition(
+        () =>
+          useCaptureStore.getState().parseState === "success" &&
+          useCaptureStore.getState().fileName === "fvf-sample.fvf",
+      );
+      await flushRaf();
+    });
+    expect(inputClickSpy).not.toHaveBeenCalled();
+
+    // Loaded exactly like an uploaded capture: hero collapsed, banner shows
+    // the sample file name and the full four-channel showcase structure.
+    expect(
+      hostElement.querySelector("[data-testid='hero-dropzone']"),
+    ).toBeNull();
+    const banner = hostElement.querySelector(".metadata-banner");
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain("fvf-sample.fvf");
+    expect(banner?.textContent).toContain("4 channels");
+
+    const state = useCaptureStore.getState();
+    expect(state.capture?.warnings ?? []).toEqual([]);
+    // Showcase structure survives the worker boundary: four physical
+    // channels with the mixed V/A unit scales from the sample spec.
+    expect(state.capture?.channels.map((channel) => channel.name)).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+    ]);
+    expect(state.capture?.metadata.channels.map((info) => info.unit)).toEqual([
+      "V",
+      "A",
+      "V",
+      "V",
+    ]);
+    expect(state.capture?.metadata.channels[0]?.samples).toBe(100_000);
+    expect(hostElement.querySelector(".oscilloscope-container")).not.toBeNull();
+  });
+
   it("issue #142: drop page renders brand header, animated hero logo, privacy notice, and no Fluke badge", async () => {
     await act(async () => {
       root.render(<App />);

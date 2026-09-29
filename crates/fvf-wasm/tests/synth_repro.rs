@@ -6,6 +6,10 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+// The shared example module is compiled per test crate; this one consumes
+// only the corpus fixture surface, so the demo-sample builder it also
+// carries is legitimately unused here (sample_asset exercises it).
+#[allow(dead_code)]
 #[path = "../examples/synth.rs"]
 mod synth;
 

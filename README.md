@@ -17,7 +17,8 @@ Browser-based viewer for `.fvf` waveform captures from ScopeMeter instruments.
 ## Usage
 
 **Browser**: [**Start**](https://fvf-viewer.com) the hosted version, then drag
-and drop a `.fvf` capture — or click the drop zone to pick one.
+and drop a `.fvf` capture — or click the drop zone to pick one. No capture at
+hand? "Try a sample capture" on the start page loads a synthetic demo.
 
 **Locally**: run the production server from a checkout:
 
