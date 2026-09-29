@@ -1,13 +1,14 @@
 /**
  * Brand & trademark safety E2E (issue #23, overview §6.5): the nominative
- * fair-use disclaimer renders VERBATIM on every app view — empty state,
- * loaded workspace, and the narrow-viewport roadblock.
+ * fair-use disclaimer renders VERBATIM on the app views — empty state and
+ * loaded workspace. The narrow-viewport roadblock does not carry the
+ * disclaimer (issue #179 keeps it out of the narrow layout).
  */
 
 import { expect, test, openApp, loadCapture } from "./support";
 
 const DISCLAIMER =
-  "FVF Viewer is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Fluke Corporation. Fluke and ScopeMeter are registered trademarks of Fluke Corporation.";
+  "fvf • viewer is not affiliated with, endorsed by, or sponsored by Fluke Corporation. Fluke and ScopeMeter are registered trademarks of Fluke Corporation.";
 
 test("disclaimer renders verbatim on the empty-state drop page", async ({
   page,

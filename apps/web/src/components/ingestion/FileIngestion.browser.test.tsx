@@ -318,6 +318,18 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     expect((github.textContent ?? "").trim()).toBe("");
     expect(github.querySelector("svg.github-icon")).not.toBeNull();
 
+    // GitHub badge two-tone (issue #181): white-filled circle, black cat.
+    const githubPaths = (
+      github.querySelector("svg.github-icon") as SVGSVGElement
+    ).querySelectorAll("path");
+    expect(githubPaths.length).toBe(3);
+    const circle = githubPaths[0]!;
+    expect(circle.getAttribute("fill")).toBe("#ffffff");
+    expect(circle.getAttribute("stroke")).toBeNull();
+    for (const catPath of [githubPaths[1]!, githubPaths[2]!]) {
+      expect(catPath.getAttribute("stroke")).toBe("#000000");
+    }
+
     // Animated hero logo replaces the legacy graphic
     const heroLogo = hostElement.querySelector(
       "[data-testid='hero-logo']",

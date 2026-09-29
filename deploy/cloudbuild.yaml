@@ -4,7 +4,7 @@
 # artifactregistry.googleapis.com (see deploy/README.md).
 
 substitutions:
-  _REGION: europe-west3 # owner decision 2026-09-20: operator in Germany, single region
+  _REGION: us-central1 # owner decision 2026-09-28: Cloud Run domain mappings + free managed TLS
   _SERVICE: fvf-viewer
   _AR_REPO: fvf-viewer
   # Image path is spelled out in step args: Cloud Build does not expand
