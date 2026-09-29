@@ -25,7 +25,7 @@ function installFakeMatchMedia(initialMatches: boolean): FakeMediaQueryList {
   const listeners = new Set<ChangeListener>();
   const state = { matches: initialMatches };
   const queryCalls: string[] = [];
-  const fakeQuery = "(max-width: 1899px)";
+  const fakeQuery = "(max-width: 1023px)";
   const mediaQuery: Record<string, unknown> = {
     get matches() {
       return state.matches;
@@ -94,14 +94,14 @@ describe("DesktopRoadblock browser integration (issue #16)", () => {
     useCaptureStore.getState().reset();
   });
 
-  it("at 1899px shows the overlay with inert shell; at 1900px renders none; live crossing keeps the app mounted", async () => {
-    const mediaQuery = installFakeMatchMedia(false); // wide viewport (>= 1900px)
+  it("at 1023px shows the overlay with inert shell; at 1024px renders none; live crossing keeps the app mounted", async () => {
+    const mediaQuery = installFakeMatchMedia(false); // wide viewport (>= 1024px)
 
     await act(async () => {
       root.render(<App />);
     });
 
-    // 1900px (wide): no overlay in the DOM at all
+    // 1024px (wide): no overlay in the DOM at all
     expect(
       hostElement.querySelector("[data-testid='desktop-roadblock']"),
     ).toBeNull();
@@ -109,7 +109,7 @@ describe("DesktopRoadblock browser integration (issue #16)", () => {
     expect(shell).not.toBeNull();
     expect((shell as HTMLElement).inert).toBe(false);
 
-    // Live crossing to 1899px without reload: overlay appears, shell inert
+    // Live crossing to 1023px without reload: overlay appears, shell inert
     await act(async () => {
       mediaQuery.dispatch(true);
     });
@@ -124,7 +124,7 @@ describe("DesktopRoadblock browser integration (issue #16)", () => {
     // Overlay is a sibling of <main> — not inert itself
     expect(overlay?.closest("main")).toBeNull();
 
-    // Crossing back to 1900px: overlay removed, inert lifted, same shell element
+    // Crossing back to 1024px: overlay removed, inert lifted, same shell element
     await act(async () => {
       mediaQuery.dispatch(false);
     });
@@ -136,7 +136,7 @@ describe("DesktopRoadblock browser integration (issue #16)", () => {
   });
 
   it("renders the #179 layout: brand lockup above the title, new copy, Share + icon, no disclaimer", async () => {
-    installFakeMatchMedia(true); // narrow viewport
+    installFakeMatchMedia(true); // narrow viewport (< 1024px)
 
     await act(async () => {
       root.render(<App />);
@@ -163,7 +163,7 @@ describe("DesktopRoadblock browser integration (issue #16)", () => {
       "This app is designed for multi-channel waveform analysis on wide screens.",
     );
     expect(overlay.querySelector(".roadblock-hint")?.textContent).toBe(
-      "Open this page on a screen at least 1900px wide or switch your device to portrait mode.",
+      "Open this page on a screen wider than 1024px, or try rotating your device.",
     );
 
     // Share button: "Share" text preceded by a share icon glyph.
@@ -229,7 +229,7 @@ describe("DesktopRoadblock browser integration (issue #16)", () => {
   });
 
   it("keeps app state alive across crossings and never dismisses via Escape or backdrop click", async () => {
-    installFakeMatchMedia(true); // narrow viewport (< 1900px)
+    installFakeMatchMedia(true); // narrow viewport (< 1024px)
 
     await act(async () => {
       root.render(<App />);

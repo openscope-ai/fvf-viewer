@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
 
 /**
- * Narrow-viewport detection for the desktop-only roadblock (issue #16, ADR 0003;
- * minimum width raised to 1900px by issue #179): the single source of truth is
- * `matchMedia("(max-width: 1899px)")` with an event-driven `change` listener.
- * `window.innerWidth` is never consulted for logic — CSS media-query rounding
- * governs fractional viewport widths.
+ * Narrow-viewport detection for the desktop-only roadblock (issue #16, ADR 0003).
+ * Issue #179 briefly raised the minimum to 1900px; corrected back to 1024px
+ * (2026-09-29) after field reports: CSS-pixel viewports are narrower than
+ * physical screens (OS display scaling, LibreWolf letterboxing, scrollbars,
+ * sidebars), so 1900px roadblocked ordinary 1920px desktops, and no phone
+ * reaches 1024 CSS px in any orientation — while standard tablets do clear
+ * 1024px in landscape, which the "try rotating your device" hint relies on.
+ * The single source of truth is `matchMedia("(max-width: 1023px)")` with an
+ * event-driven `change` listener. `window.innerWidth` is never consulted for
+ * logic — CSS media-query rounding governs fractional viewport widths.
  */
 
-export const NARROW_VIEWPORT_QUERY = "(max-width: 1899px)";
+export const NARROW_VIEWPORT_QUERY = "(max-width: 1023px)";
 
 /** Minimal matchMedia surface the subscription core needs (node-testable with stubs). */
 export interface NarrowViewportSource {

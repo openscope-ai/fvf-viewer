@@ -1,9 +1,9 @@
 /**
  * Desktop roadblock E2E (issue #23; layout reworked by issue #179): at an
- * emulated narrow viewport (< 1900px) the non-dismissable Desktop Required
+ * emulated narrow viewport (< 1024px) the non-dismissable Desktop Required
  * dialog mounts with the brand lockup above the title, the app shell goes
  * inert (background wasm/worker work continues), and widening past the
- * 1900px breakpoint restores the interactive app.
+ * 1024px breakpoint restores the interactive app.
  */
 
 import { expect, test, openApp, loadCapture } from "./support";
@@ -31,12 +31,13 @@ test("narrow viewport raises the Desktop Required dialog over an inert shell", a
   const titleBox = await roadblock.getByText("Desktop Required").boundingBox();
   expect(brandBox!.y).toBeLessThan(titleBox!.y);
 
-  // Approved #179 copy.
+  // Approved copy (hint corrected 2026-09-29: phones never clear a 1024px
+  // CSS-pixel bar in any orientation; standard tablets do in landscape).
   await expect(roadblock).toContainText(
     "This app is designed for multi-channel waveform analysis on wide screens.",
   );
   await expect(roadblock).toContainText(
-    "Open this page on a screen at least 1900px wide or switch your device to portrait mode.",
+    "Open this page on a screen wider than 1024px, or try rotating your device.",
   );
 
   // Share-first handoff control is present, focused, and carries the Share
@@ -55,7 +56,7 @@ test("narrow viewport raises the Desktop Required dialog over an inert shell", a
 test("narrow viewport roadblock appears over a loaded capture without killing it", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
   await loadCapture(page, "en4ch10k");
 
@@ -64,7 +65,7 @@ test("narrow viewport roadblock appears over a loaded capture without killing it
 
   // Widening past the breakpoint dismisses the dialog and restores the app
   // shell with the loaded capture intact.
-  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByTestId("desktop-roadblock")).toBeHidden();
   await expect(page.locator(".banner-filename-text")).toContainText(
     "accepted-en-4ch",

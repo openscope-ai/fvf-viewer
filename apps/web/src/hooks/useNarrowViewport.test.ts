@@ -50,14 +50,14 @@ describe("useNarrowViewport logic (node, stubbed matchMedia)", () => {
     expect(readNarrowViewport(wide.source)).toBe(false);
   });
 
-  it("uses the canonical (max-width: 1899px) media query against matchMedia", () => {
+  it("uses the canonical (max-width: 1023px) media query against matchMedia", () => {
     const { source } = createFakeSource(false);
     const matchMedia = vi.fn(() => source);
     vi.stubGlobal("matchMedia", matchMedia);
 
     expect(readNarrowViewport()).toBe(false);
     expect(matchMedia).toHaveBeenCalledWith(NARROW_VIEWPORT_QUERY);
-    expect(NARROW_VIEWPORT_QUERY).toBe("(max-width: 1899px)");
+    expect(NARROW_VIEWPORT_QUERY).toBe("(max-width: 1023px)");
   });
 
   it("reports a wide viewport when matchMedia is unavailable", () => {

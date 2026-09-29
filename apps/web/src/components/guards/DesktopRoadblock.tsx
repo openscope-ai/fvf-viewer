@@ -1,7 +1,8 @@
 /**
  * Desktop-only roadblock overlay (issue #16, ADR 0003; layout reworked by
- * issue #179): a non-dismissable `role="dialog"` rendered only while the
- * viewport is narrower than 1900px per matchMedia. The brand lockup (logo +
+ * issue #179, threshold corrected back to 1024px on 2026-09-29): a
+ * non-dismissable `role="dialog"` rendered only while the viewport is
+ * narrower than 1024px per matchMedia. The brand lockup (logo +
  * `fvf • viewer` wordmark) is centered above the "Desktop Required" title.
  * Share-first link handoff with a platform-appropriate icon —
  * `navigator.share` primary, clipboard fallback with a transient
@@ -164,8 +165,8 @@ export default function DesktopRoadblock() {
           screens.
         </p>
         <p className="roadblock-hint">
-          Open this page on a screen at least 1900px wide or switch your device
-          to portrait mode.
+          Open this page on a screen wider than 1024px, or try rotating your
+          device.
         </p>
 
         <button
