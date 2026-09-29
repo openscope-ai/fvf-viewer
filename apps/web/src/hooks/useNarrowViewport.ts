@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 
 /**
- * Narrow-viewport detection for the desktop-only roadblock (issue #16, ADR 0003):
- * the single source of truth is `matchMedia("(max-width: 1023px)")` with an
- * event-driven `change` listener. `window.innerWidth` is never consulted for
- * logic — CSS media-query rounding governs fractional viewport widths.
+ * Narrow-viewport detection for the desktop-only roadblock (issue #16, ADR 0003;
+ * minimum width raised to 1900px by issue #179): the single source of truth is
+ * `matchMedia("(max-width: 1899px)")` with an event-driven `change` listener.
+ * `window.innerWidth` is never consulted for logic — CSS media-query rounding
+ * governs fractional viewport widths.
  */
 
-export const NARROW_VIEWPORT_QUERY = "(max-width: 1023px)";
+export const NARROW_VIEWPORT_QUERY = "(max-width: 1899px)";
 
 /** Minimal matchMedia surface the subscription core needs (node-testable with stubs). */
 export interface NarrowViewportSource {

@@ -58,3 +58,29 @@ test("Export PNG downloads a non-empty PNG raster", async ({ page }) => {
   // PNG magic: 0x89 'P' 'N' 'G'
   expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 });
+
+test("Copy PNG writes the snapshot to the clipboard as an image", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-write", "clipboard-read"]);
+  await openApp(page);
+  await loadCapture(page, "en4ch10k");
+
+  const copy = page.getByTestId("png-copy-button");
+  await expect(copy).toBeVisible();
+  await expect(copy).toHaveAttribute("title", "Copy PNG snapshot to clipboard");
+
+  await copy.click();
+  // Transient copied feedback appears next to the Export PNG control.
+  await expect(copy).toHaveClass(/png-copy-button--copied/);
+
+  // The system clipboard holds an image/png item with real raster bytes.
+  const itemTypeAndSize = await page.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    const blob = await items[0]!.getType("image/png");
+    return { type: blob.type, size: blob.size };
+  });
+  expect(itemTypeAndSize.type).toBe("image/png");
+  expect(itemTypeAndSize.size).toBeGreaterThan(1_000);
+});

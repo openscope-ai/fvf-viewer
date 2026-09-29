@@ -1,7 +1,7 @@
 # Deployment — Container, Cloud Build & Cloud Run
 
 Production hosting for the FVF Viewer (ADR 0002 slice): a
-multi-stage Docker image served by Cloud Run in `europe-west3`, scaling to zero
+multi-stage Docker image served by Cloud Run in `us-central1`, scaling to zero
 when idle, with a hard `max-instances=5` cost ceiling.
 
 | File                                 | Purpose                                                                          |
@@ -43,7 +43,7 @@ gcloud services enable cloudbuild.googleapis.com \
 
 # Artifact Registry docker repository (region must match _REGION)
 gcloud artifacts repositories create fvf-viewer \
-  --repository-format=docker --location=europe-west3
+  --repository-format=docker --location=us-central1
 
 # Let Cloud Build push images and deploy Cloud Run services in this project
 gcloud projects add-iam-policy-binding PROJECT_ID \
@@ -89,19 +89,19 @@ Registry, and deploys the exact `${COMMIT_SHA}` image.
 
 > If the deploy step warns `Setting IAM policy failed` on the **first** deploy,
 > grant public access once (it persists across later deploys):
-> `gcloud run services add-iam-policy-binding fvf-viewer --region=europe-west3 --member=allUsers --role=roles/run.invoker`
+> `gcloud run services add-iam-policy-binding fvf-viewer --region=us-central1 --member=allUsers --role=roles/run.invoker`
 
 ## Cloud Run service configuration
 
-| Setting       | Value                      | Rationale                                                                                                                                     |
-| :------------ | :------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
-| Region        | `europe-west3` (Frankfurt) | Owner decision 2026-09-20: operator based in Germany; single-region deployment. Revisit a US region only if measured US load-time complaints. |
-| Max instances | `5`                        | Hard cost ceiling; documented budget cap below.                                                                                               |
-| Min instances | `0`                        | Scale to zero when idle — a personal-scale viewer pays nothing at rest.                                                                       |
-| Concurrency   | `80`                       | Requests per instance (static serving; default-class setting).                                                                                |
-| CPU / Memory  | `1` / `512Mi`              | Static file serving + on-the-fly brotli/gzip of ~160 KB wasm is comfortably within this envelope.                                             |
-| Port          | `8080`                     | Matches `PORT` in the image; Cloud Run injects `PORT` on the container.                                                                       |
-| Ingress       | `--allow-unauthenticated`  | Public viewer. No user data, no uploads (captures are processed client-side).                                                                 |
+| Setting       | Value                     | Rationale                                                                                                                                                                                                                           |
+| :------------ | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Region        | `us-central1` (Iowa, USA) | Owner decision 2026-09-28: Cloud Run domain mappings (free managed TLS) require a supported region; eu `europe-west3` lacks them and an HTTPS LB would add ~$20/month. Accepting higher EU latency (~100 ms) for a client-side app. |
+| Max instances | `5`                       | Hard cost ceiling; documented budget cap below.                                                                                                                                                                                     |
+| Min instances | `0`                       | Scale to zero when idle — a personal-scale viewer pays nothing at rest.                                                                                                                                                             |
+| Concurrency   | `80`                      | Requests per instance (static serving; default-class setting).                                                                                                                                                                      |
+| CPU / Memory  | `1` / `512Mi`             | Static file serving + on-the-fly brotli/gzip of ~160 KB wasm is comfortably within this envelope.                                                                                                                                   |
+| Port          | `8080`                    | Matches `PORT` in the image; Cloud Run injects `PORT` on the container.                                                                                                                                                             |
+| Ingress       | `--allow-unauthenticated` | Public viewer. No user data, no uploads (captures are processed client-side).                                                                                                                                                       |
 
 ## Budget alert setup (required by issue 4.2)
 
@@ -132,7 +132,7 @@ The alert informs; `max-instances=5` plus scale-to-zero enforces the ceiling.
 - **Custom domain / TLS / launch gate:** see `deploy/launch-checklist.md` — not part of this
   configuration.
 - **Rollback:** redeploy a prior image tag (full Artifact Registry path —
-  `europe-west3-docker.pkg.dev/PROJECT_ID/fvf-viewer/fvf-viewer:<commit-sha>`):
-  `gcloud run deploy fvf-viewer --image <full-image-path>:<commit-sha> --region europe-west3`.
-- **Teardown:** `gcloud run services delete fvf-viewer --region europe-west3`
+  `us-central1-docker.pkg.dev/PROJECT_ID/fvf-viewer/fvf-viewer:<commit-sha>`):
+  `gcloud run deploy fvf-viewer --image <full-image-path>:<commit-sha> --region us-central1`.
+- **Teardown:** `gcloud run services delete fvf-viewer --region us-central1`
   and delete the Artifact Registry repo when retiring the project.

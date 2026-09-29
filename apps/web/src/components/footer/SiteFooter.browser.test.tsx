@@ -23,7 +23,7 @@ function installFakeMatchMedia(initialMatches: boolean): FakeMediaQueryList {
     get matches() {
       return state.matches;
     },
-    media: "(max-width: 1023px)",
+    media: "(max-width: 1899px)",
     onchange: null,
     addEventListener(type: string, listener: ChangeListener) {
       if (type === "change") listeners.add(listener);
@@ -84,28 +84,25 @@ describe("SiteFooter (browser, issue #19)", () => {
     expect(rendered).toBe(SITE_DISCLAIMER);
     // Anchored to the approved overview §4.3 wording (first line checks).
     expect(SITE_DISCLAIMER).toBe(
-      "FVF Viewer is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Fluke Corporation. Fluke and ScopeMeter are registered trademarks of Fluke Corporation.",
+      "fvf • viewer is not affiliated with, endorsed by, or sponsored by Fluke Corporation. Fluke and ScopeMeter are registered trademarks of Fluke Corporation.",
     );
   });
 
-  it("appears on every app view and stays visible behind the roadblock", async () => {
+  it("renders on the desktop view and stays out of the roadblock layout (#179)", async () => {
     const mediaQuery = installFakeMatchMedia(true); // narrow → roadblock view
 
     await act(async () => {
       root.render(<App />);
     });
 
-    // Roadblock view: compact footer rendered inside the overlay dialog.
+    // Roadblock view: the disclaimer is NOT part of the narrow layout (#179)
+    // — no footer inside the overlay dialog.
     const overlay = hostElement.querySelector(
       "[data-testid='desktop-roadblock']",
     );
     expect(overlay).not.toBeNull();
-    const overlayFooter = overlay?.querySelector("[data-testid='site-footer']");
-    expect(overlayFooter).not.toBeNull();
-    expect(
-      overlayFooter?.querySelector(".site-footer-disclaimer")?.textContent,
-    ).toBe(SITE_DISCLAIMER);
-    expect(overlayFooter?.className).toContain("site-footer--compact");
+    expect(overlay?.querySelector("[data-testid='site-footer']")).toBeNull();
+    expect(overlay?.textContent).not.toContain("Fluke");
 
     // Crossing to the desktop view: the page-level footer renders.
     await act(async () => {
@@ -121,7 +118,7 @@ describe("SiteFooter (browser, issue #19)", () => {
       pageFooter?.querySelector(".site-footer-disclaimer")?.textContent,
     ).toBe(SITE_DISCLAIMER);
 
-    // And back to the roadblock view again.
+    // And back to the roadblock view: still no footer inside the overlay.
     await act(async () => {
       mediaQuery.dispatch(true);
     });
@@ -129,7 +126,7 @@ describe("SiteFooter (browser, issue #19)", () => {
       hostElement
         .querySelector("[data-testid='desktop-roadblock']")
         ?.querySelector("[data-testid='site-footer']"),
-    ).not.toBeNull();
+    ).toBeNull();
   });
 
   it("stays visible and non-overlapping with a capture loaded (F1/F2 regression)", async () => {

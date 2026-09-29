@@ -1391,6 +1391,21 @@ body,
   gap: 14px;
 }
 
+/* Brand lockup centered above the title (issue #179) */
+.roadblock-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.roadblock-brand-logo {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+
 .roadblock-title {
   color: #ffffff;
   font-size: 1.7rem;
@@ -1414,6 +1429,9 @@ body,
 
 .roadblock-share {
   margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   background: transparent;
   color: #00bfff;
   border: 1px solid #00bfff;
@@ -1425,6 +1443,11 @@ body,
   transition:
     background 0.15s ease,
     color 0.15s ease;
+}
+
+.roadblock-share .share-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .roadblock-share:hover {
@@ -1529,7 +1552,9 @@ body,
   cursor: default;
 }
 
-/* Site-wide legal footer (issue #19, overview §4.3) */
+/* Site-wide legal footer (issue #19, overview §4.3; the roadblock no longer
+   renders a compact variant — issue #179 keeps the disclaimer off the narrow
+   layout entirely) */
 /* Issue #62: zero-scroll workspace. The 560px floor keeps the plot above
    its 400px minimum on unusually short viewports; below that the page
    scrolls gracefully instead of crushing the waveform into a slit. */
@@ -1568,18 +1593,6 @@ body,
   line-height: 1.45;
 }
 
-.site-footer--compact {
-  background: transparent;
-  border-top: none;
-  padding: 4px 12px;
-  max-width: 480px;
-}
-
-.site-footer--compact .site-footer-disclaimer {
-  color: #6f6f6f;
-  font-size: 0.62rem;
-}
-
 /* Inverted print PNG export toggle (issue #39) */
 .png-export-controls {
   display: inline-flex;
@@ -1604,4 +1617,47 @@ body,
 
 .png-invert-toggle input:disabled {
   cursor: default;
+}
+
+/* Copy-to-clipboard snapshot control (issue #158): subtle icon-only button
+   matching the toolbar chrome; hidden entirely on browsers without image
+   clipboard support (progressive enhancement in PngSnapshotButton). */
+.png-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #181818;
+  color: #9a9a9a;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 5px 6px;
+  line-height: 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.png-copy-button .copy-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.png-copy-button:hover:not(:disabled) {
+  background: #222222;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+.png-copy-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.png-copy-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.png-copy-button--copied {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.4);
 }
