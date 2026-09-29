@@ -1,0 +1,1663 @@
+/* Vendored Geist variable font (issue #142 brand wordmark; SIL OFL 1.1, see
+   public/fonts/Geist-OFL.txt). */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Geist-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Geist-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+  background: #000;
+  color: #e8e8e8;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+/* Issue #62: the app frame owns the 100vh constraint; the shell flexes
+   inside it instead of forcing its own viewport-height minimum (which
+   overflowed the frame by the footer height and caused vertical scrolling). */
+.shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.ingestion-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  position: relative;
+  width: 100%;
+  /* Issue #62: flexes within the shell; a 100vh minimum here overflows the
+     frame once the banner and toolbar are laid out above the plot. */
+  min-height: 0;
+}
+
+/* Drop-page brand header (issue #142) */
+.drop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  width: 100%;
+}
+
+.drop-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drop-header-logo {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+}
+
+.brand-text {
+  font-family: "Geist", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: 0;
+  color: #e8e8e8;
+  user-select: none;
+}
+
+.brand-dot {
+  color: #fcc603;
+}
+
+.drop-header-github {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 8px;
+  color: #9a9a9a;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.drop-header-github:hover {
+  color: #ffffff;
+  background-color: #141414;
+}
+
+.drop-header-github:focus-visible {
+  color: #ffffff;
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.github-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+/* Empty-state Hero Drop Zone */
+.hero-dropzone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 40px auto;
+  max-width: 680px;
+  width: 90%;
+  min-height: 380px;
+  border: 2px dashed #2a2a2a;
+  border-radius: 12px;
+  background: #080808;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+  outline: none;
+}
+
+.hero-dropzone:hover {
+  border-color: #444444;
+  background: #0d0d0d;
+}
+
+.hero-dropzone:focus-visible {
+  border-color: #00bfff;
+  outline: 2px solid #00bfff;
+  outline-offset: 4px;
+}
+
+.hero-dropzone--active {
+  border-color: #00bfff;
+  background: #061320;
+  box-shadow: 0 0 24px rgba(0, 191, 255, 0.25);
+}
+
+.hero-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px;
+}
+
+.hero-logo {
+  width: 84px;
+  height: 84px;
+  margin-bottom: 20px;
+  border-radius: 19px;
+}
+
+.hero-title {
+  margin: 0 0 8px 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.hero-subtitle {
+  margin: 0 0 24px 0;
+  font-size: 0.95rem;
+  color: #888888;
+}
+
+.hero-privacy {
+  margin: 4px 0 0 0;
+  font-size: 0.82rem;
+  color: #7a7a7a;
+}
+
+.hero-parsing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.hero-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #222222;
+  border-top-color: #00bfff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hero-parsing-text {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #00bfff;
+  font-weight: 500;
+}
+
+/* Waveform hover tooltip (issue #150) */
+.hover-tooltip {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 10px;
+  border: 1px solid #333333;
+  border-radius: 6px;
+  background: #0d0d0f;
+  color: #e8e8e8;
+  font-size: 0.72rem;
+  font-family: monospace;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hover-tooltip-name {
+  font-family: system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.hover-tooltip-coords {
+  color: #bdbdbd;
+}
+
+/* Shell Drop Overlay (Capture Replacement) */
+.shell-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(4px);
+  border: 3px dashed #00bfff;
+  pointer-events: none;
+}
+
+.shell-drop-overlay-text {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #00bfff;
+  text-shadow: 0 0 16px rgba(0, 191, 255, 0.6);
+  margin: 0;
+}
+
+/* Metadata Banner */
+.metadata-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  padding: 10px 20px;
+  background: #0c0c0c;
+  border-bottom: 1px solid #1f1f1f;
+  font-size: 0.85rem;
+  color: #cccccc;
+}
+
+.banner-logo {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.banner-github {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border-radius: 6px;
+  color: #9a9a9a;
+  flex-shrink: 0;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.banner-github:hover {
+  color: #ffffff;
+  background-color: #1c1c1c;
+}
+
+.banner-github:focus-visible {
+  color: #ffffff;
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.banner-github .github-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.banner-primary-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.banner-filename {
+  font-weight: 600;
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 0.92rem;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banner-open-btn {
+  background: #181818;
+  color: #00bfff;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.banner-open-btn:hover {
+  background: #222222;
+  border-color: #00bfff;
+}
+
+.banner-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+}
+
+.banner-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner-field-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #777777;
+}
+
+.banner-field-value {
+  font-family: monospace;
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.banner-channel-names {
+  color: inherit;
+}
+
+.banner-channel-selected {
+  text-decoration: underline;
+  font-weight: 700;
+}
+
+.banner-field-vertical .banner-field-value {
+  white-space: pre-wrap;
+}
+
+.banner-field-vertical .banner-field-value span:not(:first-of-type) {
+  margin-left: 14px;
+}
+
+/* Waveform Toolbar */
+.waveform-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 20px;
+  background: #0c0c0c;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+.waveform-toolbar-channels {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.waveform-toolbar-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #777777;
+  margin-right: 4px;
+}
+
+/* Issue #75: centered typographic pills — identity/state is carried by
+   border color, text color, and glow, so no leading dots or trailing stars.
+   Symmetrical padding and a uniform minimum width keep single-letter channel
+   badges and two-character cursor badges visually centered. */
+.waveform-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-width: 38px;
+  background: #181818;
+  color: #888888;
+  border: 1px solid #2e2e2e;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: monospace;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.waveform-channel-badge:hover {
+  border-color: #444444;
+  color: #bbbbbb;
+}
+
+.waveform-channel-badge:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.waveform-channel-badge--active {
+  background: #101010;
+}
+
+.waveform-channel-badge--selected {
+  font-weight: 700;
+}
+
+/* Issue #64: inline rename editor inside the channel badge. */
+.waveform-channel-badge--editing {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+}
+
+.waveform-channel-badge-prefix {
+  font-weight: 700;
+}
+
+.waveform-channel-badge--editing input {
+  width: 9ch;
+  min-width: 6ch;
+  font: inherit;
+  font-size: 0.72rem;
+  color: #ffffff;
+  background: #101010;
+  border: 1px solid #00bfff;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.waveform-channel-badge--editing input:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 1px;
+}
+
+.waveform-fit-button {
+  background: #181818;
+  color: #00bfff;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.waveform-fit-button:hover {
+  background: #222222;
+  border-color: #00bfff;
+}
+
+.waveform-fit-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+/* Viewport theme toggle (issue #38) */
+.waveform-theme-button {
+  background: #181818;
+  color: #bbbbbb;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.waveform-theme-button:hover {
+  background: #222222;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+.waveform-theme-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+/* Color palette settings (issue #40) */
+.palette-settings {
+  position: relative;
+  display: inline-flex;
+}
+
+.palette-settings-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #101010;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+
+.palette-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.palette-row-label {
+  min-width: 76px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #888888;
+}
+
+/* Active color chip (issue #59): the row's single prominent control. */
+.palette-chip {
+  width: 34px;
+  height: 20px;
+  border: 1px solid #444444;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.palette-chip:hover {
+  border-color: #888888;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
+}
+
+.palette-chip--custom {
+  border-color: #00bfff;
+}
+
+.palette-chip:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 1px;
+}
+
+/* Single-open inline accordion (issue #59). */
+.palette-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #181818;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+}
+
+.palette-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 5px;
+}
+
+.palette-grid-swatch {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-width: 0;
+  border: 1px solid #333333;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.palette-grid-swatch:hover {
+  border-color: #888888;
+}
+
+.palette-grid-swatch--active {
+  outline: 2px solid #00bfff;
+  outline-offset: 1px;
+}
+
+.palette-grid-swatch:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 1px;
+}
+
+.palette-accordion-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.palette-picker {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #2e2e2e;
+  border-radius: 3px;
+  background: #181818;
+  cursor: pointer;
+}
+
+.palette-accordion-done {
+  margin-left: auto;
+}
+
+.palette-hex {
+  width: 76px;
+  padding: 2px 6px;
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: #bbbbbb;
+  background: #181818;
+  border: 1px solid #2e2e2e;
+  border-radius: 3px;
+}
+
+.palette-hex--invalid {
+  border-color: #ff4444;
+}
+
+.palette-hex:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 1px;
+}
+
+.palette-row-reset {
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  color: #bbbbbb;
+  background: #181818;
+  border: 1px solid #2e2e2e;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.palette-row-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.palette-reset-all {
+  margin-top: 4px;
+}
+
+/* Oscilloscope Container */
+.oscilloscope-container {
+  width: 100%;
+  flex: 1;
+  min-height: 400px;
+  background-color: #000000;
+  position: relative;
+  overflow: hidden;
+}
+
+.oscilloscope-container .uplot {
+  background-color: #000000;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+/* Light/Lab viewport theme (issue #38): the canvas paints its own theme
+   background via drawClear; these rules keep the widget gutters (axis
+   regions rendered outside uPlot's plot bbox) on the light background. */
+.oscilloscope-container[data-theme="light"] {
+  background-color: #ffffff;
+}
+
+.oscilloscope-container[data-theme="light"] .uplot {
+  background-color: #ffffff;
+}
+
+/* Box-zoom drag selection overlay (issue #13): translucent rectangle drawn
+   by the custom uPlot plugin while dragging across the plot area. Position,
+   size, display, and pointer-events are managed inline by the plugin. */
+.oscilloscope-container .box-zoom-overlay {
+  background: rgba(0, 191, 255, 0.15);
+  border: 1px solid rgba(0, 191, 255, 0.9);
+}
+
+.oscilloscope-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: #888888;
+  font-style: italic;
+  background-color: #000000;
+}
+
+/* Measurement Cursors (Issue #14) */
+.waveform-toolbar-cursors {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.waveform-cursor-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-width: 38px;
+  background: #181818;
+  color: #888888;
+  border: 1px solid #2e2e2e;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: monospace;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.waveform-cursor-badge:hover {
+  border-color: #555555;
+}
+
+.waveform-cursor-badge:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.cursor-line {
+  /* No CSS transition: ensures visually strictly discrete snapped positioning */
+}
+
+.cursor-handle {
+  transition: box-shadow 0.15s ease;
+}
+
+/* Floating Readout HUD Card */
+.cursor-readout-card {
+  position: absolute;
+  top: 76px;
+  right: 16px;
+  z-index: 50;
+  background: rgba(12, 12, 12, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  min-width: 220px;
+  max-width: 320px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #e0e0e0;
+  overflow: hidden;
+  user-select: none;
+}
+
+.cursor-readout-card-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(24, 24, 24, 0.95);
+  border-bottom: 1px solid #222222;
+  cursor: grab;
+  /* Pointer-event dragging must not trigger touch scrolling. */
+  touch-action: none;
+  user-select: none;
+}
+
+.cursor-readout-card-titlebar:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: -2px;
+}
+
+.cursor-readout-card--dragging {
+  user-select: none;
+}
+
+.cursor-readout-card--dragging .cursor-readout-card-titlebar {
+  cursor: grabbing;
+}
+
+.cursor-readout-card-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888888;
+  font-weight: 600;
+}
+
+.cursor-readout-titlebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cursor-readout-help-btn {
+  background: transparent;
+  border: none;
+  color: #888888;
+  cursor: pointer;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.cursor-readout-help-btn:hover,
+.cursor-readout-help-btn:focus-visible {
+  color: #00bfff;
+}
+
+.cursor-readout-help-btn:focus-visible {
+  outline: 1px solid #00bfff;
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.cursor-readout-help-panel {
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  color: #e0e0e0;
+}
+
+.cursor-readout-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cursor-readout-help-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888888;
+  font-weight: 600;
+}
+
+.cursor-readout-help-close {
+  background: transparent;
+  border: none;
+  color: #888888;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0 4px;
+}
+
+.cursor-readout-help-close:hover {
+  color: #ffffff;
+}
+
+.cursor-readout-help-list {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #cccccc;
+}
+
+.cursor-readout-collapse-btn {
+  background: transparent;
+  border: none;
+  color: #888888;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0 4px;
+}
+
+.cursor-readout-collapse-btn:hover {
+  color: #ffffff;
+}
+
+.cursor-readout-card-content {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cursor-readout-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+}
+
+.cursor-readout-row--selected {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cursor-readout-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cursor-badge {
+  background: transparent;
+  border: 1px solid #444444;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.cursor-channel-identity,
+.cursor-diff-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cursor-channel-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.15);
+}
+
+.cursor-sample-index {
+  color: #999999;
+  font-size: 0.75rem;
+}
+
+.cursor-time-value {
+  margin-left: auto;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.cursor-channel-voltages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+}
+
+.cursor-channel-reading {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.cursor-voltage-value {
+  color: #dddddd;
+}
+
+.cursor-readout-differential {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  margin-top: 4px;
+  border-top: 1px dashed #262626;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.cursor-diff-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.cursor-diff-label {
+  color: #888888;
+  font-weight: 600;
+}
+
+.cursor-diff-value {
+  color: #00e5ff;
+  font-weight: 600;
+}
+
+.cursor-channel-reading--selected,
+.cursor-meta-row--selected,
+.cursor-diff-row--selected {
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+}
+
+.cursor-readout-row--out-of-view {
+  opacity: 0.45;
+  filter: grayscale(0.4);
+  transition: opacity 0.15s ease;
+}
+
+/* Out-of-view Cursor Recovery Badges (Issue #15) */
+.cursor-recovery-badges {
+  pointer-events: none;
+}
+
+.cursor-recovery-group {
+  position: absolute;
+  top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 55;
+  pointer-events: auto;
+}
+
+.cursor-recovery-group--left {
+  left: 56px;
+  align-items: flex-start;
+}
+
+.cursor-recovery-group--right {
+  right: 16px;
+  align-items: flex-end;
+}
+
+.cursor-recovery-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(18, 18, 18, 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.cursor-recovery-badge:hover {
+  background: rgba(32, 32, 32, 0.95);
+  transform: translateY(-1px);
+}
+
+.cursor-recovery-badge:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.cursor-recovery-chevron {
+  font-size: 0.7rem;
+}
+
+.cursor-recovery-tag {
+  letter-spacing: 0.05em;
+}
+
+/* Modal Backdrop & Error Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.error-modal {
+  background: #111111;
+  border: 1px solid #d32f2f;
+  border-radius: 8px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.9),
+    0 0 20px rgba(211, 47, 47, 0.25);
+  max-width: 520px;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.error-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #242424;
+  background: #160e0e;
+}
+
+.error-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #ff5252;
+}
+
+.error-modal-close-icon {
+  background: transparent;
+  border: none;
+  color: #888888;
+  font-size: 1.4rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.error-modal-close-icon:hover {
+  color: #ffffff;
+}
+
+.error-modal-body {
+  padding: 18px;
+  color: #cccccc;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.error-modal-message {
+  margin: 0 0 14px 0;
+  color: #e8e8e8;
+}
+
+.error-modal-bytes {
+  background: #080808;
+  border: 1px solid #222222;
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.error-byte-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 4px 0;
+}
+
+.error-byte-label {
+  color: #888888;
+  min-width: 150px;
+  font-size: 0.8rem;
+}
+
+.error-byte-hex,
+.error-byte-ascii {
+  color: #ffd700;
+  font-weight: 600;
+}
+
+.error-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid #242424;
+  background: #0d0d0d;
+}
+
+.error-modal-dismiss-btn {
+  background: #252525;
+  color: #ffffff;
+  border: 1px solid #3d3d3d;
+  border-radius: 4px;
+  padding: 6px 18px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.error-modal-dismiss-btn:hover {
+  background: #333333;
+  border-color: #555555;
+}
+
+/* Canvas Blocked Modal (issue #84) */
+.canvas-blocked-modal {
+  background: #111111;
+  border: 1px solid #ffd700;
+  border-radius: 8px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.9),
+    0 0 20px rgba(255, 215, 0, 0.2);
+  max-width: 520px;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-blocked-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #242424;
+  background: #19160a;
+}
+
+.canvas-blocked-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #ffd700;
+}
+
+.canvas-blocked-modal-close-icon {
+  background: transparent;
+  border: none;
+  color: #888888;
+  font-size: 1.4rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.canvas-blocked-modal-close-icon:hover {
+  color: #ffffff;
+}
+
+.canvas-blocked-modal-body {
+  padding: 18px;
+  color: #cccccc;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.canvas-blocked-modal-message {
+  margin: 0 0 10px 0;
+  color: #e8e8e8;
+}
+
+.canvas-blocked-modal-submessage {
+  margin: 0 0 14px 0;
+  color: #aaaaaa;
+}
+
+.canvas-blocked-steps {
+  margin: 0 0 10px 0;
+  padding-left: 22px;
+  color: #e0e0e0;
+}
+
+.canvas-blocked-steps li {
+  margin-bottom: 8px;
+}
+
+.canvas-blocked-steps strong {
+  color: #ffffff;
+}
+
+.canvas-blocked-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid #242424;
+  background: #0d0d0d;
+}
+
+.canvas-blocked-dismiss-btn {
+  background: #252525;
+  color: #ffffff;
+  border: 1px solid #3d3d3d;
+  border-radius: 4px;
+  padding: 6px 18px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.canvas-blocked-dismiss-btn:hover {
+  background: #333333;
+  border-color: #ffd700;
+}
+
+/* Desktop Roadblock (issue #16, ADR 0003) */
+.roadblock {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: #000000;
+  overscroll-behavior: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.roadblock-panel {
+  max-width: 560px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Brand lockup centered above the title (issue #179) */
+.roadblock-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.roadblock-brand-logo {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+
+.roadblock-title {
+  color: #ffffff;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.roadblock-message {
+  color: #c8c8c8;
+  font-size: 1rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.roadblock-hint {
+  color: #8a8a8a;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.roadblock-share {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  color: #00bfff;
+  border: 1px solid #00bfff;
+  border-radius: 6px;
+  padding: 12px 28px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.roadblock-share .share-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.roadblock-share:hover {
+  background: #00bfff;
+  color: #000000;
+}
+
+.roadblock-sr-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.roadblock-manual {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.roadblock-manual-hint {
+  color: #c8c8c8;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.roadblock-url {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #00bfff;
+  background: #101418;
+  border: 1px solid #24303a;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  user-select: all;
+}
+
+/* CSV export (issue #17) */
+.waveform-csv-button {
+  background: #181818;
+  color: #bbbbbb;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.waveform-csv-button:hover:not(:disabled) {
+  background: #222222;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+.waveform-csv-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.waveform-csv-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* PNG snapshot export (issue #18) */
+.waveform-png-button {
+  background: #181818;
+  color: #bbbbbb;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.waveform-png-button:hover:not(:disabled) {
+  background: #222222;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+.waveform-png-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.waveform-png-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Site-wide legal footer (issue #19, overview §4.3; the roadblock no longer
+   renders a compact variant — issue #179 keeps the disclaimer off the narrow
+   layout entirely) */
+/* Issue #62: zero-scroll workspace. The 560px floor keeps the plot above
+   its 400px minimum on unusually short viewports; below that the page
+   scrolls gracefully instead of crushing the waveform into a slit. */
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 560px;
+}
+
+.app-frame .shell {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The shell's viewport-relative children must flex inside the frame instead
+   of overflowing it (issue #19 F1: the 100vh ingestion/plot containers
+   otherwise paint over the static footer). */
+.app-frame .ingestion-container {
+  min-height: 0;
+}
+
+.site-footer {
+  flex: none;
+  background: #0d0d0d;
+  border-top: 1px solid #242424;
+  /* Issue #62: compact 6px vertical footprint maximizes canvas height. */
+  padding: 6px 20px;
+  text-align: center;
+}
+
+.site-footer-disclaimer {
+  margin: 0;
+  color: #8a8a8a;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+/* Inverted print PNG export toggle (issue #39) */
+.png-export-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.png-invert-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #bbbbbb;
+  font-size: 0.72rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.png-invert-toggle input {
+  accent-color: #00bfff;
+  cursor: pointer;
+}
+
+.png-invert-toggle input:disabled {
+  cursor: default;
+}
+
+/* Copy-to-clipboard snapshot control (issue #158): subtle icon-only button
+   matching the toolbar chrome; hidden entirely on browsers without image
+   clipboard support (progressive enhancement in PngSnapshotButton). */
+.png-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #181818;
+  color: #9a9a9a;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 5px 6px;
+  line-height: 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.png-copy-button .copy-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.png-copy-button:hover:not(:disabled) {
+  background: #222222;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+.png-copy-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.png-copy-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.png-copy-button--copied {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.4);
+}
