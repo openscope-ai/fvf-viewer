@@ -3,6 +3,12 @@ import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
 const worktreeRoot = fileURLToPath(new URL(".", import.meta.url));
+// The browser project's Vite server roots at the monorepo, so without
+// this it would not serve `apps/web/public` (logo/sample assets the app
+// fetches by absolute path, e.g. the issue #193 sample capture).
+const webPublicDir = fileURLToPath(
+  new URL("./apps/web/public", import.meta.url),
+);
 const serverFs = {
   fs: {
     // Delivery worktrees live under <repo>/.git/gh-delivery/: outside Vite's default allow list
@@ -56,6 +62,7 @@ export default defineConfig({
       },
       {
         ...serverFs,
+        publicDir: webPublicDir,
         test: {
           name: "browser",
           include: [

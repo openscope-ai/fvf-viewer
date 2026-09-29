@@ -37,6 +37,26 @@ const F64_RANGE_HIGH: f64 = 800.0;
 const F64_PHASE: f64 = std::f64::consts::FRAC_PI_4;
 const F64_Q1_16: f64 = 0.0625;
 
+/// Payload generator for one record (issue #193): corpus fixtures keep the
+/// legacy deterministic LCG noise (byte-frozen by the `synth_repro` gate),
+/// while the shipped demo sample uses structured showcase waveforms.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WaveShape {
+    /// Legacy corpus dialect: seeded LCG noise, byte-identical to the
+    /// committed fixture corpus.
+    Noise,
+    /// 230 V RMS 50 Hz mains with 5th/7th harmonics (dense cycle detail
+    /// for zooming; a stable period for cursors).
+    Mains,
+    /// 50 Hz motor current under a 0.6 s soft-start ramp with a decaying
+    /// overshoot (trend at full view, cycles when zoomed).
+    SoftStart,
+    /// 2 kHz gate train whose duty sweeps 20%→80% while the drive runs.
+    Pwm,
+    /// Two-level run/fault/restart/stop state signal with crisp edges.
+    DriveState,
+}
+
 pub struct RecordSpec {
     pub label: &'static str,
     pub samples: u32,
@@ -55,6 +75,8 @@ pub struct RecordSpec {
     /// Stored time-axis left edge in seconds (param+20); `None` centers the
     /// trigger (`-span/2`, the pre-#105 display-center behavior).
     pub t_left: Option<f64>,
+    /// Payload generator for this record (noise for corpus fixtures).
+    pub shape: WaveShape,
 }
 
 pub struct FixtureSpec {
@@ -76,6 +98,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input A",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -87,6 +110,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input B",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -98,6 +122,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input C",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -109,6 +134,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input D",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -127,6 +153,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
             label: "Eingang A",
             samples: 3_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -145,6 +172,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input A",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -156,6 +184,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input B",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -174,6 +203,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
             label: "Input A",
             samples: 1_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -191,6 +221,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
             label: "Input A",
             samples: 1_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -208,6 +239,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
             label: "Input A",
             samples: 1_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -226,6 +258,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input A",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -237,6 +270,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input B",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -248,6 +282,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input D",
                 samples: 10_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -267,6 +302,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input A",
                 samples: 3_000,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -278,6 +314,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Mathematik A",
                 samples: 3_000,
                 source: Some(0),
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -297,6 +334,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input A",
                 samples: 500,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -308,6 +346,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input B",
                 samples: 500,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -319,6 +358,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input C",
                 samples: 500,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -330,6 +370,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input D",
                 samples: 500,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "V",
                 unit_family: 3,
                 scale: F64_Q1_16,
@@ -348,6 +389,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
             label: "Input A",
             samples: 250_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -366,6 +408,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input A",
                 samples: 9_636,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "A",
                 unit_family: 10,
                 scale: 0.015_625,
@@ -377,6 +420,7 @@ pub const FIXTURES: &[FixtureSpec] = &[
                 label: "Input B",
                 samples: 9_636,
                 source: None,
+                shape: WaveShape::Noise,
                 unit: "mA",
                 unit_family: 10,
                 scale: 0.000_031_25,
@@ -388,6 +432,75 @@ pub const FIXTURES: &[FixtureSpec] = &[
     },
 ];
 
+/// Shipped demo sample (issue #193): the user-facing capture behind the
+/// homepage "Try a sample capture" action. Four channels over a 1 s span
+/// ("100 ms/Div", 100,000 samples per channel, dt = 10 µs) chosen to
+/// showcase instant zooming (dense 50 Hz cycles at full view, individual
+/// cycles mid-zoom, 2 kHz PWM edges deep-zoomed), different y-axis scales
+/// (±450 V mains vs ±12 A current vs 0–5 V logic), cursor measurability
+/// (mains period, soft-start ramp time, state edges, PWM duty), and fast
+/// loading (~1.6 MB total). Committed byte-exactly at
+/// `apps/web/public/samples/fvf-sample.fvf.bin`; the `sample_asset` test
+/// fails on any drift.
+pub const SAMPLE_NAME: &str = "fvf-sample.fvf.bin";
+
+pub const SAMPLE: &FixtureSpec = &FixtureSpec {
+    name: SAMPLE_NAME,
+    timebase: "100 ms/Div",
+    payload_start: 827,
+    timestamp: "12000020260101",
+    records: &[
+        RecordSpec {
+            label: "Input A",
+            samples: 100_000,
+            source: None,
+            shape: WaveShape::Mains,
+            unit: "V",
+            unit_family: 3,
+            scale: 0.000_1,
+            window_min: -450.0,
+            window_max: 450.0,
+            t_left: None,
+        },
+        RecordSpec {
+            label: "Input B",
+            samples: 100_000,
+            source: None,
+            shape: WaveShape::SoftStart,
+            unit: "A",
+            unit_family: 10,
+            scale: 0.000_2,
+            window_min: -12.0,
+            window_max: 12.0,
+            t_left: None,
+        },
+        RecordSpec {
+            label: "Input C",
+            samples: 100_000,
+            source: None,
+            shape: WaveShape::Pwm,
+            unit: "V",
+            unit_family: 3,
+            scale: 0.000_1,
+            window_min: -1.0,
+            window_max: 6.0,
+            t_left: None,
+        },
+        RecordSpec {
+            label: "Input D",
+            samples: 100_000,
+            source: None,
+            shape: WaveShape::DriveState,
+            unit: "V",
+            unit_family: 3,
+            scale: 0.000_1,
+            window_min: -1.0,
+            window_max: 6.0,
+            t_left: None,
+        },
+    ],
+};
+
 pub const OVERSIZED: &FixtureSpec = &FixtureSpec {
     name: "extreme-envelope-4ch-250000-10ms-div.fvf.bin",
     timebase: "10 ms/Div",
@@ -398,6 +511,7 @@ pub const OVERSIZED: &FixtureSpec = &FixtureSpec {
             label: "Input A",
             samples: 250_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -409,6 +523,7 @@ pub const OVERSIZED: &FixtureSpec = &FixtureSpec {
             label: "Input B",
             samples: 250_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -420,6 +535,7 @@ pub const OVERSIZED: &FixtureSpec = &FixtureSpec {
             label: "Input C",
             samples: 250_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -431,6 +547,7 @@ pub const OVERSIZED: &FixtureSpec = &FixtureSpec {
             label: "Input D",
             samples: 250_000,
             source: None,
+            shape: WaveShape::Noise,
             unit: "V",
             unit_family: 3,
             scale: F64_Q1_16,
@@ -464,6 +581,75 @@ fn payload_samples(seed: u32, count: u32) -> impl Iterator<Item = i32> {
     (0..count).map(move |_| {
         state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
         (((state >> 8) & 0xFFFF) as i32) - 32_768
+    })
+}
+
+/// Time span of the demo sample's stored axis (10 divisions at 100 ms).
+const SAMPLE_SPAN_SECONDS: f64 = 1.0;
+
+/// Soft-start timeline shared by the demo waveforms: ramp 0→1 over
+/// 0.6 s starting at t = -0.45 s, then a decaying 8% overshoot.
+fn soft_start_envelope(t: f64) -> f64 {
+    let ramp = ((t + 0.45) / 0.6).clamp(0.0, 1.0);
+    let overshoot = if t > 0.15 {
+        0.08 * (-(t - 0.15) / 0.08).exp()
+    } else {
+        0.0
+    };
+    ramp * (1.0 + overshoot)
+}
+
+/// Drive-run windows for the demo logic channels: run [-0.45, 0.15),
+/// fault trip [0.15, 0.25), restart [0.25, 0.35), stopped afterwards.
+fn drive_running(t: f64) -> bool {
+    (-0.45..0.15).contains(&t) || (0.25..0.35).contains(&t)
+}
+
+/// Structured showcase payload for one demo record (issue #193): physical
+/// value at trigger-relative time t, quantized to raw counts via the
+/// record's scale. Deterministic (seeded LCG noise, no clocks/entropy);
+/// amplitudes stay far from the i32 rails so no sample reads as saturated.
+fn shaped_samples(record: &RecordSpec, samples: u32) -> impl Iterator<Item = i32> + '_ {
+    let dt = SAMPLE_SPAN_SECONDS / f64::from(samples);
+    let mut noise_state = 0x5EED_0001_u32;
+    (0..samples).map(move |index| {
+        let t = -SAMPLE_SPAN_SECONDS / 2.0 + f64::from(index) * dt;
+        noise_state = noise_state
+            .wrapping_mul(1_664_525)
+            .wrapping_add(1_013_904_223);
+        let noise = (((noise_state >> 8) & 0xFFFF) as f64 / 32_768.0) - 1.0;
+        let mains_omega = 2.0 * std::f64::consts::PI * 50.0;
+        let value = match record.shape {
+            WaveShape::Mains => {
+                325.269_119_345_811_9
+                    * ((mains_omega * t).sin()
+                        + 0.03 * (5.0 * mains_omega * t + 0.7).sin()
+                        + 0.01 * (7.0 * mains_omega * t + 1.9).sin())
+                    + 0.4 * noise
+            }
+            WaveShape::SoftStart => {
+                8.0 * soft_start_envelope(t) * (mains_omega * t + std::f64::consts::FRAC_PI_3).sin()
+                    + 0.2 * soft_start_envelope(t)
+                    + 0.15 * noise
+            }
+            WaveShape::Pwm => {
+                let duty = 0.2 + 0.6 * (((t + 0.4) / 0.7).clamp(0.0, 1.0));
+                let phase = ((t * 2000.0) % 1.0 + 1.0) % 1.0;
+                let level = if drive_running(t) && phase < duty {
+                    5.0
+                } else {
+                    0.0
+                };
+                level + 0.05 * noise
+            }
+            WaveShape::DriveState => {
+                let level = if drive_running(t) { 5.0 } else { 0.0 };
+                level + 0.05 * noise
+            }
+            WaveShape::Noise => unreachable!("noise records use payload_samples"),
+        };
+        let raw = (value / record.scale).round();
+        raw.clamp(-100_000_000.0, 100_000_000.0) as i32
     })
 }
 
@@ -591,6 +777,7 @@ fn span_seconds(timebase: &str) -> Option<f64> {
         "0,1 s/Div" => 0.1,
         "1 min/Div" => 60.0,
         "20 ms/Div" => 0.02,
+        "100 ms/Div" => 0.1,
         "1 s/Div" => 1.0,
         "abc us/div" | "500 min/div" => return None,
         other => panic!("synth has no span for timebase {other:?}; extend span_seconds"),
@@ -752,12 +939,24 @@ pub fn build_fixture(spec: &FixtureSpec) -> Vec<u8> {
         ));
         let derived = record.source.is_some();
         let seed_channel = record.source.unwrap_or(index);
-        for value in payload_samples(channel_seed(spec.name, seed_channel), record.samples) {
-            let sample = if derived {
-                value.wrapping_add(DERIVED_SAMPLE_OFFSET)
-            } else {
-                value
-            };
+        // Corpus fixtures keep the byte-frozen LCG noise payload; the demo
+        // sample records generate structured showcase waveforms instead.
+        let samples_iter: Box<dyn Iterator<Item = i32>> = if record.shape == WaveShape::Noise {
+            Box::new(
+                payload_samples(channel_seed(spec.name, seed_channel), record.samples).map(
+                    move |value| {
+                        if derived {
+                            value.wrapping_add(DERIVED_SAMPLE_OFFSET)
+                        } else {
+                            value
+                        }
+                    },
+                ),
+            )
+        } else {
+            Box::new(shaped_samples(record, record.samples))
+        };
+        for sample in samples_iter {
             push_u32(&mut out, sample as u32);
         }
         out.extend(build_trailer(
@@ -810,6 +1009,11 @@ pub fn build_all() -> Vec<(&'static str, Vec<u8>)> {
     out
 }
 
+/// Regenerates the shipped demo sample asset (issue #193).
+pub fn build_sample() -> Vec<u8> {
+    build_fixture(SAMPLE)
+}
+
 pub fn build_oversized() -> (&'static str, Vec<u8>) {
     (OVERSIZED.name, build_fixture(OVERSIZED))
 }
@@ -817,6 +1021,11 @@ pub fn build_oversized() -> (&'static str, Vec<u8>) {
 #[cfg(not(test))]
 fn default_out_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/synthetic")
+}
+
+#[cfg(not(test))]
+fn default_sample_out_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/web/public/samples")
 }
 
 #[cfg(not(test))]
@@ -836,14 +1045,15 @@ fn hex_digest(bytes: &[u8]) -> String {
 
 #[cfg(not(test))]
 fn main() -> ExitCode {
-    let mut out_dir = default_out_dir();
+    let mut out_dir: Option<PathBuf> = None;
     let mut oversized = false;
     let mut hashes = false;
+    let mut sample = false;
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--out" => match args.next() {
-                Some(path) => out_dir = PathBuf::from(path),
+                Some(path) => out_dir = Some(PathBuf::from(path)),
                 None => {
                     eprintln!("--out requires a directory argument");
                     return ExitCode::FAILURE;
@@ -851,14 +1061,34 @@ fn main() -> ExitCode {
             },
             "--oversized" => oversized = true,
             "--hashes" => hashes = true,
+            "--sample" => sample = true,
             other => {
                 eprintln!(
-                    "unknown argument {other}; usage: synth [--out DIR] [--oversized] [--hashes]"
+                    "unknown argument {other}; usage: synth [--out DIR] [--oversized] [--hashes] [--sample]"
                 );
                 return ExitCode::FAILURE;
             }
         }
     }
+    // --sample regenerates only the shipped demo asset (issue #193); it
+    // defaults to the web app's public samples directory, while corpus
+    // regeneration keeps the committed fixture directory.
+    if sample {
+        let out_dir = out_dir.unwrap_or_else(default_sample_out_dir);
+        let pairs = [(SAMPLE_NAME, build_sample())];
+        if let Err(error) = write_all(&out_dir, &pairs) {
+            eprintln!("writing sample to {} failed: {error}", out_dir.display());
+            return ExitCode::FAILURE;
+        }
+        if hashes {
+            for (name, bytes) in &pairs {
+                println!("{name} {} {}", bytes.len(), hex_digest(bytes));
+            }
+        }
+        println!("wrote {} sample to {}", pairs.len(), out_dir.display());
+        return ExitCode::SUCCESS;
+    }
+    let out_dir = out_dir.unwrap_or_else(default_out_dir);
     let mut pairs = build_all();
     if oversized {
         let (name, bytes) = build_oversized();

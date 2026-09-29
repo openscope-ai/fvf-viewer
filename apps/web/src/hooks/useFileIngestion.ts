@@ -7,6 +7,10 @@
  * - Multi-file drops take the first file.
  * - No file-extension pre-filter (signature verification is the authority).
  * - Safe error handling (never throws unhandled exceptions).
+ *
+ * `ingestUrl` (issue #193) feeds the shipped sample capture through the
+ * exact same ticket/parse/error pipeline: only the byte source (a
+ * same-origin fetch instead of a user file) differs.
  */
 
 import { useCallback, useRef } from "react";
@@ -57,6 +61,35 @@ export function useFileIngestion() {
     [ingestFiles],
   );
 
+  const ingestUrl = useCallback(
+    async (url: string, fileName: string): Promise<void> => {
+      // Same ticket discipline as a picked file: the ticket invalidates any
+      // in-flight selection, keeps the store in 'parsing' for this sample,
+      // and routes fetch/read failures into the standard error modal path.
+      const ticket = useCaptureStore.getState().allocateTicket(fileName);
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Sample request failed: HTTP ${response.status}`);
+        }
+        const buffer = await response.arrayBuffer();
+        if (ticket !== useCaptureStore.getState().currentTicket()) {
+          return;
+        }
+        await useCaptureStore.getState().parseBuffer(buffer, fileName, ticket);
+      } catch (error) {
+        if (ticket === useCaptureStore.getState().currentTicket()) {
+          useCaptureStore.getState().failIngestion(ticket, error, fileName);
+        }
+        console.error(
+          "[useFileIngestion] failed to fetch or parse sample",
+          error,
+        );
+      }
+    },
+    [],
+  );
+
   const openFileDialog = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -65,6 +98,7 @@ export function useFileIngestion() {
     fileInputRef,
     ingestFiles,
     ingestFile,
+    ingestUrl,
     openFileDialog,
   };
 }

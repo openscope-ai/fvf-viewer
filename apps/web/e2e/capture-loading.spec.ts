@@ -24,6 +24,32 @@ test("§6.1 parsing is fully client-side: loading a capture triggers no off-orig
   expect(requestUrls.length).toBeGreaterThan(0);
 });
 
+test("§issue-193 sample capture opens the app from the homepage without a file", async ({
+  page,
+}) => {
+  await openApp(page);
+
+  const sampleButton = page.getByTestId("hero-sample-button");
+  await expect(sampleButton).toBeVisible();
+  await expect(sampleButton).toHaveText("Try a sample capture");
+
+  await sampleButton.click();
+
+  // Loads through the standard pipeline: banner carries the sample file
+  // name and manifest metrics; the oscilloscope workspace opens.
+  await expect(page.locator(".banner-filename-text")).toContainText(
+    "fvf-sample.fvf",
+  );
+  await expect(page.getByTestId("oscilloscope-container")).toBeVisible();
+  await expect(page.locator(".banner-field-samples")).toContainText(
+    "100,000 samples",
+  );
+  await expect(page.locator(".banner-field-timebase")).toContainText(
+    "100 ms/Div",
+  );
+  await expect(page.locator(".banner-metrics")).toContainText("4 channels");
+});
+
 test("§6.2 4-channel EN fixture loads with banner metrics matching the manifest", async ({
   page,
 }) => {

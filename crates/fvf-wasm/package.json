@@ -1,6 +1,6 @@
 {
   "name": "@fvf/fvf-wasm",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "private": true,
   "main": "./pkg/fvf_wasm.js",
   "types": "./pkg/fvf_wasm.d.ts",
