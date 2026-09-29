@@ -22,14 +22,16 @@ test("narrow viewport raises the Desktop Required dialog over an inert shell", a
   // The shell is inert while the roadblock is mounted.
   await expect(page.locator("main.shell")).toHaveAttribute("inert", "");
 
-  // Brand lockup (logo + wordmark) is centered above the title (#179).
+  // README-style brand header (#191): logo on top, the app name directly
+  // below in a large font; no "Desktop Required" title.
   const brand = roadblock.getByTestId("roadblock-brand");
   await expect(brand).toBeVisible();
-  await expect(brand).toContainText("fvf");
-  await expect(brand).toContainText("viewer");
-  const brandBox = await brand.boundingBox();
-  const titleBox = await roadblock.getByText("Desktop Required").boundingBox();
-  expect(brandBox!.y).toBeLessThan(titleBox!.y);
+  const heading = roadblock.locator("h1.roadblock-brand-name");
+  await expect(heading).toHaveText(/fvf • viewer/);
+  await expect(roadblock).not.toContainText("Desktop Required");
+  const logoBox = await brand.locator("img.roadblock-brand-logo").boundingBox();
+  const nameBox = await heading.boundingBox();
+  expect(logoBox!.y).toBeLessThan(nameBox!.y);
 
   // Approved copy (hint corrected 2026-09-29: phones never clear a 1024px
   // CSS-pixel bar in any orientation; standard tablets do in landscape).

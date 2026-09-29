@@ -1,9 +1,11 @@
 /**
  * Desktop-only roadblock overlay (issue #16, ADR 0003; layout reworked by
- * issue #179, threshold corrected back to 1024px on 2026-09-29): a
- * non-dismissable `role="dialog"` rendered only while the viewport is
- * narrower than 1024px per matchMedia. The brand lockup (logo +
- * `fvf • viewer` wordmark) is centered above the "Desktop Required" title.
+ * issue #179, threshold corrected back to 1024px on 2026-09-29; brand
+ * header per issue #191): a non-dismissable `role="dialog"` rendered only
+ * while the viewport is narrower than 1024px per matchMedia. The dialog
+ * heading is the README-style brand header — the logo centered on top
+ * with the `fvf • viewer` name directly below it in a large font (the
+ * former "Desktop Required" title is removed).
  * Share-first link handoff with a platform-appropriate icon —
  * `navigator.share` primary, clipboard fallback with a transient
  * "Link Copied" morph, selectable-URL last resort. The app shell carries
@@ -149,17 +151,14 @@ export default function DesktopRoadblock() {
             className="roadblock-brand-logo"
             src="/logo.svg"
             alt=""
-            width={40}
-            height={40}
+            width={96}
+            height={96}
             aria-hidden="true"
           />
-          <span className="brand-text">
+          <h1 id="desktop-roadblock-title" className="roadblock-brand-name">
             fvf <span className="brand-dot">•</span> viewer
-          </span>
+          </h1>
         </div>
-        <h1 id="desktop-roadblock-title" className="roadblock-title">
-          Desktop Required
-        </h1>
         <p className="roadblock-message">
           This app is designed for multi-channel waveform analysis on wide
           screens.

@@ -1,10 +1,13 @@
 /**
- * Publish-pipeline step (open-source policy): truncates the CHANGELOG for
+ * Publish-pipeline step (open-source policy): prepares the CHANGELOG for
  * public snapshots. The private repository keeps the full development
- * history; the public changelog lists only released versions — an empty
- * [Unreleased] section is omitted because the public repository only ever
- * contains released snapshots (entries still accumulating at publish time
- * are rare: the release step folds them into the new version first).
+ * history; the public changelog carries the released history — the
+ * preamble, the public-history note, every `## [X.Y.Z]` section, and the
+ * footer compare links for released versions. Entries still accumulating
+ * toward the next release (`## [Working Version]` / `## [Unreleased]`)
+ * and their link definitions are dropped: the public repository only ever
+ * contains released snapshots (the release step folds working entries
+ * into the new version first).
  */
 
 import { execFileSync } from "node:child_process";
@@ -15,40 +18,36 @@ const raw = readFileSync(target, "utf8");
 
 const note =
   "*This changelog records the public release history; releases appear " +
-  "here as they are published.*\n\n";
+  "here as they are published.*";
 
-const firstVersion = raw.search(/^## \[\d/m);
+const lines = raw.split("\n");
+const firstVersion = lines.findIndex((line) => /^## \[\d/.test(line));
 if (firstVersion === -1) {
-  console.log("CHANGELOG has no released sections to truncate");
+  console.log("CHANGELOG has no released sections to publish");
   process.exit(0);
 }
 
-const head = raw.slice(0, firstVersion).trimEnd() + "\n\n";
+// The preamble is everything before the first released section, minus an
+// accumulating working section that runs from its heading up to that
+// first released section.
+const workingHeading = lines.findIndex((line) =>
+  /^## \[(Working Version|Unreleased)\]\s*$/.test(line),
+);
+const preambleEnd = workingHeading === -1 ? firstVersion : workingHeading;
+const preamble = lines.slice(0, preambleEnd).join("\n").trimEnd();
 
-// Keep only the [Unreleased] link definition from the footer block.
-const unreleasedLink = raw
-  .split("\n")
-  .find((line) => line.startsWith("[Unreleased]:"));
+// Released sections plus their footer link definitions; working/unreleased
+// link definitions are filtered out of the footer block.
+const released = lines
+  .slice(firstVersion)
+  .filter((line) => !/^\[(Working Version|Unreleased)\]:/.test(line))
+  .join("\n")
+  .trimEnd();
 
-// An empty [Unreleased] heading is dropped; one with entries is kept.
-const headingIndex = head.search(/^## \[Unreleased]$/m);
-const preamble = headingIndex === -1 ? head : head.slice(0, headingIndex);
-const afterHeading =
-  headingIndex === -1
-    ? ""
-    : head.slice(headingIndex).replace(/^## \[Unreleased]\n+/, "");
-const hasEntries = afterHeading.trim().length > 0;
-const body = hasEntries
-  ? `${preamble.trimEnd()}\n\n## [Unreleased]\n\n${note.trimEnd()}\n\n${afterHeading.trim()}`
-  : `${preamble.trimEnd()}\n\n${note.trimEnd()}`;
-
-const truncated =
-  body.trimEnd() +
-  "\n\n" +
-  (unreleasedLink && hasEntries ? unreleasedLink + "\n" : "");
+const truncated = `${preamble}\n\n${note}\n\n${released}\n`;
 
 writeFileSync(target, truncated);
-// Keep the truncated file prettier-clean: `pnpm lint` on the public
+// Keep the published file prettier-clean: `pnpm lint` on the public
 // snapshot checks markdown formatting too.
 execFileSync(
   process.execPath,
@@ -60,5 +59,8 @@ execFileSync(
   { stdio: "ignore" },
 );
 console.log(
-  `public CHANGELOG truncated (${hasEntries ? "[Unreleased] + entries kept" : "empty [Unreleased] omitted"}),`,
+  "public CHANGELOG prepared (preamble + note + released sections and links;",
+  workingHeading === -1
+    ? "no working section present)"
+    : "working section dropped)",
 );
