@@ -1,0 +1,17 @@
+# Never ship build state, proprietary captures, or VCS data in the image context.
+.git
+.github
+.agents
+.idea
+.vscode
+docs
+deploy
+node_modules
+**/node_modules
+**/dist
+**/pkg
+target
+test-data
+.vitest-attachments
+coverage
+*.log

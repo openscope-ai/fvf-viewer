@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background linear lighting gradient matching reference styling -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#48484a"/>
+      <stop offset="35%" stop-color="#3c3c3e"/>
+      <stop offset="70%" stop-color="#323234"/>
+      <stop offset="100%" stop-color="#28282a"/>
+    </linearGradient>
+
+    <!-- Subtle rim border highlight (specular top lighting) -->
+    <linearGradient id="rimGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.45"/>
+    </linearGradient>
+
+    <!-- Squircle clip path for internal reticle / gridlines -->
+    <clipPath id="squircleClip">
+      <rect x="1" y="1" width="510" height="510" rx="115" ry="115"/>
+    </clipPath>
+  </defs>
+
+  <!-- Dark charcoal squircle tile -->
+  <rect
+    x="1"
+    y="1"
+    width="510"
+    height="510"
+    rx="115"
+    ry="115"
+    fill="url(#bgGradient)"
+    stroke="url(#rimGradient)"
+    stroke-width="2"
+  />
+
+  <!--
+    Muted oscilloscope / instrument reticle at the zero-crossing (256, 256):
+    - Grounded at 12% white opacity to remain subtle at high-res and recede gracefully at favicon scale
+    - Clipped to the squircle boundary
+  -->
+  <g id="gridlines" clip-path="url(#squircleClip)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.75">
+    <!-- Horizontal zero-line -->
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <!-- Vertical zero-line / time center -->
+    <line x1="256" y1="0" x2="256" y2="512"/>
+  </g>
+
+  <!--
+    Sine wave with 3rd-order harmonic distortion (analog soft-saturation):
+    - Color: #fcc603
+    - Stroke width: 36px (tuned for high visibility down to 32px / 16px favicon sizes)
+    - Sits cleanly on top of the zero-crossing gridlines at (256, 256)
+  -->
+  <path
+    d="M 129.57 256.00 C 129.57 197.87, 143.68 120.00, 185.00 120.00 C 255.40 120.00, 256.60 392.00, 327.00 392.00 C 368.32 392.00, 382.43 314.13, 382.43 256.00"
+    fill="none"
+    stroke="#fcc603"
+    stroke-width="36"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

@@ -1,0 +1,27 @@
+[package]
+name = "fvf-wasm"
+version = "0.8.2"
+edition = "2024"
+description = "High-speed Rust/Wasm parsing core for Fluke ScopeMeter .fvf captures"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+## SIMD128 batch Q16.16 conversion via wasm32 v128 lanes. Only compiled on
+## the wasm32 target; bit-identical to the scalar baseline by construction
+## (exact power-of-two scaling). The parity test executes in the wasm32
+## conformance suite (issue #9).
+simd128 = []
+
+[dependencies]
+byteorder = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+wasm-bindgen = "0.2"
+
+[dev-dependencies]
+sha2 = "0.10"

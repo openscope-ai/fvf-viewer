@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "description": "Committed mirror of the Rust parser error/warning code taxonomy (crates/fvf-wasm/src/error.rs). The Rust taxonomy test (tests/error_taxonomy.rs) and the TS wasm32 conformance suite (apps/web/src/conformance/wasm32-conformance.test.ts) both assert exact agreement with this file, keeping the TypeScript error-code unions in sync with Rust without hand-maintained duplication.",
+  "errors": [
+    "invalid_signature",
+    "unsupported_capture_version",
+    "invalid_timebase_format",
+    "invalid_timebase_range",
+    "unsupported_capture_variant",
+    "truncated_capture",
+    "opaque_header",
+    "corrupt_sector_table",
+    "invalid_time_axis"
+  ],
+  "warnings": [
+    "unknown_tag_prefix",
+    "derived_record_issue",
+    "unknown_record",
+    "non_standard_timebase",
+    "unclassified_tag",
+    "duplicate_channel",
+    "vertical_metadata_mismatch",
+    "unknown_unit",
+    "saturated_samples",
+    "derived_legacy_values",
+    "time_axis_span_mismatch"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@fvf/fvf-wasm",
+  "version": "0.8.2",
+  "private": true,
+  "main": "./pkg/fvf_wasm.js",
+  "types": "./pkg/fvf_wasm.d.ts",
+  "scripts": {
+    "build": "wasm-pack build --target web"
+  },
+  "exports": {
+    ".": "./pkg/fvf_wasm.js",
+    "./fvf_wasm_bg.wasm": "./pkg/fvf_wasm_bg.wasm",
+    "./pkg/*": "./pkg/*"
+  }
+}
