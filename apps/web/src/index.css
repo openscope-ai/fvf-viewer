@@ -1391,27 +1391,31 @@ body,
   gap: 14px;
 }
 
-/* Brand lockup centered above the title (issue #179) */
+/* Brand header in the README presentation (issue #191): logo on top, the
+   app name directly below it in a large font — the dialog heading. */
 .roadblock-brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: 14px;
+  margin-bottom: 12px;
 }
 
 .roadblock-brand-logo {
   display: block;
-  width: 40px;
-  height: 40px;
-  border-radius: 9px;
+  width: 96px;
+  height: 96px;
+  border-radius: 20px;
 }
 
-.roadblock-title {
-  color: #ffffff;
-  font-size: 1.7rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+.roadblock-brand-name {
   margin: 0;
+  font-family: "Geist", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 2.4rem;
+  letter-spacing: 0;
+  color: #ffffff;
+  user-select: none;
 }
 
 .roadblock-message {

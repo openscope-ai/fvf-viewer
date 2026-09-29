@@ -146,17 +146,25 @@ describe("DesktopRoadblock browser integration (issue #16)", () => {
       "[data-testid='desktop-roadblock']",
     ) as HTMLElement;
 
-    // Brand lockup (logo + wordmark) sits above the "Desktop Required" title.
+    // README-style brand header (issue #191): logo on top, the app name
+    // directly below in a large font — the dialog heading. The former
+    // "Desktop Required" title is gone entirely.
+    expect(overlay.textContent).not.toContain("Desktop Required");
     const brand = overlay.querySelector("[data-testid='roadblock-brand']");
     expect(brand).not.toBeNull();
-    expect(brand?.textContent?.replace(/\s+/g, " ")).toBe("fvf • viewer");
-    expect(brand?.querySelector("img.roadblock-brand-logo")).not.toBeNull();
-    const title = overlay.querySelector(".roadblock-title");
-    expect(title?.textContent).toBe("Desktop Required");
+    const logo = brand?.querySelector("img.roadblock-brand-logo");
+    expect(logo).not.toBeNull();
+    const name = overlay.querySelector("h1.roadblock-brand-name");
+    expect(name?.textContent?.replace(/\s+/g, " ")).toBe("fvf • viewer");
     expect(
-      (brand as HTMLElement).compareDocumentPosition(title as Node) &
+      (logo as HTMLElement).compareDocumentPosition(name as Node) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // The dialog's accessible name comes from the app-name heading.
+    const labelledBy = overlay.getAttribute("aria-labelledby");
+    expect(labelledBy).toBe("desktop-roadblock-title");
+    expect(document.getElementById(labelledBy!)).toBe(name);
+    expect(name?.className).toContain("roadblock-brand-name");
 
     // Approved #179 copy.
     expect(overlay.querySelector(".roadblock-message")?.textContent).toBe(
