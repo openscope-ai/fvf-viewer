@@ -1,6 +1,6 @@
 {
   "name": "fvf-viewer",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "private": true,
   "type": "module",
   "description": "Professional browser-based viewer for Fluke ScopeMeter .fvf waveform captures",
