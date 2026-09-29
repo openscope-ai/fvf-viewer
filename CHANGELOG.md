@@ -5,9 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-_This changelog records the public release history; releases appear here as they are published._
+_This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
-*This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1.*
+## [0.8.5] - 2026-09-29
+
+### Changed
+
+- Public changelog snapshots now begin at 0.8.1, the first public release: sections for earlier versions document the pre-release development process (and their compare links reference tags that do not exist publicly), so the truncation step keeps only versions at or above an explicit first-public-release baseline, rewrites the first public version's link to its tag, and states the baseline in the public-history note. The public repository's `main` was advanced once with a fast-forward commit applying the trimmed changelog.
+
+### Fixed
+
+- Public CI lint failure on the trimmed changelog: the truncation step emitted its public-history note with asterisk emphasis, which Prettier rewrites to underscore form (the manually published reconciliation commit carried the unrewritten form, so the public repository's `pnpm lint` failed on `CHANGELOG.md`); the note is now emitted directly in the stable underscore form, and the step verifies the truncated file with `prettier --check` so a formatting regression fails the publish loudly instead of surfacing as a red public CI run. A regression test truncates a fixture changelog inside the repository and asserts both the section/link scoping and Prettier-clean output (Ref #198).
+- CI and publish workflows no longer run actions on the deprecated Node.js 20 runtime: `actions/checkout` v4→v7, `actions/setup-node` v4→v7, `actions/cache` v4→v6, `pnpm/action-setup` v4→v6, and `actions/upload-artifact` v4→v7 (failure-path E2E artifacts), all verified to target Node 24; the unmaintained `jetli/wasm-pack-action@v0.4.0` (still Node 20) is replaced by `taiki-e/install-action@v2` installing the same pinned `wasm-pack` 0.13.1 from checksummed GitHub releases (Ref #198).
+- CI and publish jobs pin `runs-on: ubuntu-24.04` instead of `ubuntu-latest` ahead of the 2026-10-19 runner-image migration to Ubuntu 26, keeping the pipeline on a known image (Ref #198).
 
 ## [0.8.4] - 2026-09-29
 
@@ -53,6 +63,7 @@ _This changelog records the public release history; releases appear here as they
 
 - Open-source readiness: MIT license (`FVF Viewer Contributors`); CHANGELOG refactored to Keep a Changelog 1.1.0 with no issue links; committed prose and metadata genericized to corpus-level references (no capture names, counts, or measurement contexts); the local-corpus and coverage suites degrade gracefully when the private empirical oracle manifest is absent; and a one-way release publisher workflow snapshots each release tag to the public repository as a single orphan commit (private artifacts excluded, internal URLs rewritten, coverage report regenerated synthetic-only).
 
+[0.8.5]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.1...v0.8.2
