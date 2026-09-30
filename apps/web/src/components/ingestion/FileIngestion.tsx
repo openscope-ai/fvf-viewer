@@ -10,7 +10,10 @@
  *
  * Issue #193: the hero also offers the shipped sample capture as a muted
  * link-style tertiary action below the privacy notice — deliberately not a
- * second button, so the drop zone stays the primary affordance.
+ * second button, so the drop zone stays the primary affordance. Issue #210
+ * restyles it as a clearly actionable link: a solid yellow hand glyph
+ * (rotated to point at the text) and a persistent underline on the label,
+ * keeping the muted tertiary font so it never competes with the drop zone.
  */
 
 import React, { useEffect } from "react";
@@ -21,7 +24,9 @@ import { useFileIngestion } from "../../hooks/useFileIngestion";
 import {
   GITHUB_REPOSITORY_URL,
   GithubCircleIcon,
+  OneFingerSelectHandGestureIcon,
 } from "../branding/brandAssets";
+import { BrandLockup } from "../branding/BrandLockup";
 import {
   SAMPLE_CAPTURE_FILE_NAME,
   SAMPLE_CAPTURE_URL,
@@ -30,26 +35,14 @@ import {
 export { GITHUB_REPOSITORY_URL };
 
 /**
- * Drop-page top bar (issue #142): static logo + `fvf • viewer` wordmark
- * (Geist SemiBold, tracking 0, gold interpunct accent) upper left; icon-only
- * GitHub repository link upper right.
+ * Drop-page top bar (issue #142): shared brand lockup (logo + `fvf • viewer`
+ * wordmark, Geist SemiBold, tracking 0, gold interpunct accent — issue #208)
+ * upper left; icon-only GitHub repository link upper right.
  */
 export function DropPageHeader() {
   return (
     <header className="drop-header" data-testid="drop-header">
-      <div className="drop-header-brand">
-        <img
-          className="drop-header-logo"
-          src="/logo.svg"
-          alt=""
-          width={32}
-          height={32}
-          aria-hidden="true"
-        />
-        <span className="brand-text">
-          fvf <span className="brand-dot">•</span> viewer
-        </span>
-      </div>
+      <BrandLockup />
       <a
         className="drop-header-github"
         href={GITHUB_REPOSITORY_URL}
@@ -139,7 +132,10 @@ export function HeroDropZone({
               }
             }}
           >
-            Try a sample capture
+            <OneFingerSelectHandGestureIcon className="hero-sample-icon" />
+            <span className="hero-sample-label">
+              Test fvf • viewer with a 100k sample synthetic capture
+            </span>
           </button>
         </div>
       )}

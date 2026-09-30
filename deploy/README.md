@@ -75,14 +75,25 @@ minutes); subsequent builds reuse the dependency layers.
 
 ## Deploy via Cloud Build
 
-From the repository root:
+Run the submit from a **clean checkout of the intended release tag** (or the
+exact commit you mean to deploy), so the image tag and the uploaded source
+always correspond:
 
 ```sh
-# COMMIT_SHA is passed explicitly: image tags must always resolve, and
-# gcloud's automatic git detection does not populate it on every setup.
+git checkout --detach v0.9.1   # the release tag you intend to deploy
+git status                     # confirm a clean tree
 gcloud builds submit --config deploy/cloudbuild.yaml \
   --substitutions=COMMIT_SHA=$(git rev-parse HEAD) .
 ```
+
+`COMMIT_SHA` must be passed explicitly: the pipeline tags the image
+`…/fvf-viewer:${COMMIT_SHA}`, but `gcloud builds submit` with **local source**
+does not populate that substitution — only build **triggers** fill it in
+automatically. An omitted substitution resolves to an empty string, Docker
+rejects the empty-suffixed image tag with `invalid reference format`, and the
+build fails at step 0 before ever reaching the push/deploy steps. Passing the
+release commit explicitly also keeps the Artifact Registry tag history
+matching released commits one-to-one.
 
 The pipeline tags images `${COMMIT_SHA}` and `latest`, pushes them to Artifact
 Registry, and deploys the exact `${COMMIT_SHA}` image.

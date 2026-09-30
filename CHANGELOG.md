@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.9.1] - 2026-09-30
+
+### Changed
+
+- Homepage sample-capture CTA reads as an actionable link (issue #210): a solid filled hand silhouette (the Iconoir `one-finger-select-hand-gesture` glyph with fill and stroke in the fvf yellow `#fcc603`, rotated 90° clockwise so the finger points at the text, at font height) now precedes the label, the label reads "Test fvf • viewer with a 100k sample synthetic capture" (accurate for the shipped 100,000-sample synthetic capture), and the text is persistently underlined with the hover underline's existing 3px offset; the muted tertiary font, color, and size are unchanged so the CTA still never competes with the drop zone, and hover/keyboard treatments plus the loaded capture are untouched.
+
+- Deploy runbook's Cloud Build submit command is copy-paste runnable (issue #209): it now explains that `gcloud builds submit` with local source does not populate the `COMMIT_SHA` substitution (only build triggers do), so the documented `…/fvf-viewer:${COMMIT_SHA}` image tag previously resolved with an empty suffix and Docker rejected the build with `invalid reference format` at step 0 (exactly how the first v0.9.0 production deploy attempt failed), and instructs operators to submit from a clean checkout of the intended release tag so the image tag and the uploaded source always correspond.
+
+- Loaded-capture banner header row completed with the full brand lockup (issue #208): the `fvf • viewer` logo + wordmark now stays visible once a capture is loaded, rendered pixel-identical to the landing page (same 32px logo, Geist SemiBold wordmark, gold interpunct) by one shared `BrandLockup` component used by both pages so they cannot drift apart; the lockup is the app's first back-to-landing affordance — clicking (or keyboard-activating, with a visible focus ring) it discards the loaded capture and its view state (viewport, cursors) immediately without a confirmation step and returns to a clean file-drop page; a thin vertical divider with a consistent 14px gap separates the lockup from the capture filename, which is slightly dimmer (`#cccccc`) and slightly smaller (0.86rem) than before while keeping its monospace font and ellipsis overflow; the "Open file…" control, GitHub link, waveform-information row, and landing page are otherwise unchanged.
+
+- Loaded-capture banner restructured into two fixed rows (issue #207): a header row with the brand logo, capture filename, "Open file…" control, and the GitHub repository link — now pinned to the banner's top-right corner and vertically aligned with the logo, where it stays regardless of how far the metric fields below wrap or how narrow the viewport gets — above the unchanged waveform-information row (Date/Time, Timebase, Channels, Samples, Vertical, Derived, Trigger); the rows are separated by spacing only (no horizontal rule), and the GitHub badge icon is unified at 28px across the landing page (previously 24px) and the banner (previously 22px). All existing banner behavior is preserved (filename ellipsis, metric field content and tooltips, "Open file…" file picker, GitHub link target), with browser tests covering the two-row structure, the pinned link position across viewport widths, and the icon size.
+
 ## [0.9.0] - 2026-09-29
 
 ### Added
@@ -73,6 +85,7 @@ _This changelog records the public release history; releases appear here as they
 
 - Open-source readiness: MIT license (`FVF Viewer Contributors`); CHANGELOG refactored to Keep a Changelog 1.1.0 with no issue links; committed prose and metadata genericized to corpus-level references (no capture names, counts, or measurement contexts); the local-corpus and coverage suites degrade gracefully when the private empirical oracle manifest is absent; and a one-way release publisher workflow snapshots each release tag to the public repository as a single orphan commit (private artifacts excluded, internal URLs rewritten, coverage report regenerated synthetic-only).
 
+[0.9.1]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.5...v0.9.0
 [0.8.5]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.3...v0.8.4

@@ -256,7 +256,7 @@ describe("MetadataBanner browser integration (real worker round-trip)", () => {
     });
 
     const logo = hostElement.querySelector(
-      "[data-testid='banner-logo']",
+      "[data-testid='brand-lockup-logo']",
     ) as HTMLImageElement;
     expect(logo).not.toBeNull();
     expect(logo.getAttribute("src")).toBe("/logo.svg");
@@ -294,10 +294,13 @@ describe("MetadataBanner browser integration (real worker round-trip)", () => {
     expect(text).toContain("4 channels (A, B, C, D)");
     expect(text).toContain("Trigger");
 
-    // Responsive behavior: the banner keeps its wrapping layout.
-    const banner = hostElement.querySelector(".metadata-banner") as HTMLElement;
-    const bannerStyle = window.getComputedStyle(banner);
-    expect(bannerStyle.flexWrap).toBe("wrap");
+    // Two-row layout (issue #207): the GitHub link lives in the header row,
+    // not in the wrapping metric fields.
+    const topRow = github.closest(".banner-top-row") as HTMLElement | null;
+    expect(topRow).not.toBeNull();
+    expect(topRow!.contains(logo)).toBe(true);
+    const metrics = hostElement.querySelector(".banner-metrics") as HTMLElement;
+    expect(topRow!.contains(metrics)).toBe(false);
   });
 
   it("issue #151: 'Open file…' control stays functional beside the brand elements", async () => {
@@ -538,5 +541,247 @@ describe("MetadataBanner browser integration (real worker round-trip)", () => {
     // AC3: Responsive wrapping & clean vertical alignment
     expect(metricsStyle.flexWrap).toBe("wrap");
     expect(metricsStyle.alignItems).toBe("center");
+  });
+
+  it("issue #207: renders two rows — brand/filename/Open file + GitHub in the header row, metric fields below", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+
+    await act(async () => {
+      root.render(
+        <MetadataBanner
+          capture={capture}
+          fileName="two-rows.fvf"
+          onOpenFile={() => {}}
+        />,
+      );
+    });
+
+    const topRow = hostElement.querySelector(".banner-top-row") as HTMLElement;
+    expect(topRow).not.toBeNull();
+
+    // Top row: logo, filename, "Open file…", GitHub link.
+    expect(
+      topRow.querySelector("[data-testid='brand-lockup-logo']"),
+    ).not.toBeNull();
+    expect(topRow.querySelector(".banner-filename")?.textContent).toBe(
+      "two-rows.fvf",
+    );
+    expect(topRow.querySelector(".banner-open-btn")?.textContent).toBe(
+      "Open file…",
+    );
+    expect(
+      topRow.querySelector("[data-testid='banner-github']"),
+    ).not.toBeNull();
+
+    // Bottom row: the waveform-information fields, outside the header row.
+    const metrics = hostElement.querySelector(".banner-metrics") as HTMLElement;
+    expect(metrics).not.toBeNull();
+    expect(topRow.contains(metrics)).toBe(false);
+    expect(metrics.querySelector("[data-field='date']")).not.toBeNull();
+    expect(metrics.querySelector("[data-field='trigger']")).not.toBeNull();
+
+    // Spacing only — no visible horizontal rule between the rows.
+    expect(hostElement.querySelector(".metadata-banner hr")).toBeNull();
+    const topRowStyle = window.getComputedStyle(topRow);
+    expect(parseFloat(topRowStyle.borderBottomWidth)).toBe(0);
+    const bannerStyle = window.getComputedStyle(
+      hostElement.querySelector(".metadata-banner") as HTMLElement,
+    );
+    expect(parseFloat(bannerStyle.rowGap)).toBeGreaterThan(0);
+  });
+
+  it("issue #207: pins the GitHub link top-right, aligned with the logo, across viewport widths", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+
+    await act(async () => {
+      root.render(
+        <MetadataBanner capture={capture} fileName="pinned-github.fvf" />,
+      );
+    });
+
+    const banner = hostElement.querySelector(".metadata-banner") as HTMLElement;
+    const logo = hostElement.querySelector(
+      "[data-testid='brand-lockup-logo']",
+    ) as HTMLElement;
+    const github = hostElement.querySelector(
+      "[data-testid='banner-github']",
+    ) as HTMLElement;
+    const metrics = hostElement.querySelector(".banner-metrics") as HTMLElement;
+
+    for (const width of [1684, 1280, 960]) {
+      hostElement.style.width = `${width}px`;
+      const bannerRect = banner.getBoundingClientRect();
+      const logoRect = logo.getBoundingClientRect();
+      const githubRect = github.getBoundingClientRect();
+      const metricsRect = metrics.getBoundingClientRect();
+
+      // Vertically aligned with the brand logo (center lines coincide).
+      const logoCenter = logoRect.top + logoRect.height / 2;
+      const githubCenter = githubRect.top + githubRect.height / 2;
+      expect(Math.abs(githubCenter - logoCenter)).toBeLessThan(3);
+
+      // Pinned to the top-right corner of the banner (inside its padding).
+      expect(githubRect.right).toBeGreaterThan(bannerRect.right - 26);
+
+      // Stays in the header row above the metric fields — never wrapped
+      // below them, regardless of how far the metrics row wraps.
+      expect(githubRect.bottom).toBeLessThanOrEqual(metricsRect.top + 1);
+      expect(githubRect.top).toBeLessThan(metricsRect.top);
+    }
+  });
+
+  it("issue #208: banner lockup is pixel-identical to the landing lockup (shared component)", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+
+    await act(async () => {
+      root.render(<MetadataBanner capture={capture} fileName="lockup.fvf" />);
+    });
+
+    // One shared brand component: the banner lockup carries the same markup
+    // and classes as the landing page lockup (BrandLockup).
+    const lockup = hostElement.querySelector(
+      "[data-testid='brand-lockup']",
+    ) as HTMLElement;
+    expect(lockup).not.toBeNull();
+
+    const logo = lockup.querySelector(".brand-lockup-logo") as HTMLImageElement;
+    expect(logo.getAttribute("src")).toBe("/logo.svg");
+    const logoRect = logo.getBoundingClientRect();
+    expect(logoRect.width).toBeCloseTo(32, 0);
+    expect(logoRect.height).toBeCloseTo(32, 0);
+
+    const wordmark = lockup.querySelector(
+      "[data-testid='brand-lockup-wordmark']",
+    ) as HTMLElement;
+    expect(wordmark.textContent).toBe("fvf • viewer");
+    const wordmarkStyle = window.getComputedStyle(wordmark);
+    expect(wordmarkStyle.fontFamily).toContain("Geist");
+    expect(wordmarkStyle.fontWeight).toBe("600");
+    expect(parseFloat(wordmarkStyle.fontSize)).toBeCloseTo(17.6, 1);
+
+    const dot = wordmark.querySelector(".brand-dot") as HTMLElement;
+    expect(window.getComputedStyle(dot).color).toBe("rgb(252, 198, 3)");
+  });
+
+  it("issue #208: clicking the lockup returns to landing — callback fires, button is keyboard-activatable with a focus ring", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+    const onReturnToLanding = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <MetadataBanner
+          capture={capture}
+          fileName="back.fvf"
+          onReturnToLanding={onReturnToLanding}
+        />,
+      );
+    });
+
+    const lockup = hostElement.querySelector(
+      "[data-testid='brand-lockup']",
+    ) as HTMLButtonElement;
+
+    // A native button: keyboard-activatable by construction (Enter/Space).
+    expect(lockup.tagName).toBe("BUTTON");
+    expect(lockup.getAttribute("aria-label")).toBe(
+      "fvf • viewer — back to the file drop page",
+    );
+
+    // Visible focus ring on keyboard focus. Headless programmatic focus()
+    // does not reliably match the :focus-visible heuristic, so assert the
+    // shipped focus-ring rule itself (keyboard-focus-only selector).
+    const hasFocusRing = Array.from(document.styleSheets).some((sheet) => {
+      try {
+        return Array.from(sheet.cssRules ?? []).some(
+          (rule) =>
+            rule instanceof CSSStyleRule &&
+            rule.selectorText?.includes(
+              ".banner-lockup-button:focus-visible",
+            ) &&
+            rule.style.outlineStyle === "solid" &&
+            parseFloat(rule.style.outlineWidth) >= 2,
+        );
+      } catch {
+        return false;
+      }
+    });
+    expect(hasFocusRing).toBe(true);
+
+    await act(async () => {
+      lockup.click();
+    });
+    expect(onReturnToLanding).toHaveBeenCalledTimes(1);
+  });
+
+  it("issue #208: thin divider separates lockup from the dimmed, smaller filename", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+
+    await act(async () => {
+      root.render(
+        <MetadataBanner
+          capture={capture}
+          fileName="divider.fvf"
+          onReturnToLanding={() => {}}
+        />,
+      );
+    });
+
+    const lockup = hostElement.querySelector(
+      "[data-testid='brand-lockup']",
+    ) as HTMLElement;
+    const divider = hostElement.querySelector(".banner-divider") as HTMLElement;
+    const filename = hostElement.querySelector(
+      ".banner-filename",
+    ) as HTMLElement;
+    expect(divider).not.toBeNull();
+
+    // DOM order: lockup, divider, filename inside the primary group.
+    const group = hostElement.querySelector(
+      ".banner-primary-group",
+    ) as HTMLElement;
+    const children = Array.from(group.children);
+    expect(children.indexOf(lockup)).toBeLessThan(children.indexOf(divider));
+    expect(children.indexOf(divider)).toBeLessThan(children.indexOf(filename));
+
+    // Thin vertical divider with a consistent gap on both sides (the
+    // primary group's 14px column gap).
+    const dividerRect = divider.getBoundingClientRect();
+    const lockupRect = lockup.getBoundingClientRect();
+    const filenameRect = filename.getBoundingClientRect();
+    expect(dividerRect.width).toBeCloseTo(1, 0);
+    const gapBefore = dividerRect.left - lockupRect.right;
+    const gapAfter = filenameRect.left - dividerRect.right;
+    expect(gapBefore).toBeCloseTo(14, 0);
+    expect(gapAfter).toBeCloseTo(14, 0);
+
+    // Filename: slightly dimmer and slightly smaller than before, still
+    // monospace with ellipsis overflow.
+    const style = window.getComputedStyle(filename);
+    expect(style.color).toBe("rgb(204, 204, 204)");
+    expect(parseFloat(style.fontSize)).toBeCloseTo(13.76, 1);
+    expect(style.fontFamily).toContain("monospace");
+    expect(style.textOverflow).toBe("ellipsis");
+  });
+
+  it("issue #207: banner GitHub icon renders at ~28px", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+
+    await act(async () => {
+      root.render(<MetadataBanner capture={capture} fileName="icon.fvf" />);
+    });
+
+    const icon = hostElement.querySelector(
+      ".banner-github .github-icon",
+    ) as SVGElement;
+    expect(icon).not.toBeNull();
+    const rect = icon.getBoundingClientRect();
+    expect(rect.width).toBeCloseTo(28, 0);
+    expect(rect.height).toBeCloseTo(28, 0);
   });
 });

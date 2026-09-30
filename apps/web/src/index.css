@@ -78,17 +78,34 @@ body,
   width: 100%;
 }
 
-.drop-header-brand {
+/* Shared brand lockup (issue #208): one markup/style source for the landing
+   drop-page header and the loaded-capture banner top row. */
+.brand-lockup {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.drop-header-logo {
+.brand-lockup-logo {
   display: block;
   width: 32px;
   height: 32px;
   border-radius: 7px;
+}
+
+/* Banner variant: the lockup is the back-to-landing button (issue #208). */
+.banner-lockup-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+
+.banner-lockup-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
 }
 
 .brand-text {
@@ -129,8 +146,8 @@ body,
 
 .github-icon {
   display: block;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
 }
 
 /* Empty-state Hero Drop Zone */
@@ -213,18 +230,35 @@ body,
   padding: 2px 0;
   border: none;
   background: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: inherit;
   font-size: 0.82rem;
   color: #7a7a7a;
   cursor: pointer;
-  text-decoration: none;
   transition: color 0.2s ease;
+}
+
+/* Solid yellow hand glyph (issue #210): rotated 90° clockwise so the
+   finger points at the label text; sized to the font height so the CTA
+   stays tertiary to the drop zone. */
+.hero-sample-icon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  color: #fcc603;
+  transform: rotate(90deg);
+}
+
+/* Persistent underline (issue #210) with the hover underline's offset. */
+.hero-sample-label {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .hero-sample:hover {
   color: #00bfff;
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .hero-sample:focus-visible {
@@ -316,10 +350,9 @@ body,
 /* Metadata Banner */
 .metadata-banner {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px 28px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   padding: 10px 20px;
   background: #0c0c0c;
   border-bottom: 1px solid #1f1f1f;
@@ -327,12 +360,13 @@ body,
   color: #cccccc;
 }
 
-.banner-logo {
-  display: block;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  flex-shrink: 0;
+/* Header row (issue #207): brand group left, GitHub link pinned top-right
+   and vertically aligned with the logo. */
+.banner-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
 }
 
 .banner-github {
@@ -360,8 +394,8 @@ body,
 }
 
 .banner-github .github-icon {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
 }
 
 .banner-primary-group {
@@ -370,11 +404,18 @@ body,
   gap: 14px;
 }
 
+.banner-divider {
+  width: 1px;
+  height: 22px;
+  background: #2e2e2e;
+  flex-shrink: 0;
+}
+
 .banner-filename {
   font-weight: 600;
-  color: #ffffff;
+  color: #cccccc;
   font-family: monospace;
-  font-size: 0.92rem;
+  font-size: 0.86rem;
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
