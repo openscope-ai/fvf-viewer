@@ -343,7 +343,8 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     );
 
     // Filled yellow hand icon before the text, rotated 90° clockwise
-    // (finger pointing at the text), at font height.
+    // (finger pointing at the text). Issue #217 sizes it to 1.25em of the
+    // CTA label's font-size; the muted tertiary treatment is unchanged.
     const icon = sampleButton.querySelector(".hero-sample-icon") as SVGElement;
     expect(icon).not.toBeNull();
     const iconStyle = window.getComputedStyle(icon);
@@ -351,7 +352,10 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     expect(iconStyle.transform).toBe("matrix(0, 1, -1, 0, 0, 0)");
     const iconRect = icon.getBoundingClientRect();
     const buttonStyle = window.getComputedStyle(sampleButton);
-    expect(iconRect.height).toBeCloseTo(parseFloat(buttonStyle.fontSize), 0);
+    expect(iconRect.height).toBeCloseTo(
+      parseFloat(buttonStyle.fontSize) * 1.25,
+      0,
+    );
 
     // Persistent underline with the current offset; muted font/color/size
     // unchanged (tertiary to the drop zone).
@@ -367,6 +371,44 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
       1,
     );
     expect(labelStyle.fontWeight).toBe("400");
+  });
+
+  it("issue #217: hand glyph is ~25% larger than the label font and stays vertically centered with it", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const sampleButton = hostElement.querySelector(
+      "[data-testid='hero-sample-button']",
+    ) as HTMLButtonElement;
+    const icon = sampleButton.querySelector(".hero-sample-icon") as SVGElement;
+    const label = sampleButton.querySelector(
+      ".hero-sample-label",
+    ) as HTMLElement;
+
+    // Relative size: 1.25em of the CTA label's font-size (~25% larger than
+    // the original 1em font-height sizing).
+    const fontSize = parseFloat(window.getComputedStyle(sampleButton).fontSize);
+    const iconRect = icon.getBoundingClientRect();
+    expect(iconRect.width).toBeCloseTo(fontSize * 1.25, 0);
+    expect(iconRect.height).toBeCloseTo(fontSize * 1.25, 0);
+
+    // Vertical alignment comes from the CTA's flex centering: the glyph's
+    // vertical center sits on the label's (rotation preserves the center).
+    const labelRect = label.getBoundingClientRect();
+    const centerDelta = Math.abs(
+      iconRect.top +
+        iconRect.height / 2 -
+        (labelRect.top + labelRect.height / 2),
+    );
+    expect(centerDelta).toBeLessThanOrEqual(1.5);
+
+    // Still tertiary to the drop zone: muted color, regular weight, and
+    // the persistent underline are unchanged.
+    const labelStyle = window.getComputedStyle(label);
+    expect(labelStyle.color).toBe("rgb(122, 122, 122)");
+    expect(labelStyle.fontWeight).toBe("400");
+    expect(labelStyle.textDecorationLine).toContain("underline");
   });
 
   it("issue #193: hero sample control loads the shipped sample through the production parse path", async () => {
