@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import init, { engine_version } from "@fvf/fvf-wasm";
 import Oscilloscope from "./components/canvas/Oscilloscope";
 import WaveformToolbar from "./components/toolbar/WaveformToolbar";
@@ -14,6 +14,8 @@ import {
 import useNarrowViewport from "./hooks/useNarrowViewport";
 import { useDocumentTitle } from "./hooks/useDocumentTitle";
 import { useCaptureStore } from "./state/captureStore";
+import { useCursorStore } from "./state/cursorStore";
+import { useViewportStore } from "./state/viewportStore";
 
 export default function App() {
   const capture = useCaptureStore((state) => state.capture);
@@ -21,6 +23,16 @@ export default function App() {
   const fileName = useCaptureStore((state) => state.fileName);
   const reset = useCaptureStore((state) => state.reset);
   const openPickerRef = useRef<(() => void) | null>(null);
+
+  // Issue #208: the banner brand lockup is the app's back-to-landing
+  // affordance. Discarding the capture is intentionally immediate (no
+  // confirmation step — a new capture is two clicks away); the loaded
+  // capture's view state (viewport, cursors) resets with it.
+  const returnToLanding = useCallback(() => {
+    useViewportStore.getState().reset();
+    useCursorStore.getState().reset();
+    reset();
+  }, [reset]);
   const narrowViewport = useNarrowViewport();
   useDocumentTitle();
 
@@ -67,6 +79,7 @@ export default function App() {
                 capture={capture}
                 fileName={fileName}
                 onOpenFile={() => openPickerRef.current?.()}
+                onReturnToLanding={returnToLanding}
               />
               <WaveformToolbar />
               <Oscilloscope capture={capture} />

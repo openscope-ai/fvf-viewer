@@ -31,7 +31,9 @@ test("§issue-193 sample capture opens the app from the homepage without a file"
 
   const sampleButton = page.getByTestId("hero-sample-button");
   await expect(sampleButton).toBeVisible();
-  await expect(sampleButton).toHaveText("Try a sample capture");
+  await expect(sampleButton).toHaveText(
+    "Test fvf • viewer with a 100k sample synthetic capture",
+  );
 
   await sampleButton.click();
 

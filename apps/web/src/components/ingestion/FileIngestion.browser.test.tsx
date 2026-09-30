@@ -5,6 +5,7 @@ import fourChUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/a
 import twoChMinUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-2ch-10000-1min-div.fvf.bin?url";
 import { useCaptureStore } from "../../state/captureStore";
 import App from "../../App";
+import "../../index.css";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -127,6 +128,47 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
 
     const osc = hostElement.querySelector(".oscilloscope-container");
     expect(osc).not.toBeNull();
+  });
+
+  it("issue #208: clicking the banner lockup discards the capture and returns to a clean landing page without confirmation", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    // Load a capture through the real ingestion path.
+    const hero = hostElement.querySelector("[data-testid='hero-dropzone']");
+    const file = await createFixtureFile(fourChUrl, "return-to-landing.fvf");
+    await dropFileAndWait(
+      hero!,
+      file,
+      () => useCaptureStore.getState().parseState === "success",
+    );
+    expect(hostElement.querySelector(".metadata-banner")).not.toBeNull();
+
+    // Clicking the shared brand lockup in the banner returns to the landing
+    // (file-drop) page immediately — no confirmation step.
+    const lockup = hostElement.querySelector(
+      "[data-testid='brand-lockup']",
+    ) as HTMLButtonElement;
+    expect(lockup).not.toBeNull();
+    expect(lockup.tagName).toBe("BUTTON");
+
+    await act(async () => {
+      lockup.click();
+      await flushRaf();
+    });
+
+    // Clean drop page: banner and oscilloscope gone, hero back, store empty.
+    expect(hostElement.querySelector(".metadata-banner")).toBeNull();
+    expect(hostElement.querySelector(".oscilloscope-container")).toBeNull();
+    expect(
+      hostElement.querySelector("[data-testid='hero-dropzone']"),
+    ).not.toBeNull();
+    expect(
+      hostElement.querySelector("[data-testid='drop-header']"),
+    ).not.toBeNull();
+    expect(useCaptureStore.getState().capture).toBeNull();
+    expect(useCaptureStore.getState().parseState).toBe("idle");
   });
 
   it("native file picker: asserts accept='.fvf', hero activation, and banner 'Open file…' button", async () => {
@@ -288,6 +330,45 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     ).toContain("4 channels");
   });
 
+  it("issue #210: sample CTA shows the filled yellow rotated hand icon and a persistently underlined, still-muted label", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const sampleButton = hostElement.querySelector(
+      "[data-testid='hero-sample-button']",
+    ) as HTMLButtonElement;
+    expect(sampleButton.textContent).toBe(
+      "Test fvf • viewer with a 100k sample synthetic capture",
+    );
+
+    // Filled yellow hand icon before the text, rotated 90° clockwise
+    // (finger pointing at the text), at font height.
+    const icon = sampleButton.querySelector(".hero-sample-icon") as SVGElement;
+    expect(icon).not.toBeNull();
+    const iconStyle = window.getComputedStyle(icon);
+    expect(iconStyle.color).toBe("rgb(252, 198, 3)");
+    expect(iconStyle.transform).toBe("matrix(0, 1, -1, 0, 0, 0)");
+    const iconRect = icon.getBoundingClientRect();
+    const buttonStyle = window.getComputedStyle(sampleButton);
+    expect(iconRect.height).toBeCloseTo(parseFloat(buttonStyle.fontSize), 0);
+
+    // Persistent underline with the current offset; muted font/color/size
+    // unchanged (tertiary to the drop zone).
+    const label = sampleButton.querySelector(
+      ".hero-sample-label",
+    ) as HTMLElement;
+    const labelStyle = window.getComputedStyle(label);
+    expect(labelStyle.textDecorationLine).toContain("underline");
+    expect(labelStyle.textUnderlineOffset).toBe("3px");
+    expect(labelStyle.color).toBe("rgb(122, 122, 122)");
+    expect(parseFloat(labelStyle.fontSize)).toBeCloseTo(
+      parseFloat(buttonStyle.fontSize),
+      1,
+    );
+    expect(labelStyle.fontWeight).toBe("400");
+  });
+
   it("issue #193: hero sample control loads the shipped sample through the production parse path", async () => {
     await act(async () => {
       root.render(<App />);
@@ -297,7 +378,9 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
       "[data-testid='hero-sample-button']",
     ) as HTMLButtonElement;
     expect(sampleButton).not.toBeNull();
-    expect(sampleButton.textContent).toBe("Try a sample capture");
+    expect(sampleButton.textContent).toBe(
+      "Test fvf • viewer with a 100k sample synthetic capture",
+    );
 
     // Activation stays local: neither click nor keyboard activation of the
     // sample control may open the native file picker.
@@ -363,7 +446,7 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     const header = hostElement.querySelector("[data-testid='drop-header']");
     expect(header).not.toBeNull();
     expect(
-      header?.querySelector(".drop-header-logo")?.getAttribute("src"),
+      header?.querySelector(".brand-lockup-logo")?.getAttribute("src"),
     ).toBe("/logo.svg");
     const brand = header?.querySelector(".brand-text");
     expect(brand?.textContent).toBe("fvf • viewer");
@@ -383,6 +466,14 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     // Icon-only: no text label, just the SVG glyph
     expect((github.textContent ?? "").trim()).toBe("");
     expect(github.querySelector("svg.github-icon")).not.toBeNull();
+
+    // Issue #207: the GitHub icon unifies at ~28px on the landing page too.
+    const landingIcon = github.querySelector(
+      "svg.github-icon",
+    ) as SVGSVGElement;
+    const landingIconRect = landingIcon.getBoundingClientRect();
+    expect(landingIconRect.width).toBeCloseTo(28, 0);
+    expect(landingIconRect.height).toBeCloseTo(28, 0);
 
     // GitHub badge two-tone (issue #181): white-filled circle, black cat.
     const githubPaths = (
