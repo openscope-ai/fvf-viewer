@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.9.2] - 2026-09-30
+
+### Changed
+
+- The sample-capture CTA's yellow hand glyph is ~25% larger (issue #217): sized to 1.25em of the CTA label's font-size (previously 1em, ≈13px → ≈16px) so it stays proportional to the muted "Test fvf • viewer…" label, relying on the CTA's existing flex centering for vertical alignment with no alignment-specific code; the label font, muted color, and persistent underline are unchanged so the CTA still stays tertiary to the drop zone. Browser tests assert both the relative glyph size and the centering.
+
+### Fixed
+
+- Loaded-capture banner brand lockup is pixel-identical to the landing-page lockup and sits at the same viewport position (issue #216): the button reset from the #208 work was keyed to a `.banner-lockup-button` selector that never matched the `brand-lockup-button` class the shared `BrandLockup` component actually emits, so the banner lockup kept the browser's default button chrome (an unwanted greyish background-and-border frame and default padding) and its keyboard focus ring never applied; the selectors now match the emitted class, and the two page headers' paddings are aligned (banner `10px 20px` → `16px 24px`, plus the banner GitHub link padding `5px` → `6px` so both header rows are equally tall) so the lockup occupies the same viewport offset on both pages and navigating via the logo produces no visible jump — the capture banner becomes slightly taller and the metrics row nudges 4px right (accepted). A browser test asserts both lockups share identical bounding-box dimensions, identical viewport offset, and identical computed background/border/padding, and the click-to-landing behavior from #208 is unchanged.
+
 ## [0.9.1] - 2026-09-30
 
 ### Changed
@@ -85,6 +95,7 @@ _This changelog records the public release history; releases appear here as they
 
 - Open-source readiness: MIT license (`FVF Viewer Contributors`); CHANGELOG refactored to Keep a Changelog 1.1.0 with no issue links; committed prose and metadata genericized to corpus-level references (no capture names, counts, or measurement contexts); the local-corpus and coverage suites degrade gracefully when the private empirical oracle manifest is absent; and a one-way release publisher workflow snapshots each release tag to the public repository as a single orphan commit (private artifacts excluded, internal URLs rewritten, coverage report regenerated synthetic-only).
 
+[0.9.2]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.5...v0.9.0
 [0.8.5]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.4...v0.8.5

@@ -3,6 +3,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseCaptureBuffer } from "../../workers/workerClient";
 import MetadataBanner from "./MetadataBanner";
+import { DropPageHeader } from "../ingestion/FileIngestion";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import "../../index.css";
 
@@ -699,9 +700,7 @@ describe("MetadataBanner browser integration (real worker round-trip)", () => {
         return Array.from(sheet.cssRules ?? []).some(
           (rule) =>
             rule instanceof CSSStyleRule &&
-            rule.selectorText?.includes(
-              ".banner-lockup-button:focus-visible",
-            ) &&
+            rule.selectorText?.includes(".brand-lockup-button:focus-visible") &&
             rule.style.outlineStyle === "solid" &&
             parseFloat(rule.style.outlineWidth) >= 2,
         );
@@ -766,6 +765,84 @@ describe("MetadataBanner browser integration (real worker round-trip)", () => {
     expect(parseFloat(style.fontSize)).toBeCloseTo(13.76, 1);
     expect(style.fontFamily).toContain("monospace");
     expect(style.textOverflow).toBe("ellipsis");
+  });
+
+  it("issue #216: banner lockup is pixel-identical to the landing lockup at the same viewport offset, with no button chrome", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+
+    // The app shows each header on its own page state, both at the top of
+    // the shell. Pin both test hosts to the viewport origin so the two
+    // lockups' viewport rects are directly comparable.
+    hostElement.style.position = "absolute";
+    hostElement.style.top = "0";
+    hostElement.style.left = "0";
+    const landingHost = document.createElement("div");
+    landingHost.style.position = "absolute";
+    landingHost.style.top = "0";
+    landingHost.style.left = "0";
+    document.body.appendChild(landingHost);
+    const landingRoot = createRoot(landingHost);
+
+    await act(async () => {
+      landingRoot.render(<DropPageHeader />);
+    });
+    await act(async () => {
+      root.render(
+        <MetadataBanner
+          capture={capture}
+          fileName="offset.fvf"
+          onReturnToLanding={() => {}}
+        />,
+      );
+    });
+
+    const landingLockup = landingHost.querySelector(
+      "[data-testid='brand-lockup']",
+    ) as HTMLElement;
+    const bannerLockup = hostElement.querySelector(
+      "[data-testid='brand-lockup']",
+    ) as HTMLElement;
+    expect(landingLockup.tagName).toBe("DIV");
+    expect(bannerLockup.tagName).toBe("BUTTON");
+
+    // The button reset's selectors match the class the component emits, so
+    // the reset (and its focus-visible ring) applies to the banner button.
+    expect(bannerLockup.classList.contains("brand-lockup-button")).toBe(true);
+
+    // Identical bounding-box dimensions ...
+    const landingRect = landingLockup.getBoundingClientRect();
+    const bannerRect = bannerLockup.getBoundingClientRect();
+    expect(bannerRect.width).toBeCloseTo(landingRect.width, 5);
+    expect(bannerRect.height).toBeCloseTo(landingRect.height, 5);
+
+    // ... identical viewport offset (top-left corner) — navigating between
+    // the pages via the logo produces no visible jump ...
+    expect(bannerRect.top).toBeCloseTo(landingRect.top, 5);
+    expect(bannerRect.left).toBeCloseTo(landingRect.left, 5);
+
+    // ... and identical computed background/border/padding: the button
+    // carries none of the browser's default chrome.
+    const landingStyle = window.getComputedStyle(landingLockup);
+    const bannerStyle = window.getComputedStyle(bannerLockup);
+    expect(bannerStyle.backgroundColor).toBe(landingStyle.backgroundColor);
+    expect(bannerStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    expect(bannerStyle.backgroundImage).toBe(landingStyle.backgroundImage);
+    expect(bannerStyle.backgroundImage).toBe("none");
+    for (const side of ["Top", "Right", "Bottom", "Left"] as const) {
+      expect(bannerStyle[`border${side}Width`]).toBe(
+        landingStyle[`border${side}Width`],
+      );
+      expect(bannerStyle[`padding${side}`]).toBe(
+        landingStyle[`padding${side}`],
+      );
+      expect(bannerStyle[`padding${side}`]).toBe("0px");
+    }
+
+    await act(async () => {
+      landingRoot.unmount();
+    });
+    landingHost.remove();
   });
 
   it("issue #207: banner GitHub icon renders at ~28px", async () => {

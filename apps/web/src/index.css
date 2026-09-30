@@ -93,8 +93,11 @@ body,
   border-radius: 7px;
 }
 
-/* Banner variant: the lockup is the back-to-landing button (issue #208). */
-.banner-lockup-button {
+/* Button variant (issue #208, selector fixed in #216): the lockup is the
+   back-to-landing button. The class name matches the class BrandLockup
+   emits, so the reset strips the browser's default button chrome and the
+   lockup renders pixel-identical to the landing page's plain div. */
+.brand-lockup-button {
   background: none;
   border: none;
   padding: 0;
@@ -103,7 +106,7 @@ body,
   flex-shrink: 0;
 }
 
-.banner-lockup-button:focus-visible {
+.brand-lockup-button:focus-visible {
   outline: 2px solid #00bfff;
   outline-offset: 2px;
 }
@@ -241,11 +244,13 @@ body,
 }
 
 /* Solid yellow hand glyph (issue #210): rotated 90° clockwise so the
-   finger points at the label text; sized to the font height so the CTA
-   stays tertiary to the drop zone. */
+   finger points at the label text. Issue #217 sizes it to 1.25em of the
+   CTA label's font-size (~25% larger than the original font-height) so it
+   stays proportional to the muted label; the CTA's flex centering keeps
+   it vertically aligned, and the CTA stays tertiary to the drop zone. */
 .hero-sample-icon {
-  width: 1em;
-  height: 1em;
+  width: 1.25em;
+  height: 1.25em;
   flex-shrink: 0;
   color: #fcc603;
   transform: rotate(90deg);
@@ -353,7 +358,11 @@ body,
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
-  padding: 10px 20px;
+  /* Issue #216: the padding matches .drop-header (16px 24px) so the brand
+     lockup sits at the same viewport offset on both pages — navigating via
+     the logo produces no visible jump (the banner is slightly taller and
+     the metrics row starts 4px further right; accepted). */
+  padding: 16px 24px;
   background: #0c0c0c;
   border-bottom: 1px solid #1f1f1f;
   font-size: 0.85rem;
@@ -373,7 +382,10 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 5px;
+  /* Issue #216: padding matches .drop-header-github so both header rows
+     are equally tall and the centered lockup sits at the same viewport
+     offset on both pages. */
+  padding: 6px;
   border-radius: 6px;
   color: #9a9a9a;
   flex-shrink: 0;
