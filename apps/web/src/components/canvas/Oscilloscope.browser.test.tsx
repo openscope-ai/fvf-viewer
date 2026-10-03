@@ -1167,9 +1167,9 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  it("AC1-AC4 (#40): palette edits apply in place, persist, and reset to the default palette", async () => {
+  it("AC1-AC4 (#40/#204): popover palette edits apply in place, persist, and reset to the default palette", async () => {
     // Parse a real capture, then render toolbar + oscilloscope together so
-    // the customization flows through the real UI controls.
+    // the customization flows through the real badge-config popover.
     await useCaptureStore
       .getState()
       .parseBuffer(await fixture(fourChUrl), "four.fvf");
@@ -1200,37 +1200,38 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
       "[data-testid='oscilloscope-container']",
     ) as HTMLElement & { __uplot?: uPlot };
 
-    // Open the palette settings panel
-    const settingsButton = hostElement.querySelector(
-      "[data-testid='palette-settings-button']",
-    ) as HTMLButtonElement;
+    // The retired PaletteSettings panel is gone from the toolbar.
+    expect(
+      hostElement.querySelector("[data-testid='palette-settings-button']"),
+    ).toBeNull();
+
+    // Open Channel A's configuration popover via its gear and expand the
+    // color detail through the hero square.
     await act(async () => {
-      settingsButton.click();
+      (
+        hostElement.querySelector(
+          "[data-testid='channel-gear-A']",
+        ) as HTMLButtonElement
+      ).click();
       await new Promise((r) => setTimeout(r, 30));
     });
     expect(
-      hostElement.querySelector("[data-testid='palette-settings-panel']"),
+      document.body.querySelector("[data-testid='badge-config-popover']"),
     ).not.toBeNull();
+    await act(async () => {
+      (
+        document.body.querySelector(
+          "[data-testid='hero-color-square']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
 
     const yBefore = yScaleSnapshot(uplot);
 
-    // Issue #59 UI: controls live inside a per-row accordion that a chip
-    // toggles (single-open). Helper: expand a row's accordion.
-    const openAccordion = async (key: string) => {
-      await act(async () => {
-        (
-          hostElement.querySelector(
-            `[data-testid='palette-chip-${key}']`,
-          ) as HTMLButtonElement
-        ).click();
-        await new Promise((r) => setTimeout(r, 30));
-      });
-    };
-
     // AC1: hex text input customizes Channel A
-    await openAccordion("A");
-    const hexA = hostElement.querySelector(
-      "[data-testid='palette-hex-A']",
+    const hexA = document.body.querySelector(
+      "[data-testid='config-hex']",
     ) as HTMLInputElement;
     await act(async () => {
       setReactInputValue(hexA, "#123456");
@@ -1239,10 +1240,26 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     expect(usePaletteStore.getState().customColors.A).toBe("#123456");
     expect(resolveStroke(uplot.series[1]?.stroke, uplot, 1)).toBe("#123456");
 
-    // AC1: native color picker customizes cursor C1 (single-open: A closed)
-    await openAccordion("C1");
-    const pickerC1 = hostElement.querySelector(
-      "[data-testid='palette-color-C1']",
+    // AC1: native color picker customizes cursor C1 (single-open: the
+    // channel popover dismisses when the cursor popover opens)
+    await act(async () => {
+      (
+        hostElement.querySelector(
+          "[data-testid='cursor-gear-c1']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    await act(async () => {
+      (
+        document.body.querySelector(
+          "[data-testid='hero-color-square']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    const pickerC1 = document.body.querySelector(
+      "[data-testid='config-native-picker']",
     ) as HTMLInputElement;
     await act(async () => {
       setReactInputValue(pickerC1, "#00FFAA");
@@ -1251,9 +1268,24 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     expect(usePaletteStore.getState().customColors.C1).toBe("#00ffaa");
 
     // AC1: curated swatch customizes Channel B
-    await openAccordion("B");
-    const swatchB = hostElement.querySelector(
-      "[data-testid='palette-swatch-B-#FF4444']",
+    await act(async () => {
+      (
+        hostElement.querySelector(
+          "[data-testid='channel-gear-B']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    await act(async () => {
+      (
+        document.body.querySelector(
+          "[data-testid='hero-color-square']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    const swatchB = document.body.querySelector(
+      "[data-testid='config-swatch-#FF4444']",
     ) as HTMLButtonElement;
     await act(async () => {
       swatchB.click();
@@ -1276,13 +1308,29 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     // Untouched channels keep their dark-theme defaults
     expect(resolveStroke(uplot.series[4]?.stroke, uplot, 4)).toBe("#00FF7F");
 
-    // AC3: custom palette persists across browser sessions in local storage
+    // Issue #204 AC4: per-key opacity renders as rgba() in the uPlot
+    // series config (hex stays canonical at full opacity)
+    await act(async () => {
+      usePaletteStore.getState().setKeyOpacity("A", 50);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    expect(resolveStroke(uplot.series[1]?.stroke, uplot, 1)).toBe(
+      "rgba(18, 52, 86, 0.50)",
+    );
+    await act(async () => {
+      usePaletteStore.getState().setKeyOpacity("A", 100);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    expect(resolveStroke(uplot.series[1]?.stroke, uplot, 1)).toBe("#123456");
+
+    // AC3: custom palette persists across browser sessions in local
+    // storage (per-key { color } records, issue #204 shape)
     expect(
       JSON.parse(window.localStorage.getItem(CHANNEL_PALETTE_STORAGE_KEY)!),
     ).toEqual({
-      A: "#123456",
-      B: "#ff4444",
-      C1: "#00ffaa",
+      A: { color: "#123456" },
+      B: { color: "#ff4444" },
+      C1: { color: "#00ffaa" },
     });
     vi.resetModules();
     const freshPalette = await import("../../state/paletteStore");
@@ -1292,12 +1340,11 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
       C1: "#00ffaa",
     });
 
-    // AC4: one-click reset restores the architecture 4.1 default palette
-    const resetAll = hostElement.querySelector(
-      "[data-testid='palette-reset-all']",
-    ) as HTMLButtonElement;
+    // AC4: full reset restores the architecture 4.1 default palette (the
+    // retired panel's global button is covered by the per-key ↺ in the
+    // toolbar test; the store action remains the sweep)
     await act(async () => {
-      resetAll.click();
+      usePaletteStore.getState().resetPalette();
       await new Promise((r) => setTimeout(r, 60));
     });
     expect(usePaletteStore.getState().customColors).toEqual({});
@@ -1313,7 +1360,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     freshPalette.usePaletteStore.getState().resetPalette();
   });
 
-  it("AC1/AC4 (#40): per-entry reset restores only that entry's theme default", async () => {
+  it("AC1/AC4 (#40/#204): per-key ↺ reset restores only that entry's theme default", async () => {
     await useCaptureStore
       .getState()
       .parseBuffer(await fixture(fourChUrl), "four.fvf");
@@ -1346,16 +1393,25 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     expect(resolveStroke(uplot.series[1]?.stroke, uplot, 1)).toBe("#123456");
     expect(resolveStroke(uplot.series[4]?.stroke, uplot, 4)).toBe("#654321");
 
-    // Open panel and reset only Channel A
-    const settingsButton = hostElement.querySelector(
-      "[data-testid='palette-settings-button']",
-    ) as HTMLButtonElement;
+    // Open Channel A's popover and reset only A through the ↺ control
     await act(async () => {
-      settingsButton.click();
+      (
+        hostElement.querySelector(
+          "[data-testid='channel-gear-A']",
+        ) as HTMLButtonElement
+      ).click();
       await new Promise((r) => setTimeout(r, 30));
     });
-    const resetA = hostElement.querySelector(
-      "[data-testid='palette-reset-A']",
+    await act(async () => {
+      (
+        document.body.querySelector(
+          "[data-testid='hero-color-square']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    const resetA = document.body.querySelector(
+      "[data-testid='config-reset']",
     ) as HTMLButtonElement;
     await act(async () => {
       resetA.click();

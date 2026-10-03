@@ -1,10 +1,19 @@
 /**
- * Waveform toolbar (issue #12): interactive channel badges that toggle trace
- * visibility on the oscilloscope canvas without rescaling the axes, plus a
- * one-click "Fit Waveform (100%)" action that resets the viewport to the
- * full capture range with optimal dynamic Y margins over the visible
- * channels. Mouse wheel zooming is disabled on the canvas itself (see
- * Oscilloscope); this toolbar is the sanctioned way to drive the viewport.
+ * Waveform toolbar (issues #12/#204): interactive channel badges that
+ * toggle trace visibility on the oscilloscope canvas without rescaling
+ * the axes, plus a one-click "Fit Waveform (100%)" action that resets the
+ * viewport to the full capture range with optimal dynamic Y margins over
+ * the visible channels. Mouse wheel zooming is disabled on the canvas
+ * itself (see Oscilloscope); this toolbar is the sanctioned way to drive
+ * the viewport.
+ *
+ * Issue #204: each channel (A–D) and cursor (C1/C2) badge is a compound
+ * "Tonal Capsule" group — a primary body (~80%) keeping the existing
+ * toggle/select/hide cycle and double-click rename, plus a secondary gear
+ * (~20%) opening the per-key configuration popover (color + trace
+ * opacity). Identity comes from a tonal fill mixed from the effective
+ * color, not border color. The standalone PaletteSettings panel is
+ * retired; its curated colors live on inside the popover.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -20,12 +29,18 @@ import { useViewportStore, type ChannelTag } from "../../state/viewportStore";
 import {
   effectiveColorForKey,
   effectiveTraceColor,
+  paletteKeyForChannel,
   type PaletteKey,
 } from "../canvas/themePalette";
-import PaletteSettings from "./PaletteSettings";
 import CsvExportButton from "../export/CsvExportButton";
 import PngSnapshotButton from "../export/PngSnapshotButton";
 import { CURSOR_MOVEMENT_SUMMARY } from "../cursors/cursorHelp";
+import {
+  AnchoredPopover,
+  useBadgePopoverStore,
+} from "./badgeConfig/anchoredPopover";
+import { BadgeConfigPopover } from "./badgeConfig/BadgeConfigPopover";
+import { GearIcon } from "./badgeConfig/icons";
 
 export interface WaveformToolbarProps {
   /**
@@ -67,6 +82,12 @@ export default function WaveformToolbar({
   const toggleTheme = useThemeStore((state) => state.toggleTheme);
   const customColors = usePaletteStore((state) => state.customColors);
 
+  // Issue #204: single-open anchored configuration popovers
+  const openKey = useBadgePopoverStore((state) => state.openKey);
+  const setOpenKey = useBadgePopoverStore((state) => state.setOpen);
+  const channelGearRefs = useRef(new Map<string, HTMLButtonElement>());
+  const cursorGearRefs = useRef(new Map<string, HTMLButtonElement>());
+
   const channelNames =
     channelsOverride ?? captureChannels?.map((channel) => channel.name) ?? [];
   // Issue #64: per-file custom channel amendments + inline badge editing.
@@ -106,6 +127,9 @@ export default function WaveformToolbar({
           const custom = customNames[name];
           const displayLabel = custom ? `${name}: ${custom}` : name;
           const editing = editingChannel === name;
+          const paletteKey = paletteKeyForChannel(name);
+          const popoverKey = `channel:${name}`;
+          const popoverOpen = openKey === popoverKey;
 
           const commitEdit = () => {
             // Escape cancels: the editor unmount fires a trailing blur,
@@ -156,77 +180,134 @@ export default function WaveformToolbar({
             );
           }
 
+          // Non-palette channels (e.g. derived labels) keep a plain
+          // toggle capsule: there is no per-key config to gear into.
+          if (!paletteKey) {
+            return (
+              <button
+                key={name}
+                type="button"
+                className="waveform-channel-badge waveform-channel-badge--plain"
+                aria-pressed={active}
+                aria-label={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
+                title={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
+                data-testid={`channel-badge-${name}`}
+                onClick={() => cycleChannelBadge(name)}
+              >
+                {displayLabel}
+              </button>
+            );
+          }
+
           return (
-            <button
+            <span
               key={name}
-              type="button"
               className={`waveform-channel-badge${
                 active ? " waveform-channel-badge--active" : ""
-              }${selected ? " waveform-channel-badge--selected" : ""}`}
-              // Issue #75/#119: explicit empty object (never undefined) so React
-              // diffs away the active inline styles on deactivation.
-              style={
-                active
-                  ? {
-                      borderColor: color,
-                      color: selected ? "#ffffff" : color,
-                      backgroundColor: selected ? `${color}33` : "transparent",
-                      boxShadow: selected
-                        ? `0 0 8px ${color}`
-                        : `0 0 6px ${color}55`,
-                    }
-                  : {}
-              }
-              aria-pressed={active}
-              aria-label={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
-              title={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
-              data-testid={`channel-badge-${name}`}
-              onClick={() => {
-                const now = Date.now();
-                if (
-                  !preDoubleClickRef.current ||
-                  preDoubleClickRef.current.channel !== name ||
-                  now - preDoubleClickRef.current.timestamp > 400
-                ) {
-                  preDoubleClickRef.current = {
-                    channel: name,
-                    activeChannels: [
-                      ...useViewportStore.getState().activeChannels,
-                    ],
-                    selectedChannel:
-                      useViewportStore.getState().selectedChannel,
-                    timestamp: now,
-                  };
-                }
-                cycleChannelBadge(name);
-              }}
-              onDoubleClick={() => {
-                // Restore the pre-double-click state so the 2 rapid clicks don't mutate state
-                if (
-                  preDoubleClickRef.current &&
-                  preDoubleClickRef.current.channel === name
-                ) {
-                  useViewportStore.setState({
-                    activeChannels: preDoubleClickRef.current.activeChannels,
-                    selectedChannel: preDoubleClickRef.current.selectedChannel,
-                  });
-                  preDoubleClickRef.current = null;
-                }
-                draftRef.current = custom ?? "";
-                cancelledRef.current = false;
-                setEditingChannel(name);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
+              }${selected ? " waveform-channel-badge--selected" : ""}${
+                popoverOpen ? " waveform-channel-badge--open" : ""
+              }`}
+              role="group"
+              aria-label={`Channel ${name}`}
+              data-testid={`channel-badge-group-${name}`}
+              style={{ "--badge-color": color } as React.CSSProperties}
+            >
+              <button
+                type="button"
+                className="waveform-channel-badge-body"
+                aria-pressed={active}
+                aria-label={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
+                title={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
+                data-testid={`channel-badge-${name}`}
+                onClick={() => {
+                  const now = Date.now();
+                  if (
+                    !preDoubleClickRef.current ||
+                    preDoubleClickRef.current.channel !== name ||
+                    now - preDoubleClickRef.current.timestamp > 400
+                  ) {
+                    preDoubleClickRef.current = {
+                      channel: name,
+                      activeChannels: [
+                        ...useViewportStore.getState().activeChannels,
+                      ],
+                      selectedChannel:
+                        useViewportStore.getState().selectedChannel,
+                      timestamp: now,
+                    };
+                  }
+                  cycleChannelBadge(name);
+                }}
+                onDoubleClick={() => {
+                  // Restore the pre-double-click state so the 2 rapid clicks don't mutate state
+                  if (
+                    preDoubleClickRef.current &&
+                    preDoubleClickRef.current.channel === name
+                  ) {
+                    useViewportStore.setState({
+                      activeChannels: preDoubleClickRef.current.activeChannels,
+                      selectedChannel:
+                        preDoubleClickRef.current.selectedChannel,
+                    });
+                    preDoubleClickRef.current = null;
+                  }
                   draftRef.current = custom ?? "";
                   cancelledRef.current = false;
                   setEditingChannel(name);
-                }
-              }}
-            >
-              {displayLabel}
-            </button>
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    draftRef.current = custom ?? "";
+                    cancelledRef.current = false;
+                    setEditingChannel(name);
+                  }
+                }}
+              >
+                {displayLabel}
+              </button>
+              <button
+                type="button"
+                className="waveform-channel-badge-gear"
+                aria-haspopup="dialog"
+                aria-expanded={popoverOpen}
+                aria-label={`Configure Channel ${name}`}
+                title={`Configure Channel ${name}`}
+                data-testid={`channel-gear-${name}`}
+                ref={(el) => {
+                  if (el) channelGearRefs.current.set(name, el);
+                  else channelGearRefs.current.delete(name);
+                }}
+                onClick={() => setOpenKey(popoverOpen ? null : popoverKey)}
+              >
+                <GearIcon />
+              </button>
+              {popoverOpen && (
+                <AnchoredPopover
+                  openKey={popoverKey}
+                  anchorEl={channelGearRefs.current.get(name) ?? null}
+                  ariaLabel={`Configure Channel ${name}`}
+                  onClose={(refocusAnchor) => {
+                    setOpenKey(null);
+                    if (refocusAnchor) {
+                      channelGearRefs.current.get(name)?.focus();
+                    }
+                  }}
+                >
+                  <BadgeConfigPopover
+                    target={{
+                      kind: "channel",
+                      paletteKey,
+                      channelName: name,
+                    }}
+                    onClose={() => {
+                      setOpenKey(null);
+                      channelGearRefs.current.get(name)?.focus();
+                    }}
+                  />
+                </AnchoredPopover>
+              )}
+            </span>
           );
         })}
       </div>
@@ -243,6 +324,8 @@ export default function WaveformToolbar({
             customColors,
             id as PaletteKey,
           );
+          const popoverKey = `cursor:${id}`;
+          const popoverOpen = openKey === popoverKey;
 
           const handleClick = () => {
             if (!active) {
@@ -255,35 +338,69 @@ export default function WaveformToolbar({
           };
 
           return (
-            <button
+            <span
               key={id}
-              type="button"
               className={`waveform-cursor-badge${
                 active ? " waveform-cursor-badge--active" : ""
-              }${selected ? " waveform-cursor-badge--selected" : ""}`}
-              // Issue #75: explicit empty object (see channel badge note).
-              style={
-                active
-                  ? {
-                      borderColor: color,
-                      color: selected ? "#ffffff" : color,
-                      backgroundColor: selected ? `${color}33` : "transparent",
-                      boxShadow: selected
-                        ? `0 0 8px ${color}`
-                        : `0 0 4px ${color}44`,
-                    }
-                  : {}
-              }
-              aria-pressed={active}
-              aria-label={`Toggle cursor ${id} (currently ${active ? "active" : "inactive"}${
-                selected ? ", selected" : ""
-              })`}
-              title={`Toggle cursor ${id}${selected ? " (selected)" : ""}\nControls: ${CURSOR_MOVEMENT_SUMMARY}`}
-              data-testid={`cursor-toggle-${id.toLowerCase()}`}
-              onClick={handleClick}
+              }${selected ? " waveform-cursor-badge--selected" : ""}${
+                popoverOpen ? " waveform-cursor-badge--open" : ""
+              }`}
+              role="group"
+              aria-label={`Cursor ${id}`}
+              data-testid={`cursor-badge-group-${id.toLowerCase()}`}
+              style={{ "--badge-color": color } as React.CSSProperties}
             >
-              {id}
-            </button>
+              <button
+                type="button"
+                className="waveform-cursor-badge-body"
+                aria-pressed={active}
+                aria-label={`Toggle cursor ${id} (currently ${
+                  active ? "active" : "inactive"
+                }${selected ? ", selected" : ""})`}
+                title={`Toggle cursor ${id}${selected ? " (selected)" : ""}\nControls: ${CURSOR_MOVEMENT_SUMMARY}`}
+                data-testid={`cursor-toggle-${id.toLowerCase()}`}
+                onClick={handleClick}
+              >
+                {id}
+              </button>
+              <button
+                type="button"
+                className="waveform-cursor-badge-gear"
+                aria-haspopup="dialog"
+                aria-expanded={popoverOpen}
+                aria-label={`Configure Cursor ${id}`}
+                title={`Configure Cursor ${id}`}
+                data-testid={`cursor-gear-${id.toLowerCase()}`}
+                ref={(el) => {
+                  if (el) cursorGearRefs.current.set(id, el);
+                  else cursorGearRefs.current.delete(id);
+                }}
+                onClick={() => setOpenKey(popoverOpen ? null : popoverKey)}
+              >
+                <GearIcon />
+              </button>
+              {popoverOpen && (
+                <AnchoredPopover
+                  openKey={popoverKey}
+                  anchorEl={cursorGearRefs.current.get(id) ?? null}
+                  ariaLabel={`Configure Cursor ${id}`}
+                  onClose={(refocusAnchor) => {
+                    setOpenKey(null);
+                    if (refocusAnchor) {
+                      cursorGearRefs.current.get(id)?.focus();
+                    }
+                  }}
+                >
+                  <BadgeConfigPopover
+                    target={{ kind: "cursor", paletteKey: id }}
+                    onClose={() => {
+                      setOpenKey(null);
+                      cursorGearRefs.current.get(id)?.focus();
+                    }}
+                  />
+                </AnchoredPopover>
+              )}
+            </span>
           );
         })}
       </div>
@@ -309,7 +426,6 @@ export default function WaveformToolbar({
       </button>
       <CsvExportButton />
       <PngSnapshotButton />
-      <PaletteSettings />
     </div>
   );
 }

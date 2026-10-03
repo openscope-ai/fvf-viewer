@@ -7,6 +7,7 @@ import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useCursorStore } from "../../state/cursorStore";
+import { useBadgePopoverStore } from "./badgeConfig/anchoredPopover";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -16,7 +17,13 @@ describe("WaveformToolbar (browser)", () => {
   let hostElement: HTMLDivElement;
   let root: Root;
 
+  // Issue #204: badges are compound groups; the body button keeps the
+  // legacy data-testid while active/selected classes moved to the group.
+  const badgeGroup = (testId: string): HTMLElement =>
+    hostElement.querySelector(`[data-testid='${testId}']`)!.parentElement!;
+
   beforeEach(() => {
+    useBadgePopoverStore.getState().setOpen(null);
     useViewportStore.getState().reset();
     useCursorStore.getState().reset();
     window.localStorage.clear();
@@ -30,6 +37,7 @@ describe("WaveformToolbar (browser)", () => {
   });
 
   afterEach(() => {
+    useBadgePopoverStore.getState().setOpen(null);
     useCursorStore.getState().reset();
     act(() => {
       root.unmount();
@@ -82,6 +90,9 @@ describe("WaveformToolbar (browser)", () => {
     ) as HTMLButtonElement;
     expect(badgeA.getAttribute("aria-pressed")).toBe("true");
 
+    const groupA = badgeGroup("channel-badge-A");
+    expect(groupA.className).toContain("waveform-channel-badge--active");
+
     // Toggle Channel A off
     act(() => {
       badgeA.click();
@@ -90,7 +101,7 @@ describe("WaveformToolbar (browser)", () => {
       false,
     );
     expect(badgeA.getAttribute("aria-pressed")).toBe("false");
-    expect(badgeA.className).not.toContain("waveform-channel-badge--active");
+    expect(groupA.className).not.toContain("waveform-channel-badge--active");
     expect(useViewportStore.getState().activeChannels).toEqual(["B", "C", "D"]);
 
     // Toggling must not mutate the axis bounds
@@ -106,7 +117,9 @@ describe("WaveformToolbar (browser)", () => {
     });
     expect(useViewportStore.getState().activeChannels.includes("A")).toBe(true);
     expect(badgeA.getAttribute("aria-pressed")).toBe("true");
-    expect(badgeA.className).toContain("waveform-channel-badge--active");
+    expect(badgeGroup("channel-badge-A").className).toContain(
+      "waveform-channel-badge--active",
+    );
   });
 
   it("AC: clicking Fit Waveform triggers onFit callback and resets bounds", () => {
@@ -184,17 +197,15 @@ describe("WaveformToolbar (browser)", () => {
     act(() => {
       useCursorStore.getState().toggleCursor("C1", 1000);
     });
-    const c1Badge = hostElement.querySelector(
-      "[data-testid='cursor-toggle-c1']",
-    ) as HTMLButtonElement;
     act(() => {
       useThemeStore.getState().setTheme("light");
     });
 
-    // Issue #75: the leading color dot is gone; identity is carried by the
-    // badge's own border/text color. CSSOM normalizes hex to rgb().
-    const border = c1Badge.style.borderColor;
-    expect(border === "rgb(106, 27, 154)" || border === "#6A1B9A").toBe(true);
+    // Issue #204: identity is carried by the tonal capsule's --badge-color
+    // custom property (mixed into the fill via color-mix in CSS).
+    const group = badgeGroup("cursor-toggle-c1");
+    expect(group.style.getPropertyValue("--badge-color")).toBe("#6A1B9A");
+    expect(group.className).toContain("waveform-cursor-badge--active");
   });
 
   it("AC (Issue #145): Channel B badge uses the visible light default on the dark toolbar", () => {
@@ -204,18 +215,19 @@ describe("WaveformToolbar (browser)", () => {
     act(() => {
       useThemeStore.getState().setTheme("light");
     });
-    // B is active but not selected, so the badge text carries the
-    // theme default directly on the dark toolbar chrome.
+    // B is active but not selected; the effective identity color feeds
+    // the tonal fill through the group's --badge-color property.
     const badgeB = hostElement.querySelector(
       "[data-testid='channel-badge-B']",
     ) as HTMLButtonElement;
     expect(badgeB).not.toBeNull();
-    expect(badgeB.style.color).toBe("rgb(30, 144, 255)");
+    const groupB = badgeGroup("channel-badge-B");
+    expect(groupB.style.getPropertyValue("--badge-color")).toBe("#1E90FF");
     // Regression: the old navy default was invisible here.
-    expect(badgeB.style.color).not.toBe("rgb(0, 0, 139)");
+    expect(groupB.style.getPropertyValue("--badge-color")).not.toBe("#00008B");
   });
 
-  it("AC (#75): badges are centered pills without leading dots or trailing stars", () => {
+  it("AC (#204): badges are compound tonal capsules with body + gear targets", () => {
     act(() => {
       root.render(<WaveformToolbar channels={["A"]} />);
     });
@@ -223,115 +235,116 @@ describe("WaveformToolbar (browser)", () => {
       useCursorStore.getState().toggleCursor("C1", 1000);
     });
 
-    for (const testId of ["channel-badge-A", "cursor-toggle-c1"]) {
-      const badge = hostElement.querySelector(
-        `[data-testid='${testId}']`,
+    for (const [bodyId, groupId, label] of [
+      ["channel-badge-A", "channel-badge-group-A", "Channel A"],
+      ["cursor-toggle-c1", "cursor-badge-group-c1", "Cursor C1"],
+    ] as const) {
+      const body = hostElement.querySelector(
+        `[data-testid='${bodyId}']`,
       ) as HTMLButtonElement;
-      expect(badge).not.toBeNull();
-      // No dot/star elements remain (issue #75)
-      expect(badge.querySelector(".waveform-channel-badge-dot")).toBeNull();
+      const group = hostElement.querySelector(
+        `[data-testid='${groupId}']`,
+      ) as HTMLElement;
+      expect(body).not.toBeNull();
+      expect(group).not.toBeNull();
+
+      // Compound group: role=group with body + gear sibling buttons.
+      expect(group.getAttribute("role")).toBe("group");
+      expect(group.getAttribute("aria-label")).toBe(label);
+      expect(body.className).toBe(
+        bodyId.startsWith("channel-")
+          ? "waveform-channel-badge-body"
+          : "waveform-cursor-badge-body",
+      );
+      const gear = group.querySelector(
+        `[data-testid='${bodyId.startsWith("channel-") ? "channel-gear" : "cursor-gear"}-${
+          bodyId.startsWith("channel-") ? "A" : "c1"
+        }']`,
+      ) as HTMLButtonElement;
+      expect(gear).not.toBeNull();
+      expect(gear.className).toBe(
+        bodyId.startsWith("channel-")
+          ? "waveform-channel-badge-gear"
+          : "waveform-cursor-badge-gear",
+      );
+      expect(gear.getAttribute("aria-haspopup")).toBe("dialog");
+      expect(gear.getAttribute("aria-expanded")).toBe("false");
+
+      // No dot/star elements remain (issue #75); body is a centered
+      // typographic pill carrying exactly the label.
+      expect(body.querySelector(".waveform-channel-badge-dot")).toBeNull();
       expect(
-        badge.querySelector(".waveform-cursor-selected-indicator"),
+        body.querySelector(".waveform-cursor-selected-indicator"),
       ).toBeNull();
-      expect(badge.textContent).not.toContain("★");
-      // Centered typographic pill
-      const style = window.getComputedStyle(badge);
+      expect(body.textContent).not.toContain("★");
+      const style = window.getComputedStyle(body);
       expect(style.justifyContent).toBe("center");
-      expect(style.minWidth).toBe("38px");
-      expect(style.paddingLeft).toBe(style.paddingRight);
+      expect(body.textContent).toBe(bodyId.startsWith("channel-") ? "A" : "C1");
     }
 
-    // No phantom gap: the inactive channel badge (dot removed) keeps a
-    // single centered text node.
-    const badgeA = hostElement.querySelector(
-      "[data-testid='channel-badge-A']",
-    ) as HTMLButtonElement;
-    expect(badgeA.textContent).toBe("A");
-
-    // AC2/AC3 across states: measure while active, toggle off, re-measure —
-    // the pill geometry must not shift when the dot is absent.
-    const assertCentered = (badge: HTMLButtonElement) => {
-      const style = window.getComputedStyle(badge);
-      expect(style.justifyContent).toBe("center");
-      expect(style.minWidth).toBe("38px");
-      expect(style.paddingLeft).toBe(style.paddingRight);
-    };
-    const c1AfterToggle = hostElement.querySelector(
+    // Body still owns the toggle cycle (aria-pressed) and the cursor body
+    // keeps its movement-controls tooltip (issue #133).
+    const c1Body = hostElement.querySelector(
       "[data-testid='cursor-toggle-c1']",
     ) as HTMLButtonElement;
-    assertCentered(c1AfterToggle);
+    expect(c1Body.getAttribute("aria-pressed")).toBe("true");
+    expect(c1Body.title).toContain("Ctrl+Drag or Ctrl+Click to move");
     act(() => {
       useCursorStore.getState().toggleCursor("C1", 1000);
     });
-    const c1Inactive = hostElement.querySelector(
-      "[data-testid='cursor-toggle-c1']",
-    ) as HTMLButtonElement;
-    expect(c1Inactive.style.borderColor).toBe("");
-    assertCentered(c1Inactive);
-    expect(c1Inactive.textContent).toBe("C1");
-
-    // AC5: selected cursor keeps fill/text/glow signifiers (no star).
-    act(() => {
-      useCursorStore.getState().toggleCursor("C2", 1000);
-      useCursorStore.getState().selectCursor("C2");
-    });
-    const c2Selected = hostElement.querySelector(
-      "[data-testid='cursor-toggle-c2']",
-    ) as HTMLButtonElement;
-    expect(c2Selected.style.backgroundColor).not.toBe("");
-    // CSSOM normalizes hex colors to rgb(); accept both serializations
-    expect(
-      c2Selected.style.color === "rgb(255, 255, 255)" ||
-        c2Selected.style.color === "#ffffff",
-    ).toBe(true);
-    expect(c2Selected.style.boxShadow).not.toBe("");
-    expect(c2Selected.textContent).toBe("C2");
-    assertCentered(c2Selected);
+    expect(c1Body.getAttribute("aria-pressed")).toBe("false");
+    expect(badgeGroup("cursor-toggle-c1").className).not.toContain(
+      "waveform-cursor-badge--active",
+    );
   });
 
-  it("AC1 (#40): palette settings panel toggles and badge colors follow overrides", () => {
+  it("AC (#204): gear opens the config popover; retired Colors panel is gone; badge colors follow overrides", () => {
     act(() => {
       root.render(<WaveformToolbar channels={["A"]} />);
     });
 
-    const settingsButton = hostElement.querySelector(
-      "[data-testid='palette-settings-button']",
-    ) as HTMLButtonElement;
-    expect(settingsButton).not.toBeNull();
-    expect(settingsButton.getAttribute("aria-expanded")).toBe("false");
+    // The standalone Colors button is retired with PaletteSettings.
     expect(
-      hostElement.querySelector("[data-testid='palette-settings-panel']"),
+      hostElement.querySelector("[data-testid='palette-settings-button']"),
+    ).toBeNull();
+
+    const gear = hostElement.querySelector(
+      "[data-testid='channel-gear-A']",
+    ) as HTMLButtonElement;
+    expect(gear.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      document.body.querySelector("[data-testid='badge-config-popover']"),
     ).toBeNull();
 
     act(() => {
-      settingsButton.click();
+      gear.click();
     });
-    expect(settingsButton.getAttribute("aria-expanded")).toBe("true");
+    expect(gear.getAttribute("aria-expanded")).toBe("true");
     expect(
-      hostElement.querySelector("[data-testid='palette-settings-panel']"),
+      document.body.querySelector("[data-testid='badge-config-popover']"),
     ).not.toBeNull();
 
-    // Channel A badge border/text reflect a custom override immediately
-    // (issue #75: no leading dot; the badge itself carries the color)
+    // Channel A badge identity reflects a custom override immediately
+    // (tonal fill mixes from --badge-color).
     act(() => {
       usePaletteStore.getState().setCustomColor("A", "#123456");
     });
-    const badgeA = hostElement.querySelector(
-      "[data-testid='channel-badge-A']",
-    ) as HTMLElement;
-    const badgeBorder = badgeA.style.borderColor;
-    expect(
-      badgeBorder === "rgb(18, 52, 86)" || badgeBorder === "#123456",
-      `unexpected badge border color: ${badgeBorder}`,
-    ).toBe(true);
+    const groupA = badgeGroup("channel-badge-A");
+    expect(groupA.style.getPropertyValue("--badge-color")).toBe("#123456");
 
-    // Reset to Default Palette removes the override
+    // Per-key opacity feeds the same identity pipeline (100 = default).
     act(() => {
-      (
-        hostElement.querySelector(
-          "[data-testid='palette-reset-all']",
-        ) as HTMLButtonElement
-      ).click();
+      usePaletteStore.getState().setKeyOpacity("A", 40);
+    });
+    expect(usePaletteStore.getState().keyConfigs.A).toEqual({
+      color: "#123456",
+      opacity: 40,
+    });
+
+    // Per-key ↺ removes the whole record (the global reset-all button is
+    // gone; per-key reset covers the need).
+    act(() => {
+      usePaletteStore.getState().resetKey("A");
     });
     expect(usePaletteStore.getState().customColors).toEqual({});
   });

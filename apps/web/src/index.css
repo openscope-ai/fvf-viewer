@@ -521,44 +521,121 @@ body,
   margin-right: 4px;
 }
 
-/* Issue #75: centered typographic pills — identity/state is carried by
-   border color, text color, and glow, so no leading dots or trailing stars.
-   Symmetrical padding and a uniform minimum width keep single-letter channel
-   badges and two-character cursor badges visually centered. */
+/* Issue #204 "Tonal Capsule": each channel/cursor badge is a compound
+   group — a primary body target (toggle/select/hide cycle + double-click
+   rename) and a secondary circular gear opening the configuration
+   popover. Identity comes from a tonal fill mixed from the effective
+   color via color-mix (13% active, 22% selected + 1px color ring), not
+   border color; the capsule is borderless and padded with no divider.
+   Per-target focus rings stay separated (2px #00bfff, offset 2). */
 .waveform-channel-badge {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  min-width: 38px;
-  background: #181818;
-  color: #888888;
-  border: 1px solid #2e2e2e;
+  align-items: stretch;
   border-radius: 999px;
-  padding: 3px 10px;
+  font-family: monospace;
   font-size: 0.78rem;
   font-weight: 600;
-  font-family: monospace;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  user-select: none;
+  background: #1f1f1f;
+  transition:
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 .waveform-channel-badge:hover {
-  border-color: #444444;
-  color: #bbbbbb;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
-.waveform-channel-badge:focus-visible {
+.waveform-channel-badge-body,
+.waveform-channel-badge-gear,
+.waveform-cursor-badge-body,
+.waveform-cursor-badge-gear {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  display: flex;
+  align-items: center;
+}
+
+.waveform-channel-badge-body,
+.waveform-cursor-badge-body {
+  justify-content: center;
+  padding: 5px 4px 5px 15px;
+  color: #909090;
+  border-radius: 999px 0 0 999px;
+  min-width: 34px;
+}
+
+.waveform-channel-badge-gear,
+.waveform-cursor-badge-gear {
+  width: 26px;
+  height: 26px;
+  margin: 2px 4px 2px 6px;
+  border-radius: 50%;
+  color: #8a8a8a;
+  opacity: 0.7;
+  justify-content: center;
+}
+
+.waveform-channel-badge-gear:hover,
+.waveform-cursor-badge-gear:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.waveform-channel-badge-body:focus-visible,
+.waveform-channel-badge-gear:focus-visible,
+.waveform-cursor-badge-body:focus-visible,
+.waveform-cursor-badge-gear:focus-visible {
   outline: 2px solid #00bfff;
   outline-offset: 2px;
 }
 
 .waveform-channel-badge--active {
-  background: #101010;
+  background: color-mix(in srgb, var(--badge-color) 13%, #1f1f1f);
+}
+
+.waveform-channel-badge--active .waveform-channel-badge-body {
+  color: var(--badge-color);
 }
 
 .waveform-channel-badge--selected {
-  font-weight: 700;
+  background: color-mix(in srgb, var(--badge-color) 22%, #1f1f1f);
+  box-shadow:
+    0 0 0 1px var(--badge-color),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.waveform-channel-badge--selected .waveform-channel-badge-body {
+  color: #ffffff;
+}
+
+.waveform-channel-badge--open .waveform-channel-badge-gear {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  opacity: 1;
+}
+
+/* Non-palette channels keep a plain toggle capsule (no gear). */
+.waveform-channel-badge--plain {
+  justify-content: center;
+  text-align: center;
+  color: #909090;
+  cursor: pointer;
+}
+
+.waveform-channel-badge--plain:hover {
+  color: #bbbbbb;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.waveform-channel-badge--plain:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
 }
 
 /* Issue #64: inline rename editor inside the channel badge. */
@@ -567,6 +644,7 @@ body,
   align-items: center;
   gap: 2px;
   padding: 2px 6px;
+  background: #1f1f1f;
 }
 
 .waveform-channel-badge-prefix {
@@ -636,172 +714,412 @@ body,
   outline-offset: 2px;
 }
 
-/* Color palette settings (issue #40) */
-.palette-settings {
-  position: relative;
-  display: inline-flex;
-}
-
-.palette-settings-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: #101010;
+/* ==========================================================================
+   Issue #204 badge configuration popover ("Rich Header" L3): anchored,
+   portal-based, viewport-colliding dialog. Hero carries identity (color
+   square with luminance-aware pencil, ghost name field / static cursor
+   title, unwrapped stats); body carries the quick knobs; detail carries
+   the precision tools.
+   ========================================================================== */
+.badge-popover {
+  position: fixed;
+  z-index: 60;
+  width: max-content;
+  min-width: 390px;
+  max-width: calc(100vw - 24px);
+  background: #161616;
   border: 1px solid #2e2e2e;
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  color: #a5a5a5;
+  text-align: left;
+  cursor: default;
+  padding: 0 0 12px;
+  overflow: hidden;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-.palette-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.palette-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.palette-row-label {
-  min-width: 76px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #888888;
-}
-
-/* Active color chip (issue #59): the row's single prominent control. */
-.palette-chip {
-  width: 34px;
-  height: 20px;
-  border: 1px solid #444444;
-  border-radius: 4px;
-  cursor: pointer;
-  padding: 0;
-  transition:
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.palette-chip:hover {
-  border-color: #888888;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
-}
-
-.palette-chip--custom {
-  border-color: #00bfff;
-}
-
-.palette-chip:focus-visible {
+.badge-popover :focus-visible {
   outline: 2px solid #00bfff;
   outline-offset: 1px;
 }
 
-/* Single-open inline accordion (issue #59). */
-.palette-accordion {
+.badge-popover-hero {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  background: #181818;
-  border: 1px solid #2e2e2e;
-  border-radius: 6px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  background: #191919;
+  border-bottom: 1px solid #232323;
+  margin-bottom: 12px;
 }
 
-.palette-swatch-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
+.badge-hero-swatch {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+  transition: transform 0.15s ease;
+}
+
+.badge-hero-swatch:hover {
+  outline: 2px solid #00bfff;
+  outline-offset: 1px;
+  transform: scale(1.06);
+}
+
+.badge-hero-pencil {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  pointer-events: none;
+  opacity: 0.85;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+  transition: opacity 0.15s ease;
+}
+
+.badge-hero-swatch:hover .badge-hero-pencil {
+  opacity: 1;
+}
+
+.badge-hero-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.badge-static-title {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #ffffff;
+  font-family: monospace;
+}
+
+/* M3 "Ghost / Flat Text Field": transparent rest fill, focus fills with
+   surfaceContainerHighest and elevates the indicator to 2dp primary. */
+.badge-ghost-field {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #3f3f3f;
+  border-radius: 8px 8px 0 0;
+  padding: 3px 8px 4px;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.badge-ghost-field:hover {
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom-color: #555555;
+}
+
+.badge-name-input {
+  flex: 1;
+  min-width: 210px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: #ffffff;
+  font: 600 0.92rem monospace;
+  padding: 2px 0;
+  cursor: text;
+}
+
+.badge-name-input::placeholder {
+  color: #6f6f6f;
+  font-weight: 500;
+}
+
+.badge-ghost-field:focus-within {
+  background: #232323;
+  border-bottom: 2px solid #00bfff;
+  padding-bottom: 3px;
+}
+
+.badge-stats {
+  margin: 3px 0 0;
+  font-size: 0.65rem;
+  color: #777777;
+  font-family: monospace;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.badge-popover-close {
+  background: none;
+  border: 0;
+  color: #666666;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 4px 6px;
+  border-radius: 6px;
+  flex: none;
+}
+
+.badge-popover-close:hover {
+  color: #ffffff;
+  background: #222222;
+}
+
+.badge-popover-body {
+  padding: 0 14px;
+}
+
+/* ---- quick knobs: opacity presets + dual-canvas preview + guard ---- */
+.badge-microlabel {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #5e5e5e;
+  margin-right: 5px;
+}
+
+.badge-opacity-presets {
+  display: flex;
+  align-items: center;
   gap: 5px;
 }
 
-.palette-grid-swatch {
+.badge-opacity-chip {
+  background: #1d1d1d;
+  border: 1px solid #2e2e2e;
+  color: #999999;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 0.66rem;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.badge-opacity-chip:hover {
+  border-color: #444444;
+  color: #cccccc;
+}
+
+.badge-opacity-chip[aria-pressed="true"] {
+  border-color: #00bfff;
+  color: #ffffff;
+  background: color-mix(in srgb, #00bfff 16%, #1d1d1d);
+}
+
+.badge-preview {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.badge-preview-canvas {
+  width: 138px;
+  border-radius: 8px;
+  border: 1px solid #232323;
+  overflow: hidden;
+}
+
+.badge-preview-canvas svg {
+  display: block;
   width: 100%;
-  aspect-ratio: 1 / 1;
-  min-width: 0;
-  border: 1px solid #333333;
+  height: 44px;
+}
+
+.badge-preview-caption {
+  display: block;
+  font-size: 0.56rem;
+  color: #6a6a6a;
+  padding: 3px 6px;
+  background: #141414;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.badge-contrast-warn {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 0.66rem;
+  color: #d9a05b;
+  background: #241a10;
+  border: 1px solid #3f2d18;
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+
+.badge-contrast-warn--show {
+  display: flex;
+}
+
+/* ---- collapsible color detail: 15-column swatch matrix + one-line
+       footer (native picker · hex · precise opacity · ↺ reset) ---- */
+.badge-color-detail {
+  margin-top: 10px;
+  border-top: 1px dashed #2a2a2a;
+  padding-top: 10px;
+}
+
+.badge-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 3px;
+}
+
+.badge-grid-swatch {
+  aspect-ratio: 1;
   border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   cursor: pointer;
   padding: 0;
+  min-width: 0;
 }
 
-.palette-grid-swatch:hover {
-  border-color: #888888;
+.badge-grid-swatch:hover {
+  transform: scale(1.18);
 }
 
-.palette-grid-swatch--active {
-  outline: 2px solid #00bfff;
+.badge-grid-swatch[aria-pressed="true"] {
+  outline: 2px solid #ffffff;
   outline-offset: 1px;
 }
 
-.palette-grid-swatch:focus-visible {
-  outline: 2px solid #00bfff;
-  outline-offset: 1px;
-}
-
-.palette-accordion-controls {
+.badge-color-detail-footer {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.palette-picker {
-  width: 28px;
-  height: 22px;
+.badge-native-picker {
+  width: 36px;
+  height: 26px;
   padding: 0;
   border: 1px solid #2e2e2e;
-  border-radius: 3px;
-  background: #181818;
+  border-radius: 6px;
+  background: #101010;
   cursor: pointer;
+  flex: none;
 }
 
-.palette-accordion-done {
-  margin-left: auto;
-}
-
-.palette-hex {
-  width: 76px;
-  padding: 2px 6px;
+.badge-hex {
+  width: 12ch;
+  flex: none;
+  background: #101010;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  color: #eeeeee;
   font-family: monospace;
   font-size: 0.72rem;
-  color: #bbbbbb;
-  background: #181818;
+  padding: 5px 8px;
+}
+
+.badge-hex--invalid {
+  border-color: #c0392b;
+  color: #e57368;
+}
+
+/* scrubbable opacity field: [−][ 100 % ][+] — no slider. */
+.badge-opacity-control {
+  display: flex;
+  align-items: stretch;
   border: 1px solid #2e2e2e;
-  border-radius: 3px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #101010;
+  height: 26px;
 }
 
-.palette-hex--invalid {
-  border-color: #ff4444;
-}
-
-.palette-hex:focus-visible {
-  outline: 2px solid #00bfff;
-  outline-offset: 1px;
-}
-
-.palette-row-reset {
-  width: 22px;
-  height: 22px;
-  line-height: 1;
-  color: #bbbbbb;
-  background: #181818;
-  border: 1px solid #2e2e2e;
-  border-radius: 3px;
+.badge-opacity-step {
+  width: 26px;
+  background: #1a1a1a;
+  border: 0;
+  color: #999999;
   cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
-.palette-row-reset:disabled {
+.badge-opacity-step:hover {
+  background: #242424;
+  color: #ffffff;
+}
+
+.badge-opacity-scrub {
+  display: flex;
+  align-items: center;
+  cursor: ew-resize;
+  user-select: none;
+  border-left: 1px solid #232323;
+  border-right: 1px solid #232323;
+  padding: 0 3px;
+}
+
+.badge-opacity-scrub input {
+  width: 34px;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: #eeeeee;
+  font-family: monospace;
+  font-size: 0.74rem;
+  text-align: center;
+  padding: 4px 0;
+  cursor: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.badge-opacity-scrub input::-webkit-inner-spin-button,
+.badge-opacity-scrub input::-webkit-outer-spin-button {
+  display: none;
+  -webkit-appearance: none;
+}
+
+.badge-opacity-scrub input:focus {
+  background: #1c1c1c;
+  color: #ffffff;
+}
+
+.badge-opacity-unit {
+  color: #666666;
+  font-size: 0.66rem;
+  padding: 0 4px 0 2px;
+  pointer-events: none;
+}
+
+.badge-reset {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #1d1d1d;
+  border: 1px solid #2e2e2e;
+  color: #888888;
+  cursor: pointer;
+  font-size: 0.85rem;
+  flex: none;
+  padding: 0;
+}
+
+.badge-reset:hover:not(:disabled) {
+  color: #dddddd;
+  border-color: #444444;
+}
+
+.badge-reset:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
-.palette-reset-all {
-  margin-top: 4px;
+/* cursor popover movement-hint footer */
+.badge-popover-hint {
+  font-size: 0.64rem;
+  color: #585858;
+  border-top: 1px solid #232323;
+  margin: 12px -14px 0;
+  padding: 8px 14px 0;
 }
 
 /* Oscilloscope Container */
@@ -859,31 +1177,49 @@ body,
   gap: 8px;
 }
 
+/* Issue #204 tonal capsule for cursor badges (see channel badge above). */
 .waveform-cursor-badge {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  min-width: 38px;
-  background: #181818;
-  color: #888888;
-  border: 1px solid #2e2e2e;
+  align-items: stretch;
   border-radius: 999px;
-  padding: 3px 10px;
+  font-family: monospace;
   font-size: 0.78rem;
   font-weight: 600;
-  font-family: monospace;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  user-select: none;
+  background: #1f1f1f;
+  transition:
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 .waveform-cursor-badge:hover {
-  border-color: #555555;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
-.waveform-cursor-badge:focus-visible {
-  outline: 2px solid #00bfff;
-  outline-offset: 2px;
+.waveform-cursor-badge--active {
+  background: color-mix(in srgb, var(--badge-color) 13%, #1f1f1f);
+}
+
+.waveform-cursor-badge--active .waveform-cursor-badge-body {
+  color: var(--badge-color);
+}
+
+.waveform-cursor-badge--selected {
+  background: color-mix(in srgb, var(--badge-color) 22%, #1f1f1f);
+  box-shadow:
+    0 0 0 1px var(--badge-color),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.waveform-cursor-badge--selected .waveform-cursor-badge-body {
+  color: #ffffff;
+}
+
+.waveform-cursor-badge--open .waveform-cursor-badge-gear {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  opacity: 1;
 }
 
 .cursor-line {

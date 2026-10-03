@@ -29,12 +29,14 @@ import { useResizeObserver } from "../../hooks/useResizeObserver";
 import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
 import type { ChannelTag } from "../../state/viewportStore";
-import type { CustomColors, ViewportTheme } from "./themePalette";
+import type { ViewportTheme } from "./themePalette";
 import type { ParsedCapture } from "../../types/capture";
 import {
   DARK_THEME,
   effectiveCursorColor,
+  effectiveCursorStroke,
   effectiveTraceColor,
+  effectiveTraceStroke,
   resolveThemePalette,
 } from "./themePalette";
 import { useThemeStore } from "../../state/themeStore";
@@ -192,6 +194,22 @@ export function applyFitBounds(
   });
 }
 
+/** Shallow-compares two per-key config records for restyle decisions. */
+function configsEqual(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    const av = a[key] as Record<string, unknown> | undefined;
+    const bv = b[key] as Record<string, unknown> | undefined;
+    if (av?.color !== bv?.color || av?.opacity !== bv?.opacity) return false;
+  }
+  return true;
+}
+
 /** Snap radius (plot px) for trace click selection. */
 export const FOCUS_CLICK_SNAP_PX = 48;
 /** Sample window around the resolved index probed for the nearest trace. */
@@ -243,18 +261,20 @@ function nearestVisibleSeries(
 
 /**
  * Applies effective trace strokes to the live uPlot instance in place.
+ * Issue #204: strokes render as rgba() at the per-key opacity (hex stays
+ * canonical at full opacity).
  */
 function applyTraceStrokes(
   instance: uPlot,
   capture: ParsedCapture,
   theme: ViewportTheme,
-  customColors: CustomColors,
 ): void {
+  const { customColors, keyConfigs } = usePaletteStore.getState();
   capture.channels.forEach((channel, index) => {
     const series = instance.series[index + 1];
     if (series) {
       series.stroke = () =>
-        effectiveTraceColor(theme, customColors, channel.name);
+        effectiveTraceStroke(theme, customColors, keyConfigs, channel.name);
     }
   });
   instance.redraw();
@@ -279,7 +299,7 @@ export default function Oscilloscope({
   const selectedChannel = useViewportStore((state) => state.selectedChannel);
   const fitRequest = useViewportStore((state) => state.fitRequest);
   const theme = useThemeStore((state) => state.theme);
-  const customColors = usePaletteStore((state) => state.customColors);
+  const keyConfigs = usePaletteStore((state) => state.keyConfigs);
 
   const {
     ref: containerRef,
@@ -288,7 +308,7 @@ export default function Oscilloscope({
   } = useResizeObserver<HTMLDivElement>();
   const uplotRef = useRef<uPlot | null>(null);
   const styledThemeRef = useRef<string | null>(null);
-  const styledColorsRef = useRef<CustomColors | null>(null);
+  const styledConfigsRef = useRef<Record<string, unknown> | null>(null);
   const lastFitRequestRef = useRef(fitRequest);
   const captureRef = useRef(capture);
   captureRef.current = capture;
@@ -506,9 +526,10 @@ export default function Oscilloscope({
             useChannelNamesStore.getState().names[channel.name],
           ),
           scale: yScaleKey(index),
-          stroke: effectiveTraceColor(
+          stroke: effectiveTraceStroke(
             useThemeStore.getState().theme,
             usePaletteStore.getState().customColors,
+            usePaletteStore.getState().keyConfigs,
             channel.name,
           ),
           width: 1.5,
@@ -582,7 +603,9 @@ export default function Oscilloscope({
     const instance = new uPlot(opts, alignedData, container);
     uplotRef.current = instance;
     styledThemeRef.current = useThemeStore.getState().theme;
-    styledColorsRef.current = usePaletteStore.getState().customColors;
+    styledConfigsRef.current = {
+      ...usePaletteStore.getState().keyConfigs,
+    };
     (container as HTMLElement & { __uplot?: uPlot }).__uplot = instance;
     onUPlotInit?.(instance);
 
@@ -665,6 +688,7 @@ export default function Oscilloscope({
       }
       const themeNow = useThemeStore.getState().theme;
       const colorsNow = usePaletteStore.getState().customColors;
+      const configsNow = usePaletteStore.getState().keyConfigs;
       const cursorState = useCursorStore.getState();
       const viewportState = useViewportStore.getState();
       const renderTheme = inverted ? "light" : themeNow;
@@ -682,8 +706,18 @@ export default function Oscilloscope({
           color: effectiveTraceColor(renderTheme, colorsNow, channel.name),
         }));
       const overlay = {
-        cursor1: effectiveCursorColor(renderTheme, colorsNow, "C1"),
-        cursor2: effectiveCursorColor(renderTheme, colorsNow, "C2"),
+        cursor1: effectiveCursorStroke(
+          renderTheme,
+          colorsNow,
+          configsNow,
+          "C1",
+        ),
+        cursor2: effectiveCursorStroke(
+          renderTheme,
+          colorsNow,
+          configsNow,
+          "C2",
+        ),
         background: resolveThemePalette(renderTheme).background,
         legend,
         selected: cursorState.selectedCursor,
@@ -911,9 +945,11 @@ export default function Oscilloscope({
     if (!instance || !capture) return;
 
     const themeChanged = styledThemeRef.current !== theme;
-    const paletteChanged = styledColorsRef.current !== customColors;
+    const configsChanged =
+      styledConfigsRef.current === null ||
+      !configsEqual(styledConfigsRef.current, keyConfigs);
 
-    if (!themeChanged && !paletteChanged) return;
+    if (!themeChanged && !configsChanged) return;
 
     if (themeChanged) {
       const palette = resolveThemePalette(theme);
@@ -931,9 +967,9 @@ export default function Oscilloscope({
       }
       styledThemeRef.current = theme;
     }
-    styledColorsRef.current = customColors;
-    applyTraceStrokes(instance, capture, theme, customColors);
-  }, [theme, customColors, capture]);
+    styledConfigsRef.current = { ...keyConfigs };
+    applyTraceStrokes(instance, capture, theme);
+  }, [theme, keyConfigs, capture]);
 
   // Fit Waveform (100%) command channel
   useEffect(() => {
