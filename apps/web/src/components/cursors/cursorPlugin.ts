@@ -14,6 +14,7 @@
 import uPlot from "uplot";
 import {
   effectiveCursorColor,
+  effectiveCursorStroke,
   resolveThemePalette,
 } from "../canvas/themePalette";
 import { useThemeStore } from "../../state/themeStore";
@@ -63,14 +64,30 @@ function effectiveCursor(id: "C1" | "C2"): string {
   );
 }
 
-/** Applies one theme's cursor color to a cursor line + handle pair. */
+/**
+ * Issue #204: effective cursor stroke at the per-key opacity — the line
+ * renders rgba() below full opacity while the handle keeps the solid
+ * color so its label stays legible.
+ */
+function effectiveCursorStrokeCss(id: "C1" | "C2"): string {
+  const { customColors, keyConfigs } = usePaletteStore.getState();
+  return effectiveCursorStroke(
+    useThemeStore.getState().theme,
+    customColors,
+    keyConfigs,
+    id,
+  );
+}
+
+/** Applies a cursor's colors: rgba stroke on the line, solid handle. */
 function applyCursorPalette(
   line: HTMLElement,
   handle: HTMLElement,
-  color: string,
+  strokeCss: string,
+  id: "C1" | "C2",
 ): void {
-  line.style.backgroundColor = color;
-  handle.style.backgroundColor = color;
+  line.style.backgroundColor = strokeCss;
+  handle.style.backgroundColor = effectiveCursor(id);
   handle.style.color = currentPalette().cursorHandleText;
 }
 
@@ -104,7 +121,7 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
   c1Handle.style.textAlign = "center";
   c1Handle.style.fontSize = "10px";
   c1Handle.style.fontWeight = "700";
-  applyCursorPalette(c1Line, c1Handle, effectiveCursor("C1"));
+  applyCursorPalette(c1Line, c1Handle, effectiveCursorStrokeCss("C1"), "C1");
   c1Handle.title = getCursorHandleTitle("C1");
   c1Handle.setAttribute("aria-label", getCursorHandleAriaLabel("C1"));
   c1Handle.style.borderRadius = "0 0 3px 3px";
@@ -137,7 +154,7 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
   c2Handle.style.textAlign = "center";
   c2Handle.style.fontSize = "10px";
   c2Handle.style.fontWeight = "700";
-  applyCursorPalette(c2Line, c2Handle, effectiveCursor("C2"));
+  applyCursorPalette(c2Line, c2Handle, effectiveCursorStrokeCss("C2"), "C2");
   c2Handle.title = getCursorHandleTitle("C2");
   c2Handle.setAttribute("aria-label", getCursorHandleAriaLabel("C2"));
   c2Handle.style.borderRadius = "0 0 3px 3px";
@@ -156,8 +173,8 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
     if (!uplot) return;
     // Issue #38/#40: cursor line/handle colors follow the active viewport
     // theme and any user palette overrides
-    applyCursorPalette(c1Line, c1Handle, effectiveCursor("C1"));
-    applyCursorPalette(c2Line, c2Handle, effectiveCursor("C2"));
+    applyCursorPalette(c1Line, c1Handle, effectiveCursorStrokeCss("C1"), "C1");
+    applyCursorPalette(c2Line, c2Handle, effectiveCursorStrokeCss("C2"), "C2");
     const capture = options.getCapture();
     if (!capture || capture.timestamps.length === 0) {
       c1Line.style.display = "none";

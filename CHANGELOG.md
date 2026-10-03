@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.9.3] - 2026-10-03
+
+### Added
+
+- Split badge control surface for channel and cursor configuration (issue #204): every channel (A–D) and cursor (C1/C2) toolbar badge is now a compound "Tonal Capsule" group — a primary body target (~80%) keeping the existing show → select → hide cycle and double-click inline rename, plus a secondary 26px gear opening a per-key configuration popover — with identity carried by a `color-mix` tonal fill from the effective trace color (13% active, 22% selected + 1px color ring) instead of border color, borderless padded capsules without divider lines, and separated 2px focus rings per target. The popover (one reusable portal-based anchored primitive owning trigger geometry, viewport collision, and a single `openKey` for mutual exclusivity) follows the reviewed "Rich Header" design: a hero with a 32px color square showing the effective color at the chosen opacity over a checkerboard plus a luminance-aware pencil toggle, an M3 ghost/flat name field bound to `channelNamesStore.setName` (24 chars, live commit) or a static cursor title, a read-only monospace stats line (samples · Vmin…Vmax from the capture; Sample N · timestamp for cursors), quick knobs (opacity preset chips 25/50/75/100 with `aria-pressed`, a dual-canvas preview over both theme backgrounds, and an advisory low-contrast guard), and a collapsible color detail with the 30 curated swatches in a 15-column grid, native picker, content-width hex entry (live-commit valid values, rollback on blur/Enter), a no-slider precise opacity scrub field (±5 steppers, drag-to-scrub at ≈1%/4px with 3px click/drag disambiguation, click-to-type, clamped 5–100, arrow-key stepping), and a per-key ↺ reset restoring the theme-default color and 100% opacity in one action. Cursor popovers add the movement hint footer; accessibility covers `role="group"`/`role="dialog"` (non-modal), `aria-pressed`/`aria-haspopup`/`aria-expanded`, initial focus on the first interactive element, and Esc blurring a focused field first before dismissing back to the gear. Per-key trace opacity is the one new capability: persisted alongside color in one per-key `{ color, opacity }` record (legacy flat payloads still hydrate) and applied as `rgba()` stroke color in the uPlot series config and cursor strokes (hex stays canonical at full opacity), with the PNG snapshot overlay following the same effective stroke. `PaletteSettings.tsx` and the standalone "Colors" toolbar button are retired; the global "Reset to Default Palette" is dropped (per-key ↺ covers the need); existing badge `data-testid` selectors survive on the body button.
+
 ## [0.9.2] - 2026-09-30
 
 ### Changed
@@ -95,6 +101,7 @@ _This changelog records the public release history; releases appear here as they
 
 - Open-source readiness: MIT license (`FVF Viewer Contributors`); CHANGELOG refactored to Keep a Changelog 1.1.0 with no issue links; committed prose and metadata genericized to corpus-level references (no capture names, counts, or measurement contexts); the local-corpus and coverage suites degrade gracefully when the private empirical oracle manifest is absent; and a one-way release publisher workflow snapshots each release tag to the public repository as a single orphan commit (private artifacts excluded, internal URLs rewritten, coverage report regenerated synthetic-only).
 
+[0.9.3]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/openscope-ai/fvf-viewer/compare/v0.8.5...v0.9.0

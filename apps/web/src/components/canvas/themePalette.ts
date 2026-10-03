@@ -175,3 +175,106 @@ export function effectiveCursorColor(
 ): string {
   return effectiveColorForKey(theme, customColors, cursorId);
 }
+
+// ---------------------------------------------------------------------------
+// Per-key trace appearance (issue #204): opacity joins color in one
+// per-key config record ({ color, opacity }); strokes render as rgba()
+// at the chosen opacity (hex stays canonical at full opacity).
+// ---------------------------------------------------------------------------
+
+/** Persisted per-key appearance record (issue #204 growth path). */
+export interface PaletteKeyConfig {
+  /** Canonical lowercase hex override; absent = theme default. */
+  color?: string;
+  /** Trace opacity percent 5–100; absent/100 = fully opaque. */
+  opacity?: number;
+}
+
+export type PaletteKeyConfigs = Partial<Record<PaletteKey, PaletteKeyConfig>>;
+
+/** Expands a #RGB/#RRGGBB hex color to its [r, g, b] byte triple. */
+export function hexRgb(hex: string): [number, number, number] {
+  let h = hex.replace(/^#/, "");
+  if (h.length === 3) h = [...h].map((c) => c + c).join("");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+/**
+ * Stroke CSS for a hex color at an opacity percentage: the canonical hex
+ * at full opacity (so default-state consumers keep seeing plain hex),
+ * `rgba(r, g, b, a)` below 100%.
+ */
+export function rgbaFromHex(hex: string, opacityPercent: number): string {
+  const clamped = Math.max(0, Math.min(100, opacityPercent));
+  if (clamped >= 100) return hex;
+  const [r, g, b] = hexRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${(clamped / 100).toFixed(2)})`;
+}
+
+/** Expands #RGB/#RRGGBB to canonical 6-digit lowercase hex. */
+export function expandHex(hex: string): string {
+  let h = hex.replace(/^#/, "");
+  if (h.length === 3) h = [...h].map((c) => c + c).join("");
+  return `#${h.toLowerCase()}`;
+}
+
+/** WCAG relative luminance (0–1) of a hex color. */
+export function relativeLuminance(hex: string): number {
+  const [r, g, b] = hexRgb(hex).map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+/** Effective opacity percent for a palette key (5–100; 100 when unset). */
+export function effectiveOpacityForKey(
+  keyConfigs: PaletteKeyConfigs,
+  key: PaletteKey,
+): number {
+  const op = keyConfigs[key]?.opacity;
+  if (typeof op !== "number" || !Number.isFinite(op)) return 100;
+  return Math.max(5, Math.min(100, Math.round(op)));
+}
+
+/** Resolves a channel name to its palette key, or null for non-palette channels. */
+export function paletteKeyForChannel(channelName: string): PaletteKey | null {
+  const tag = channelTag(channelName);
+  return (PALETTE_KEYS as readonly string[]).includes(tag)
+    ? (tag as PaletteKey)
+    : null;
+}
+
+/**
+ * Effective channel trace stroke with per-key opacity applied as rgba()
+ * (issue #204): user color override first, theme default second; opacity
+ * from the per-key config record, hex at full opacity.
+ */
+export function effectiveTraceStroke(
+  theme: ViewportTheme,
+  customColors: CustomColors,
+  keyConfigs: PaletteKeyConfigs,
+  channelName: string,
+): string {
+  const color = effectiveTraceColor(theme, customColors, channelName);
+  const key = paletteKeyForChannel(channelName);
+  const opacity = key ? effectiveOpacityForKey(keyConfigs, key) : 100;
+  return rgbaFromHex(color, opacity);
+}
+
+/** Effective cursor stroke (C1/C2) with per-key opacity applied as rgba(). */
+export function effectiveCursorStroke(
+  theme: ViewportTheme,
+  customColors: CustomColors,
+  keyConfigs: PaletteKeyConfigs,
+  cursorId: "C1" | "C2",
+): string {
+  return rgbaFromHex(
+    effectiveCursorColor(theme, customColors, cursorId),
+    effectiveOpacityForKey(keyConfigs, cursorId),
+  );
+}
