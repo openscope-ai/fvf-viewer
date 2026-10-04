@@ -9,6 +9,10 @@ import { useCursorStore } from "../../../state/cursorStore";
 import { usePaletteStore } from "../../../state/paletteStore";
 import { useThemeStore } from "../../../state/themeStore";
 import { useBadgePopoverStore } from "./anchoredPopover";
+import {
+  CURSOR_DISPLAY_STORAGE_KEY,
+  useCursorDisplayStore,
+} from "../../../state/cursorDisplayStore";
 import { useViewportStore } from "../../../state/viewportStore";
 import { CURSOR_MOVEMENT_SUMMARY } from "../../cursors/cursorHelp";
 import type { ParsedCapture } from "../../../types/capture";
@@ -115,6 +119,7 @@ describe("Badge config popover (issue #204)", () => {
   beforeEach(() => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
+    useCursorDisplayStore.getState().reset();
     useCaptureStore.getState().reset();
     useViewportStore.getState().reset();
     useCursorStore.getState().reset();
@@ -561,6 +566,251 @@ describe("Badge config popover (issue #204)", () => {
       await new Promise((r) => setTimeout(r, 30));
     });
     expect(usePaletteStore.getState().keyConfigs.C1).toEqual({ opacity: 50 });
+  });
+
+  it("issue #227 AC1/AC3: cursor preview draws a vertical cursor line over a muted mock waveform on both panels, updating live", async () => {
+    const popover = await openCursorPopover("c1");
+    const darkPanel = popover.querySelector(
+      ".badge-preview-canvas--dark",
+    ) as HTMLElement;
+    const lightPanel = popover.querySelector(
+      ".badge-preview-canvas--light",
+    ) as HTMLElement;
+
+    // Vertical line spans the full panel height on both panels.
+    const lines = [darkPanel, lightPanel].map(
+      (panel) =>
+        panel.querySelector(
+          "[data-testid='cursor-preview-line']",
+        ) as SVGLineElement,
+    );
+    expect(lines[0]).not.toBeNull();
+    expect(lines[1]).not.toBeNull();
+    for (const line of lines) {
+      expect(line.getAttribute("y1")).toBe("0");
+      expect(line.getAttribute("y2")).toBe("44");
+      expect(line.getAttribute("x1")).toBe(line.getAttribute("x2"));
+    }
+
+    // The line carries the effective cursor color at the current opacity
+    // (defaults: dark theme C1 #E040FB at 100%).
+    expect(lines[0]!.getAttribute("stroke")).toBe("#E040FB");
+    expect(lines[1]!.getAttribute("stroke")).toBe("#E040FB");
+
+    // Tiny handle glyph at the top: solid fill (canvas handles stay solid
+    // while the line carries the per-key opacity).
+    const handle = darkPanel.querySelector(
+      "[data-testid='cursor-preview-handle']",
+    ) as SVGPathElement;
+    expect(handle.getAttribute("fill")).toBe("#E040FB");
+
+    // The background wave is a deliberately muted neutral per panel —
+    // never the cursor color — and the channel-style colored wave stroke
+    // is absent from the cursor popover entirely.
+    const darkWave = darkPanel.querySelector(
+      ".badge-preview-mockwave",
+    ) as SVGPathElement;
+    const lightWave = lightPanel.querySelector(
+      ".badge-preview-mockwave",
+    ) as SVGPathElement;
+    expect(darkWave.getAttribute("stroke")).toBe("#3f3f3f");
+    expect(lightWave.getAttribute("stroke")).toBe("#a9a9a9");
+    expect(popover.querySelectorAll(".badge-preview-wave").length).toBe(0);
+
+    // Live update via an opacity preset chip: the line re-strokes to 25%.
+    await act(async () => {
+      (
+        popover.querySelector(
+          "[data-testid='opacity-chip-25']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(lines[0]!.getAttribute("stroke")).toBe("rgba(224, 64, 251, 0.25)");
+
+    // Live update via a custom color: line and handle re-color in place.
+    await act(async () => {
+      usePaletteStore.getState().setCustomColor("C1", "#00ff7f");
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(lines[0]!.getAttribute("stroke")).toBe("rgba(0, 255, 127, 0.25)");
+    expect(handle.getAttribute("fill")).toBe("#00ff7f");
+  });
+
+  it("issue #226 AC1/AC4: measurement units live in cursor popovers only, are shared across both, and persist", async () => {
+    // Channel popovers carry neither new section.
+    const channelPopover = await openChannelPopover("A");
+    expect(
+      channelPopover.querySelector("[data-testid='measurement-units-section']"),
+    ).toBeNull();
+    expect(
+      channelPopover.querySelector("[data-testid='line-style-section']"),
+    ).toBeNull();
+
+    // Cursor C1 at sample 0 → t = -5 ms under SI; the pinned `s` unit
+    // distinguishes the position line (-0.005 s).
+    await act(async () => {
+      useCursorStore.getState().setCursorActive("C1", true, 1000);
+      useCursorStore.getState().setCursorSample("C1", 0, 1000);
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    const popover = await openCursorPopover("c1");
+    expect(
+      popover.querySelector("[data-testid='measurement-units-section']"),
+    ).not.toBeNull();
+    const stats = popover.querySelector(
+      "[data-testid='cursor-stats']",
+    ) as HTMLElement;
+    expect(stats.textContent).toBe("Sample 0 · -5.000 ms");
+
+    await act(async () => {
+      (
+        popover.querySelector(
+          "[data-testid='setting-time-s']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    // The popover position line reformats with the pinned unit.
+    expect(stats.textContent).toBe("Sample 0 · -0.005 s");
+
+    // The shared selection reflects identically in the C2 popover.
+    const c2Popover = await openCursorPopover("c2");
+    expect(c2Popover.getAttribute("aria-label")).toBe("Configure Cursor C2");
+    expect(
+      (
+        c2Popover.querySelector(
+          "[data-testid='setting-time-s']",
+        ) as HTMLButtonElement
+      ).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      (
+        c2Popover.querySelector(
+          "[data-testid='setting-time-si']",
+        ) as HTMLButtonElement
+      ).getAttribute("aria-pressed"),
+    ).toBe("false");
+
+    // Persistence: the global selection survives in session storage.
+    expect(
+      JSON.parse(window.localStorage.getItem(CURSOR_DISPLAY_STORAGE_KEY)!),
+    ).toMatchObject({ timeUnit: "s" });
+  });
+
+  it("issue #226 AC3/AC4: per-cursor line styles are independent and persist", async () => {
+    const c1Popover = await openCursorPopover("c1");
+    expect(
+      c1Popover.querySelector("[data-testid='line-style-section']"),
+    ).not.toBeNull();
+
+    await act(async () => {
+      (
+        c1Popover.querySelector(
+          "[data-testid='setting-line-style-dashed']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(useCursorDisplayStore.getState().lineStyles).toEqual({
+      C1: "dashed",
+      C2: "solid",
+    });
+
+    // The other cursor's popover still shows its own (solid) selection.
+    const c2Popover = await openCursorPopover("c2");
+    expect(
+      (
+        c2Popover.querySelector(
+          "[data-testid='setting-line-style-solid']",
+        ) as HTMLButtonElement
+      ).getAttribute("aria-pressed"),
+    ).toBe("true");
+    await act(async () => {
+      (
+        c2Popover.querySelector(
+          "[data-testid='setting-line-style-dotted']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(useCursorDisplayStore.getState().lineStyles).toEqual({
+      C1: "dashed",
+      C2: "dotted",
+    });
+    expect(
+      JSON.parse(window.localStorage.getItem(CURSOR_DISPLAY_STORAGE_KEY)!),
+    ).toMatchObject({ lineStyles: { C1: "dashed", C2: "dotted" } });
+  });
+
+  it("issue #225 AC1/AC4: channel binding is per-cursor and persists", async () => {
+    const c1Popover = await openCursorPopover("c1");
+    const section = c1Popover.querySelector(
+      "[data-testid='channel-binding-section']",
+    );
+    expect(section).not.toBeNull();
+
+    await act(async () => {
+      (
+        c1Popover.querySelector(
+          "[data-testid='setting-binding-b']",
+        ) as HTMLButtonElement
+      ).click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(useCursorDisplayStore.getState().bindings).toEqual({
+      C1: "B",
+      C2: "all",
+    });
+
+    // The other cursor's binding is independent.
+    const c2Popover = await openCursorPopover("c2");
+    expect(
+      (
+        c2Popover.querySelector(
+          "[data-testid='setting-binding-all']",
+        ) as HTMLButtonElement
+      ).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      JSON.parse(window.localStorage.getItem(CURSOR_DISPLAY_STORAGE_KEY)!),
+    ).toMatchObject({ bindings: { C1: "B", C2: "all" } });
+  });
+
+  it("issue #225 AC2/AC4: locked Δt is one shared toggle surfaced in both popovers", async () => {
+    const c1Popover = await openCursorPopover("c1");
+    const lock1 = c1Popover.querySelector(
+      "[data-testid='setting-delta-lock']",
+    ) as HTMLButtonElement;
+    expect(lock1.getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => {
+      lock1.click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(useCursorDisplayStore.getState().deltaLocked).toBe(true);
+
+    // The C2 popover reflects the same shared state (one pair-level flag).
+    const c2Popover = await openCursorPopover("c2");
+    const lock2 = c2Popover.querySelector(
+      "[data-testid='setting-delta-lock']",
+    ) as HTMLButtonElement;
+    expect(lock2.getAttribute("aria-pressed")).toBe("true");
+    expect(lock2.textContent).toBe("Locked");
+  });
+
+  it("issue #227 AC2: channel preview remains the waveform stroke (no cursor line, no mock wave)", async () => {
+    const popover = await openChannelPopover("A");
+
+    expect(popover.querySelectorAll(".badge-preview-wave").length).toBe(2);
+    expect(
+      popover.querySelector("[data-testid='cursor-preview-line']"),
+    ).toBeNull();
+    expect(
+      popover.querySelector("[data-testid='cursor-preview-handle']"),
+    ).toBeNull();
+    expect(popover.querySelector(".badge-preview-mockwave")).toBeNull();
   });
 
   it("AC4: per-key {color, opacity} records persist alongside the palette", async () => {

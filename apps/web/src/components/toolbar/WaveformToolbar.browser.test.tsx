@@ -298,6 +298,134 @@ describe("WaveformToolbar (browser)", () => {
     );
   });
 
+  it("issue #228: M3 split-action chips — 8px radius, divider, 48px hit targets, unified active/inactive paradigm", async () => {
+    act(() => {
+      root.render(<WaveformToolbar channels={["A", "B"]} />);
+    });
+
+    const groupA = badgeGroup("channel-badge-A");
+    const bodyA = hostElement.querySelector(
+      "[data-testid='channel-badge-A']",
+    ) as HTMLButtonElement;
+    const gearA = hostElement.querySelector(
+      "[data-testid='channel-gear-A']",
+    ) as HTMLButtonElement;
+    const dividerA = groupA.querySelector(
+      ".badge-split-divider",
+    ) as HTMLElement;
+
+    // M3 chip geometry: standard 8px radius (not a pill) on a ~32px
+    // visible container.
+    const groupStyle = window.getComputedStyle(groupA);
+    expect(groupStyle.borderRadius).toBe("8px");
+    expect(groupA.offsetHeight).toBe(32);
+
+    // Split-action layout: a 1px divider at ~12% outline alpha separates
+    // the two non-overlapping hit zones.
+    expect(dividerA).not.toBeNull();
+    const dividerStyle = window.getComputedStyle(dividerA);
+    expect(dividerStyle.width).toBe("1px");
+    expect(dividerStyle.backgroundColor).toBe("rgba(255, 255, 255, 0.12)");
+    expect(dividerA.previousElementSibling).toBe(bodyA);
+    expect(dividerA.nextElementSibling).toBe(gearA);
+
+    // Both hit targets meet the 48x48 minimum via transparent bounds on
+    // the 32px chip.
+    expect(bodyA.offsetHeight).toBeGreaterThanOrEqual(48);
+    expect(bodyA.offsetWidth).toBeGreaterThanOrEqual(48);
+    expect(gearA.offsetHeight).toBeGreaterThanOrEqual(48);
+    expect(gearA.offsetWidth).toBeGreaterThanOrEqual(48);
+
+    // Independent M3 state layers exist per zone (8% hover / 12% press
+    // overlays on the visible chip band).
+    const bodyLayer = window.getComputedStyle(bodyA, "::before");
+    const gearLayer = window.getComputedStyle(gearA, "::before");
+    expect(bodyLayer.content).not.toBe("none");
+    expect(gearLayer.content).not.toBe("none");
+    expect(bodyLayer.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(gearLayer.backgroundColor).toBe("rgb(255, 255, 255)");
+
+    // Unified active paradigm (visible channels start active):
+    // surfaceContainerHigh + accent stroke; channel A is also the
+    // selected channel, so its label stays white on the stronger 1.5px
+    // ring by design.
+    expect(groupA.className).toContain("waveform-channel-badge--active");
+    expect(groupStyle.backgroundColor).toBe("rgb(42, 42, 42)");
+    expect(window.getComputedStyle(bodyA).color).toBe("rgb(255, 255, 255)");
+    expect(window.getComputedStyle(groupA).boxShadow).toContain(
+      "rgb(255, 215, 0)",
+    );
+
+    // An active, unselected channel tints its label with the trace color
+    // and lifts the gear to onSurfaceVariant (WCAG AA).
+    const groupB = badgeGroup("channel-badge-B");
+    const bodyB = hostElement.querySelector(
+      "[data-testid='channel-badge-B']",
+    ) as HTMLButtonElement;
+    const gearB = hostElement.querySelector(
+      "[data-testid='channel-gear-B']",
+    ) as HTMLButtonElement;
+    expect(groupB.className).toContain("waveform-channel-badge--active");
+    expect(groupB.className).not.toContain("waveform-channel-badge--selected");
+    expect(window.getComputedStyle(bodyB).color).toBe("rgb(0, 191, 255)");
+    expect(window.getComputedStyle(gearB).color).toBe("rgb(196, 199, 197)");
+
+    // Unified inactive paradigm: surfaceContainerLow + subtle outline,
+    // label and gear dimmed to ~38% — identical for every badge (no
+    // mixed outline/solid styles). (The body's first click selects a
+    // visible channel, so hide B through the visibility store here.)
+    await act(async () => {
+      useViewportStore.setState({
+        activeChannels: ["A"],
+        selectedChannel: "A",
+      });
+      // The container eases its background/box-shadow over 200ms — let
+      // the transition settle before reading computed values.
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    expect(groupB.className).not.toContain("--active");
+    expect(groupB.className).not.toContain("--selected");
+    expect(window.getComputedStyle(groupB).backgroundColor).toBe(
+      "rgb(26, 26, 26)",
+    );
+    expect(window.getComputedStyle(bodyB).color).toBe(
+      "rgba(255, 255, 255, 0.38)",
+    );
+    expect(window.getComputedStyle(gearB).color).toBe(
+      "rgba(255, 255, 255, 0.38)",
+    );
+
+    // Cursor badges share the same chrome (cursor C1).
+    await act(async () => {
+      useCursorStore.getState().toggleCursor("C1", 1000);
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    const cursorGroup = badgeGroup("cursor-toggle-c1");
+    expect(window.getComputedStyle(cursorGroup).borderRadius).toBe("8px");
+    expect(cursorGroup.offsetHeight).toBe(32);
+    expect(cursorGroup.className).toContain("waveform-cursor-badge--active");
+    expect(window.getComputedStyle(cursorGroup).backgroundColor).toBe(
+      "rgb(42, 42, 42)",
+    );
+
+    // AC6: the established behaviors survive on the new chrome — the
+    // body cycle (selected + clicked → hidden) and the gear opens the
+    // popover.
+    expect(bodyA.getAttribute("aria-pressed")).toBe("true");
+    act(() => {
+      bodyA.click();
+    });
+    expect(bodyA.getAttribute("aria-pressed")).toBe("false");
+    act(() => {
+      gearA.click();
+    });
+    expect(gearA.getAttribute("aria-expanded")).toBe("true");
+    // The popover renders through a portal into document.body.
+    expect(
+      document.body.querySelector("[data-testid='badge-config-popover']"),
+    ).not.toBeNull();
+  });
+
   it("AC (#204): gear opens the config popover; retired Colors panel is gone; badge colors follow overrides", () => {
     act(() => {
       root.render(<WaveformToolbar channels={["A"]} />);

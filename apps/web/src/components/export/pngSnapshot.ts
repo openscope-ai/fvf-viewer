@@ -28,6 +28,7 @@ import {
   createTimeAxisAdapter,
   type TimeAxisUnitKey,
 } from "../canvas/timeAxis";
+import type { LineStyle } from "../../state/cursorDisplayStore";
 import { createYAxisAdapter, type YAxisAdapter } from "../canvas/yAxis";
 import {
   buildDisplayData,
@@ -40,6 +41,12 @@ export interface SnapshotOverlayState {
   /** Effective (theme + user override) cursor colors. */
   cursor1: string;
   cursor2: string;
+  /**
+   * Issue #226: per-cursor line styles; omitted/`solid` keeps the plain
+   * filled line. `dashed`/`dotted` stroke the line with a dash pattern
+   * instead of filling it, mirroring the live canvas border rendering.
+   */
+  lineStyles?: { C1: LineStyle; C2: LineStyle };
   /** Active viewport theme background (fills axis margins too). */
   background: string;
   /** Visible-channel legend entries (label + effective trace color). */
@@ -81,6 +88,16 @@ export interface ComposedSnapshot {
 }
 
 const CURSOR_LINE_WIDTH_PX = 2;
+
+/**
+ * Issue #226 dash patterns (canvas-space CSS px): `null` = solid fill.
+ * Dotted uses round caps so each dash reads as a dot.
+ */
+export function cursorLineDashPattern(style: LineStyle): number[] | null {
+  if (style === "dashed") return [6, 4];
+  if (style === "dotted") return [1, 3];
+  return null;
+}
 const CURSOR_HANDLE_WIDTH_PX = 24;
 const CURSOR_HANDLE_HEIGHT_PX = 16;
 const BADGE_WIDTH_PX = 56;
@@ -253,13 +270,31 @@ export function composeSnapshotCanvas(
     // valToPos returns plot-area-relative CSS px; offset by the plot's
     // left edge to land in full-chart composite coordinates.
     const x = plotLeft + uplot.valToPos(time, "x");
-    ctx.fillStyle = spec.color;
-    ctx.fillRect(
-      x - CURSOR_LINE_WIDTH_PX / 2,
-      plotTop,
-      CURSOR_LINE_WIDTH_PX,
-      plotHeight,
+    // Issue #226: dashed/dotted cursors stroke with a dash pattern
+    // instead of the solid fill; the handle above stays solid.
+    const dash = cursorLineDashPattern(
+      overlay.lineStyles?.[spec.id] ?? "solid",
     );
+    if (dash) {
+      ctx.save();
+      ctx.strokeStyle = spec.color;
+      ctx.lineWidth = CURSOR_LINE_WIDTH_PX;
+      ctx.lineCap = "round";
+      ctx.setLineDash(dash);
+      ctx.beginPath();
+      ctx.moveTo(x, plotTop);
+      ctx.lineTo(x, plotTop + plotHeight);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.fillStyle = spec.color;
+      ctx.fillRect(
+        x - CURSOR_LINE_WIDTH_PX / 2,
+        plotTop,
+        CURSOR_LINE_WIDTH_PX,
+        plotHeight,
+      );
+    }
 
     const handleX = x - CURSOR_HANDLE_WIDTH_PX / 2;
     ctx.fillRect(

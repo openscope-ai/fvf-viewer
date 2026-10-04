@@ -23,13 +23,17 @@ import {
   effectiveTraceColor,
 } from "../canvas/themePalette";
 import { usePaletteStore } from "../../state/paletteStore";
-import { formatFrequency, formatTime } from "./siFormat";
-import {
-  formatChannelValue,
-  getPhysicalChannelUnit,
-  splitUnit,
-} from "../../capture/channelUnits";
+import { getPhysicalChannelUnit, splitUnit } from "../../capture/channelUnits";
 import { useCursorStore, type CursorId } from "../../state/cursorStore";
+import {
+  formatFrequencyWithUnit,
+  formatTimeWithUnit,
+  formatVoltageWithUnit,
+} from "./displayUnits";
+import {
+  useCursorDisplayStore,
+  type CursorBinding,
+} from "../../state/cursorDisplayStore";
 import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useReadoutCardStore } from "../../state/readoutCardStore";
@@ -140,6 +144,15 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
   // in place, palette reset restores the dark-theme defaults.
   const customColors = usePaletteStore((state) => state.customColors);
   const position = useReadoutCardStore((state) => state.position);
+  // Issue #226: global display-unit selection drives every measurement on
+  // this card (one shared surface, set from either cursor popover).
+  const timeUnit = useCursorDisplayStore((state) => state.timeUnit);
+  const frequencyUnit = useCursorDisplayStore((state) => state.frequencyUnit);
+  const voltageUnit = useCursorDisplayStore((state) => state.voltageUnit);
+  // Issue #225: per-cursor channel source binding + pair-level Δt lock.
+  const c1Binding = useCursorDisplayStore((state) => state.bindings.C1);
+  const c2Binding = useCursorDisplayStore((state) => state.bindings.C2);
+  const deltaLocked = useCursorDisplayStore((state) => state.deltaLocked);
   const collapsed = useReadoutCardStore((state) => state.collapsed);
   const setPosition = useReadoutCardStore((state) => state.setPosition);
 
@@ -355,6 +368,22 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
     .map((channel, index) => ({ channel, index }))
     .filter(({ channel }) => activeChannels.includes(channel.name));
 
+  // Issue #225: a bound cursor's measurements filter to its bound
+  // channel; a hidden (or absent) bound channel falls back to all visible
+  // channels with an explicit hint — the card is never empty.
+  const boundChannelList = (
+    binding: CursorBinding,
+  ): { list: typeof visibleChannels; fallback: boolean } => {
+    if (binding === "all") return { list: visibleChannels, fallback: false };
+    const bound = visibleChannels.filter(
+      ({ channel }) => channel.name === binding,
+    );
+    if (bound.length > 0) return { list: bound, fallback: false };
+    return { list: visibleChannels, fallback: true };
+  };
+  const c1Channels = boundChannelList(c1Binding);
+  const c2Channels = boundChannelList(c2Binding);
+
   const effectiveXMin = xMin ?? timestamps[0] ?? 0;
   const effectiveXMax = xMax ?? timestamps[totalSamples - 1] ?? 1;
 
@@ -372,6 +401,7 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
     active: boolean,
     idx: number,
     timeVal: number,
+    channelList: { list: typeof visibleChannels; fallback: boolean },
   ) => {
     if (!active) return null;
     const isSelected = selectedCursor === id;
@@ -419,11 +449,11 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
             className="cursor-time-value"
             data-testid={`cursor-time-${id.toLowerCase()}`}
           >
-            {formatTime(timeVal)}
+            {formatTimeWithUnit(timeVal, timeUnit)}
           </span>
         </div>
         <div className="cursor-channel-voltages">
-          {visibleChannels.map(({ channel, index }) => {
+          {channelList.list.map(({ channel, index }) => {
             const v = channel.data[idx] ?? 0;
             // Issue #143: the swatch carries the exact canvas trace color
             // in the active theme; the name stays readable on the dark
@@ -458,14 +488,24 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
                   </span>
                 </span>
                 <span className="cursor-voltage-value">
-                  {formatChannelValue(
+                  {formatVoltageWithUnit(
                     v,
                     getPhysicalChannelUnit(capture, index),
+                    voltageUnit,
                   )}
                 </span>
               </div>
             );
           })}
+          {channelList.fallback && (
+            <div
+              className="cursor-binding-hint"
+              data-testid={`cursor-binding-hint-${id.toLowerCase()}`}
+            >
+              {id === "C1" ? c1Binding : c2Binding} hidden — showing all visible
+              channels
+            </div>
+          )}
         </div>
       </div>
     );
@@ -561,8 +601,8 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
 
       {!collapsed && (
         <div className="cursor-readout-card-content">
-          {renderCursorRow("C1", c1Active, i1, t1)}
-          {renderCursorRow("C2", c2Active, i2, t2)}
+          {renderCursorRow("C1", c1Active, i1, t1, c1Channels)}
+          {renderCursorRow("C2", c2Active, i2, t2, c2Channels)}
 
           {/* Differential section when both C1 and C2 are active */}
           {c1Active && c2Active && (
@@ -571,12 +611,23 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
               data-testid="cursor-readout-differential"
             >
               <div className="cursor-diff-row">
-                <span className="cursor-diff-label">Δt:</span>
+                <span className="cursor-diff-label">
+                  Δt:
+                  {deltaLocked && (
+                    <span
+                      className="cursor-dt-lock-badge"
+                      data-testid="cursor-dt-lock-badge"
+                      title="Locked Δt: moving either cursor slides both"
+                    >
+                      locked
+                    </span>
+                  )}
+                </span>
                 <span
                   className="cursor-diff-value"
                   data-testid="cursor-delta-t"
                 >
-                  {formatTime(deltaT)}
+                  {formatTimeWithUnit(deltaT, timeUnit)}
                 </span>
               </div>
               <div className="cursor-diff-row">
@@ -585,47 +636,53 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
                   className="cursor-diff-value"
                   data-testid="cursor-frequency"
                 >
-                  {formatFrequency(freq)}
+                  {formatFrequencyWithUnit(freq, frequencyUnit)}
                 </span>
               </div>
-              {visibleChannels.map(({ channel, index }) => {
-                const v1 = channel.data[i1] ?? 0;
-                const v2 = channel.data[i2] ?? 0;
-                const deltaV = v2 - v1;
-                const unit = getPhysicalChannelUnit(capture, index);
-                const { base } = splitUnit(unit);
-                // Issue #143: same swatch treatment as the channel rows —
-                // the chip matches the canvas trace, the label stays
-                // readable.
-                const chColor = effectiveTraceColor(
-                  theme,
-                  customColors,
-                  channel.name,
-                );
-                const isSelected = channel.name === selectedChannel;
-                return (
-                  <div
-                    key={channel.name}
-                    className={`cursor-diff-row${isSelected ? " cursor-diff-row--selected" : ""}`}
-                    data-testid={`cursor-delta-v-${channel.name}`}
-                  >
-                    <span className="cursor-diff-identity">
-                      <span
-                        className="cursor-channel-swatch"
-                        style={{ backgroundColor: chColor }}
-                        aria-hidden="true"
-                        data-testid={`cursor-delta-v-${channel.name}-swatch`}
-                      />
-                      <span className="cursor-diff-label">
-                        Δ{base}({channel.name}):
+              {c1Channels.list
+                .filter(({ channel }) =>
+                  c2Channels.list.some(
+                    (entry) => entry.channel.name === channel.name,
+                  ),
+                )
+                .map(({ channel, index }) => {
+                  const v1 = channel.data[i1] ?? 0;
+                  const v2 = channel.data[i2] ?? 0;
+                  const deltaV = v2 - v1;
+                  const unit = getPhysicalChannelUnit(capture, index);
+                  const { base } = splitUnit(unit);
+                  // Issue #143: same swatch treatment as the channel rows —
+                  // the chip matches the canvas trace, the label stays
+                  // readable.
+                  const chColor = effectiveTraceColor(
+                    theme,
+                    customColors,
+                    channel.name,
+                  );
+                  const isSelected = channel.name === selectedChannel;
+                  return (
+                    <div
+                      key={channel.name}
+                      className={`cursor-diff-row${isSelected ? " cursor-diff-row--selected" : ""}`}
+                      data-testid={`cursor-delta-v-${channel.name}`}
+                    >
+                      <span className="cursor-diff-identity">
+                        <span
+                          className="cursor-channel-swatch"
+                          style={{ backgroundColor: chColor }}
+                          aria-hidden="true"
+                          data-testid={`cursor-delta-v-${channel.name}-swatch`}
+                        />
+                        <span className="cursor-diff-label">
+                          Δ{base}({channel.name}):
+                        </span>
                       </span>
-                    </span>
-                    <span className="cursor-diff-value">
-                      {formatChannelValue(deltaV, unit)}
-                    </span>
-                  </div>
-                );
-              })}
+                      <span className="cursor-diff-value">
+                        {formatVoltageWithUnit(deltaV, unit, voltageUnit)}
+                      </span>
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>

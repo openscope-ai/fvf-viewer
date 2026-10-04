@@ -528,23 +528,27 @@ body,
    color via color-mix (13% active, 22% selected + 1px color ring), not
    border color; the capsule is borderless and padded with no divider.
    Per-target focus rings stay separated (2px #00bfff, offset 2). */
+/* Issue #228: M3 filter-chip badges — split-action layout (label toggle +
+   trailing gear) on standard M3 chip geometry: 8px radius, ~32px visible
+   container on surfaceContainer elevation tiers, 1px split divider at
+   ~12% outline alpha, 48x48 transparent-bounds hit targets, and
+   independent 8% hover / 12% press state layers per zone. */
 .waveform-channel-badge {
   position: relative;
   display: inline-flex;
-  align-items: stretch;
-  border-radius: 999px;
+  align-items: center;
+  height: 32px;
+  border-radius: 8px;
   font-family: monospace;
   font-size: 0.78rem;
   font-weight: 600;
   user-select: none;
-  background: #1f1f1f;
+  /* Inactive: surfaceContainerLow with a subtle neutral outline. */
+  background: #1a1a1a;
+  box-shadow: inset 0 0 0 1px #2b2b2b;
   transition:
     box-shadow 0.2s ease,
     background 0.2s ease;
-}
-
-.waveform-channel-badge:hover {
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
 .waveform-channel-badge-body,
@@ -554,37 +558,76 @@ body,
   font: inherit;
   border: 0;
   background: transparent;
-  padding: 0;
   cursor: pointer;
   color: inherit;
   display: flex;
   align-items: center;
+  position: relative;
+  /* 48x48 transparent-bounds hit targets on a ~32px visible chip. */
+  align-self: center;
+  height: 48px;
+}
+
+.waveform-channel-badge-body::before,
+.waveform-channel-badge-gear::before,
+.waveform-cursor-badge-body::before,
+.waveform-cursor-badge-gear::before {
+  /* Independent M3 state layers per hit zone, constrained to the visible
+     32px chip band: 8% white on hover, 12% on press. */
+  content: "";
+  position: absolute;
+  inset: 8px 0;
+  border-radius: 7px;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.waveform-channel-badge-body:hover::before,
+.waveform-channel-badge-gear:hover::before,
+.waveform-cursor-badge-body:hover::before,
+.waveform-cursor-badge-gear:hover::before {
+  opacity: 0.08;
+}
+
+.waveform-channel-badge-body:active::before,
+.waveform-channel-badge-gear:active::before,
+.waveform-cursor-badge-body:active::before,
+.waveform-cursor-badge-gear:active::before {
+  opacity: 0.12;
 }
 
 .waveform-channel-badge-body,
 .waveform-cursor-badge-body {
   justify-content: center;
-  padding: 5px 4px 5px 15px;
-  color: #909090;
-  border-radius: 999px 0 0 999px;
-  min-width: 34px;
+  padding: 0 10px 0 12px;
+  /* Inactive label: dimmed neutral (~38%). */
+  color: rgba(255, 255, 255, 0.38);
+  min-width: 48px;
 }
 
 .waveform-channel-badge-gear,
 .waveform-cursor-badge-gear {
-  width: 26px;
-  height: 26px;
-  margin: 2px 4px 2px 6px;
-  border-radius: 50%;
-  color: #8a8a8a;
-  opacity: 0.7;
+  width: 48px;
+  padding: 0 8px 0 6px;
   justify-content: center;
+  /* Inactive gear: dimmed with the label. */
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .waveform-channel-badge-gear:hover,
 .waveform-cursor-badge-gear:hover {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+/* 1px split divider between the toggle and settings hit zones. */
+.badge-split-divider {
+  flex: none;
+  align-self: center;
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .waveform-channel-badge-body:focus-visible,
@@ -596,17 +639,25 @@ body,
 }
 
 .waveform-channel-badge--active {
-  background: color-mix(in srgb, var(--badge-color) 13%, #1f1f1f);
+  /* Active/visible: surfaceContainerHigh + accent stroke + tinted label. */
+  background: #2a2a2a;
+  box-shadow: 0 0 0 1px var(--badge-color);
 }
 
 .waveform-channel-badge--active .waveform-channel-badge-body {
   color: var(--badge-color);
 }
 
+.waveform-channel-badge--active .waveform-channel-badge-gear,
+.waveform-cursor-badge--active .waveform-cursor-badge-gear {
+  /* onSurfaceVariant (WCAG AA on #2a2a2a), brightening on hover. */
+  color: #c4c7c5;
+}
+
 .waveform-channel-badge--selected {
-  background: color-mix(in srgb, var(--badge-color) 22%, #1f1f1f);
+  background: #2a2a2a;
   box-shadow:
-    0 0 0 1px var(--badge-color),
+    0 0 0 1.5px var(--badge-color),
     0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
@@ -615,17 +666,25 @@ body,
 }
 
 .waveform-channel-badge--open .waveform-channel-badge-gear {
-  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  opacity: 1;
 }
 
-/* Non-palette channels keep a plain toggle capsule (no gear). */
+/* Non-palette channels keep a plain toggle chip (no gear, no divider). */
 .waveform-channel-badge--plain {
   justify-content: center;
   text-align: center;
-  color: #909090;
+  color: rgba(255, 255, 255, 0.38);
   cursor: pointer;
+  height: 32px;
+  padding: 0 12px;
+  position: relative;
+}
+
+/* 48px-tall transparent touch bounds around the 32px chip. */
+.waveform-channel-badge--plain::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
 }
 
 .waveform-channel-badge--plain:hover {
@@ -644,6 +703,7 @@ body,
   align-items: center;
   gap: 2px;
   padding: 2px 6px;
+  border-radius: 8px;
   background: #1f1f1f;
 }
 
@@ -906,6 +966,55 @@ body,
   border-color: #00bfff;
   color: #ffffff;
   background: color-mix(in srgb, #00bfff 16%, #1d1d1d);
+}
+
+/* ---- cursor display settings sections (issue #226) ---- */
+
+.badge-settings-section {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.badge-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.badge-setting-domain {
+  width: 62px;
+  flex: none;
+  font-size: 0.66rem;
+  color: #9a9a9a;
+  letter-spacing: 0.02em;
+}
+
+.badge-setting-chip {
+  min-width: 34px;
+  padding: 3px 7px;
+}
+
+.cursor-binding-hint {
+  margin-top: 2px;
+  font-size: 0.62rem;
+  color: #8a8a8a;
+  letter-spacing: 0.02em;
+}
+
+.cursor-dt-lock-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 0.58rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.12);
+  border: 1px solid rgba(255, 215, 0, 0.35);
 }
 
 .badge-preview {
@@ -1181,24 +1290,24 @@ body,
 .waveform-cursor-badge {
   position: relative;
   display: inline-flex;
-  align-items: stretch;
-  border-radius: 999px;
+  align-items: center;
+  height: 32px;
+  border-radius: 8px;
   font-family: monospace;
   font-size: 0.78rem;
   font-weight: 600;
   user-select: none;
-  background: #1f1f1f;
+  /* Same M3 elevation tiers as the channel chips (issue #228). */
+  background: #1a1a1a;
+  box-shadow: inset 0 0 0 1px #2b2b2b;
   transition:
     box-shadow 0.2s ease,
     background 0.2s ease;
 }
 
-.waveform-cursor-badge:hover {
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-}
-
 .waveform-cursor-badge--active {
-  background: color-mix(in srgb, var(--badge-color) 13%, #1f1f1f);
+  background: #2a2a2a;
+  box-shadow: 0 0 0 1px var(--badge-color);
 }
 
 .waveform-cursor-badge--active .waveform-cursor-badge-body {
@@ -1206,9 +1315,9 @@ body,
 }
 
 .waveform-cursor-badge--selected {
-  background: color-mix(in srgb, var(--badge-color) 22%, #1f1f1f);
+  background: #2a2a2a;
   box-shadow:
-    0 0 0 1px var(--badge-color),
+    0 0 0 1.5px var(--badge-color),
     0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
@@ -1217,9 +1326,7 @@ body,
 }
 
 .waveform-cursor-badge--open .waveform-cursor-badge-gear {
-  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  opacity: 1;
 }
 
 .cursor-line {

@@ -5,14 +5,46 @@
  * Rows are plain data (text + color cells) with no DOM or canvas coupling.
  */
 
-import { formatFrequency, formatTime } from "./siFormat";
 import { formatReadoutChannelName } from "../../state/channelNamesStore";
 import {
-  formatChannelValue,
-  getPhysicalChannelUnit,
-  splitUnit,
-} from "../../capture/channelUnits";
+  formatVoltageWithUnit,
+  formatFrequencyWithUnit,
+  formatTimeWithUnit,
+} from "./displayUnits";
+import type {
+  CursorBinding,
+  FrequencyUnit,
+  TimeUnit,
+  VoltageUnit,
+} from "../../state/cursorDisplayStore";
+import { getPhysicalChannelUnit, splitUnit } from "../../capture/channelUnits";
 import type { ParsedCapture } from "../../types/capture";
+
+/** Display-unit selections for one card render (issue #226). */
+export interface ReadoutDisplayUnits {
+  time: TimeUnit;
+  frequency: FrequencyUnit;
+  voltage: VoltageUnit;
+}
+
+export const AUTO_DISPLAY_UNITS: ReadoutDisplayUnits = {
+  time: "auto",
+  frequency: "auto",
+  voltage: "auto",
+};
+
+/** Issue #225 cursor measurement semantics for one card render. */
+export interface ReadoutCursorSemantics {
+  c1Binding: CursorBinding;
+  c2Binding: CursorBinding;
+  deltaLocked: boolean;
+}
+
+export const UNBOUND_CURSOR_SEMANTICS: ReadoutCursorSemantics = {
+  c1Binding: "all",
+  c2Binding: "all",
+  deltaLocked: false,
+};
 
 export interface ReadoutSnapshotCell {
   text: string;
@@ -74,6 +106,8 @@ export function buildReadoutRows(
   xMax: number | null,
   colors: ReadoutRowColors,
   customNames?: Record<string, string>,
+  units: ReadoutDisplayUnits = AUTO_DISPLAY_UNITS,
+  semantics: ReadoutCursorSemantics = UNBOUND_CURSOR_SEMANTICS,
 ): ReadoutSnapshotRow[] {
   const { timestamps, channels } = capture;
   const totalSamples = timestamps.length;
@@ -88,12 +122,29 @@ export function buildReadoutRows(
     .map((channel, index) => ({ channel, index }))
     .filter(({ channel }) => activeChannels.includes(channel.name));
 
+  // Issue #225: bound cursors filter to their bound channel; a hidden
+  // bound channel falls back to all visible channels plus a hint row.
+  const boundList = (
+    binding: CursorBinding,
+  ): { list: typeof visibleChannels; fallback: boolean } => {
+    if (binding === "all") return { list: visibleChannels, fallback: false };
+    const bound = visibleChannels.filter(
+      ({ channel }) => channel.name === binding,
+    );
+    if (bound.length > 0) return { list: bound, fallback: false };
+    return { list: visibleChannels, fallback: true };
+  };
+  const c1Channels = boundList(semantics.c1Binding);
+  const c2Channels = boundList(semantics.c2Binding);
+
   const rows: ReadoutSnapshotRow[] = [];
 
   const renderCursor = (
     id: "C1" | "C2",
     active: boolean,
     sampleIndex: number,
+    channelList: { list: typeof visibleChannels; fallback: boolean },
+    binding: CursorBinding,
   ): void => {
     if (!active) return;
     const idx = clampIndex(sampleIndex, totalSamples);
@@ -105,13 +156,13 @@ export function buildReadoutRows(
         { text: id, color, bold: true },
         { text: `#${idx}`, color: "#999999" },
         {
-          text: formatTime(time),
+          text: formatTimeWithUnit(time, units.time),
           color: isOutOfView ? undefined : "#FFFFFF",
           alignRight: true,
         },
       ],
     });
-    for (const { channel, index } of visibleChannels) {
+    for (const { channel, index } of channelList.list) {
       const v = channel.data[idx] ?? 0;
       const unit = getPhysicalChannelUnit(capture, index);
       // Issue #143: no trailing colon after a renamed channel, mirroring
@@ -128,15 +179,41 @@ export function buildReadoutRows(
             text: customName?.trim() ? displayName : `${displayName}:`,
             color: colors.channel(channel.name),
           },
-          { text: formatChannelValue(v, unit), alignRight: true },
+          {
+            text: formatVoltageWithUnit(v, unit, units.voltage),
+            alignRight: true,
+          },
+        ],
+        indent: true,
+      });
+    }
+    if (channelList.fallback) {
+      rows.push({
+        cells: [
+          {
+            text: `${binding} hidden — showing all visible channels`,
+            color: "#8a8a8a",
+          },
         ],
         indent: true,
       });
     }
   };
 
-  renderCursor("C1", cursors.c1Active, cursors.c1SampleIndex);
-  renderCursor("C2", cursors.c2Active, cursors.c2SampleIndex);
+  renderCursor(
+    "C1",
+    cursors.c1Active,
+    cursors.c1SampleIndex,
+    c1Channels,
+    semantics.c1Binding,
+  );
+  renderCursor(
+    "C2",
+    cursors.c2Active,
+    cursors.c2SampleIndex,
+    c2Channels,
+    semantics.c2Binding,
+  );
 
   if (cursors.c1Active && cursors.c2Active) {
     const i1 = clampIndex(cursors.c1SampleIndex, totalSamples);
@@ -147,17 +224,25 @@ export function buildReadoutRows(
     const freq = deltaT > 0 ? 1 / deltaT : 0;
     rows.push({
       cells: [
-        { text: "Δt:", color: "#999999" },
-        { text: formatTime(deltaT), alignRight: true },
+        {
+          text: semantics.deltaLocked ? "Δt (locked):" : "Δt:",
+          color: "#999999",
+        },
+        { text: formatTimeWithUnit(deltaT, units.time), alignRight: true },
       ],
     });
     rows.push({
       cells: [
         { text: "1/Δt:", color: "#999999" },
-        { text: formatFrequency(freq), alignRight: true },
+        {
+          text: formatFrequencyWithUnit(freq, units.frequency),
+          alignRight: true,
+        },
       ],
     });
-    for (const { channel, index } of visibleChannels) {
+    for (const { channel, index } of c1Channels.list.filter(({ channel }) =>
+      c2Channels.list.some((entry) => entry.channel.name === channel.name),
+    )) {
       const v1 = channel.data[i1] ?? 0;
       const v2 = channel.data[i2] ?? 0;
       const displayName = formatReadoutChannelName(
@@ -173,7 +258,10 @@ export function buildReadoutRows(
             text: `Δ${base}(${displayName}):`,
             color: colors.channel(channel.name),
           },
-          { text: formatChannelValue(v2 - v1, unit), alignRight: true },
+          {
+            text: formatVoltageWithUnit(v2 - v1, unit, units.voltage),
+            alignRight: true,
+          },
         ],
       });
     }

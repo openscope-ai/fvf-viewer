@@ -79,6 +79,7 @@ import { findNearestSampleIndex } from "../cursors/cursorPlugin";
 import { BOX_ZOOM_MIN_DRAG_PX } from "./plugins/boxZoomPlugin";
 import { CursorRecoveryBadges } from "../cursors/CursorRecoveryBadges";
 import { useCursorStore } from "../../state/cursorStore";
+import { useCursorDisplayStore } from "../../state/cursorDisplayStore";
 import {
   composePrintSnapshot,
   composeSnapshotCanvas,
@@ -693,6 +694,8 @@ export default function Oscilloscope({
       const viewportState = useViewportStore.getState();
       const renderTheme = inverted ? "light" : themeNow;
       const customNames = useChannelNamesStore.getState().names;
+      // Issue #226: the embedded readout card mirrors the live card's
+      // display-unit selections.
       const legend = liveCapture.channels
         .filter((channel) =>
           viewportState.activeChannels.includes(channel.name),
@@ -705,6 +708,7 @@ export default function Oscilloscope({
           ),
           color: effectiveTraceColor(renderTheme, colorsNow, channel.name),
         }));
+      const displayNow = useCursorDisplayStore.getState();
       const overlay = {
         cursor1: effectiveCursorStroke(
           renderTheme,
@@ -718,6 +722,7 @@ export default function Oscilloscope({
           configsNow,
           "C2",
         ),
+        lineStyles: displayNow.lineStyles,
         background: resolveThemePalette(renderTheme).background,
         legend,
         selected: cursorState.selectedCursor,
@@ -764,6 +769,16 @@ export default function Oscilloscope({
                 effectiveTraceColor(renderTheme, colorsNow, name),
             },
             customNames,
+            {
+              time: displayNow.timeUnit,
+              frequency: displayNow.frequencyUnit,
+              voltage: displayNow.voltageUnit,
+            },
+            {
+              c1Binding: displayNow.bindings.C1,
+              c2Binding: displayNow.bindings.C2,
+              deltaLocked: displayNow.deltaLocked,
+            },
           ),
         };
       }

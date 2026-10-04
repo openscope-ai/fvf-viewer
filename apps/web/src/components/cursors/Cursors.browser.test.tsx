@@ -6,6 +6,7 @@ import "../../index.css";
 import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { useCaptureStore } from "../../state/captureStore";
 import { useCursorStore } from "../../state/cursorStore";
+import { useCursorDisplayStore } from "../../state/cursorDisplayStore";
 import { useViewportStore } from "../../state/viewportStore";
 import type { ParsedCapture } from "../../types/capture";
 
@@ -629,6 +630,123 @@ describe("Dual Measurement Cursors & Readout Panel (Issue #14)", () => {
     expect(() => {
       document.dispatchEvent(new MouseEvent("mousemove", { clientX: 400 }));
     }).not.toThrow();
+  });
+
+  it("issue #226 AC3: cursor lines render solid/dashed/dotted in the configured color, independent per cursor", () => {
+    useCursorDisplayStore.getState().reset();
+    act(() => {
+      root.render(
+        <div>
+          <WaveformToolbar />
+          <Oscilloscope capture={capture} />
+        </div>,
+      );
+    });
+    const toggleC1 = hostElement.querySelector(
+      "[data-testid='cursor-toggle-c1']",
+    ) as HTMLButtonElement;
+    const toggleC2 = hostElement.querySelector(
+      "[data-testid='cursor-toggle-c2']",
+    ) as HTMLButtonElement;
+    act(() => {
+      toggleC1.click();
+      toggleC2.click();
+    });
+
+    const line1 = hostElement.querySelector(
+      "[data-testid='cursor-line-c1']",
+    ) as HTMLDivElement;
+    const line2 = hostElement.querySelector(
+      "[data-testid='cursor-line-c2']",
+    ) as HTMLDivElement;
+
+    // Solid default: 2px background fill in the effective stroke, no border.
+    expect(line1.style.backgroundColor).toBe("rgb(224, 64, 251)");
+    expect(line1.style.borderLeft).toBe("");
+
+    // Dashed: transparent fill + 2px dashed border in the same stroke.
+    act(() => {
+      useCursorDisplayStore.getState().setLineStyle("C1", "dashed");
+    });
+    expect(line1.style.backgroundColor).toBe("transparent");
+    expect(line1.style.borderLeft).toBe("2px dashed rgb(224, 64, 251)");
+
+    // Dotted restyles in place; C2 keeps its own solid line.
+    act(() => {
+      useCursorDisplayStore.getState().setLineStyle("C1", "dotted");
+      useCursorDisplayStore.getState().setLineStyle("C2", "dotted");
+    });
+    expect(line1.style.borderLeft).toBe("2px dotted rgb(224, 64, 251)");
+    expect(line2.style.borderLeft).toBe("2px dotted rgb(176, 176, 176)");
+
+    // Back to solid: the plain fill returns.
+    act(() => {
+      useCursorDisplayStore.getState().setLineStyle("C1", "solid");
+    });
+    expect(line1.style.backgroundColor).toBe("rgb(224, 64, 251)");
+    expect(line1.style.borderLeft).toBe("");
+
+    useCursorDisplayStore.getState().reset();
+  });
+
+  it("issue #225 AC2: locked Δt moves both cursor lines by equal pixel deltas, preserving separation", async () => {
+    useCursorDisplayStore.getState().reset();
+    await act(async () => {
+      root.render(
+        <div>
+          <WaveformToolbar />
+          <Oscilloscope capture={capture} />
+        </div>,
+      );
+      // Let uPlot lay out and paint once so valToPos resolves real
+      // positions (pre-paint reads yield NaN).
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    const toggleC1 = hostElement.querySelector(
+      "[data-testid='cursor-toggle-c1']",
+    ) as HTMLButtonElement;
+    const toggleC2 = hostElement.querySelector(
+      "[data-testid='cursor-toggle-c2']",
+    ) as HTMLButtonElement;
+    await act(async () => {
+      toggleC1.click();
+      toggleC2.click();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    const line1 = hostElement.querySelector(
+      "[data-testid='cursor-line-c1']",
+    ) as HTMLDivElement;
+    const line2 = hostElement.querySelector(
+      "[data-testid='cursor-line-c2']",
+    ) as HTMLDivElement;
+    const leftOf = () => ({
+      c1: parseFloat(line1.style.left),
+      c2: parseFloat(line2.style.left),
+    });
+    const before = leftOf();
+    expect(Number.isFinite(before.c1)).toBe(true);
+    expect(Number.isFinite(before.c2)).toBe(true);
+
+    await act(async () => {
+      useCursorDisplayStore.getState().setDeltaLocked(true);
+      useCursorStore
+        .getState()
+        .setCursorSample(
+          "C1",
+          useCursorStore.getState().c1SampleIndex + 50,
+          1000,
+        );
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    const after = leftOf();
+    expect(after.c1).toBeGreaterThan(before.c1);
+    // Equal pixel deltas → separation preserved exactly.
+    expect(after.c2 - before.c2).toBeCloseTo(after.c1 - before.c1, 6);
+    expect(
+      Math.abs(after.c2 - after.c1 - (before.c2 - before.c1)),
+    ).toBeLessThan(1e-6);
+
+    useCursorDisplayStore.getState().reset();
   });
 
   it("AC3 (Issue #133): cursor handles C1 and C2 carry informative movement tooltips", () => {

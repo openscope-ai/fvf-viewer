@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { useCursorDisplayStore } from "./cursorDisplayStore";
 
 export type CursorId = "C1" | "C2";
 
@@ -28,8 +29,23 @@ export interface CursorStoreState {
   selectCursor: (id: CursorId | null) => void;
   setCursorSample: (id: CursorId, index: number, totalSamples: number) => void;
   stepCursor: (id: CursorId, delta: number, totalSamples: number) => void;
+  /**
+   * Sets both cursor positions atomically (issue #225): the pair-slip
+   * composition of locked Δt never fires here, so an alignment action
+   * (#97 Align-at-Cursors) places both cursors exactly and the lock then
+   * preserves the newly aligned separation on subsequent moves.
+   */
+  setCursorPositions: (
+    c1Index: number,
+    c2Index: number,
+    totalSamples: number,
+  ) => void;
   initForCapture: (totalSamples: number) => void;
   reset: () => void;
+}
+
+function clampIndex(index: number, totalSamples: number): number {
+  return Math.max(0, Math.min(Math.round(index), totalSamples - 1));
 }
 
 export function computeDefaultSampleIndices(totalSamples: number): {
@@ -136,10 +152,22 @@ export const useCursorStore = create<CursorStoreState>((set) => ({
   setCursorSample: (id, index, totalSamples) =>
     set((state) => {
       if (totalSamples <= 0) return state;
-      const clamped = Math.max(
-        0,
-        Math.min(Math.round(index), totalSamples - 1),
-      );
+      const clamped = clampIndex(index, totalSamples);
+      // Issue #225: while Δt is locked, moving one cursor slides the pair
+      // by the same sample delta — the separation is preserved exactly,
+      // including at the sample-range boundaries (the dragged cursor is
+      // constrained to the window where the partner stays in range).
+      if (useCursorDisplayStore.getState().deltaLocked) {
+        const own = id === "C1" ? state.c1SampleIndex : state.c2SampleIndex;
+        const rel =
+          (id === "C1" ? state.c2SampleIndex : state.c1SampleIndex) - own;
+        const lo = Math.max(0, -rel);
+        const hi = Math.min(totalSamples - 1, totalSamples - 1 - rel);
+        const x = Math.max(lo, Math.min(clamped, hi));
+        return id === "C1"
+          ? { c1SampleIndex: x, c2SampleIndex: x + rel }
+          : { c1SampleIndex: x + rel, c2SampleIndex: x };
+      }
       return id === "C1"
         ? { c1SampleIndex: clamped }
         : { c2SampleIndex: clamped };
@@ -149,8 +177,29 @@ export const useCursorStore = create<CursorStoreState>((set) => ({
     set((state) => {
       if (totalSamples <= 0) return state;
       const current = id === "C1" ? state.c1SampleIndex : state.c2SampleIndex;
+      // Issue #225: keyboard/mousewheel stepping composes with the lock
+      // exactly like a drag (equal sample deltas for both cursors).
+      if (useCursorDisplayStore.getState().deltaLocked) {
+        const rel =
+          (id === "C1" ? state.c2SampleIndex : state.c1SampleIndex) - current;
+        const lo = Math.max(0, -rel);
+        const hi = Math.min(totalSamples - 1, totalSamples - 1 - rel);
+        const x = Math.max(lo, Math.min(current + delta, hi));
+        return id === "C1"
+          ? { c1SampleIndex: x, c2SampleIndex: x + rel }
+          : { c1SampleIndex: x + rel, c2SampleIndex: x };
+      }
       const next = Math.max(0, Math.min(current + delta, totalSamples - 1));
       return id === "C1" ? { c1SampleIndex: next } : { c2SampleIndex: next };
+    }),
+
+  setCursorPositions: (c1Index, c2Index, totalSamples) =>
+    set(() => {
+      if (totalSamples <= 0) return {};
+      return {
+        c1SampleIndex: clampIndex(c1Index, totalSamples),
+        c2SampleIndex: clampIndex(c2Index, totalSamples),
+      };
     }),
 
   initForCapture: (totalSamples) =>

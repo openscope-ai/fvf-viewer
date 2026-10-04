@@ -13,6 +13,7 @@ import {
 import { useCaptureStore } from "../../../state/captureStore";
 import { useCursorStore } from "../../../state/cursorStore";
 import { channelStatsLine, cursorPositionLine } from "./stats";
+import { useCursorDisplayStore } from "../../../state/cursorDisplayStore";
 import {
   CHECKERBOARD_CSS,
   CHECKERBOARD_SIZE,
@@ -72,6 +73,9 @@ export function HeroIdentity({
   const cursorSample = useCursorStore((s) =>
     paletteKey === "C1" ? s.c1SampleIndex : s.c2SampleIndex,
   );
+  // Issue #226: the position line's timestamp follows the global time
+  // display unit selected in the cursor popovers.
+  const timeUnit = useCursorDisplayStore((s) => s.timeUnit);
 
   let stats: string;
   if (kind === "channel") {
@@ -81,7 +85,7 @@ export function HeroIdentity({
       index >= 0 ? capture!.metadata.channels[index]?.unit : undefined;
     stats = channelStatsLine(channel, unit);
   } else {
-    stats = cursorPositionLine(cursorSample, capture?.timestamps);
+    stats = cursorPositionLine(cursorSample, capture?.timestamps, timeUnit);
   }
 
   const effective = rgbaFromHex(color, opacity);
