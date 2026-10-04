@@ -20,6 +20,10 @@ import {
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useCursorStore, type CursorId } from "../../state/cursorStore";
+import {
+  useCursorDisplayStore,
+  type LineStyle,
+} from "../../state/cursorDisplayStore";
 import { getCursorHandleAriaLabel, getCursorHandleTitle } from "./cursorHelp";
 import type { ParsedCapture } from "../../types/capture";
 
@@ -79,16 +83,44 @@ function effectiveCursorStrokeCss(id: "C1" | "C2"): string {
   );
 }
 
-/** Applies a cursor's colors: rgba stroke on the line, solid handle. */
+/**
+ * Issue #226 line styles: solid keeps the 2px background fill; dashed and
+ * dotted switch to a 2px left border (same screen position — the element
+ * is positioned by `left`) so the dash gaps show the plot behind the
+ * cursor. Handles stay solid in every style.
+ */
+function applyCursorLineStyle(
+  line: HTMLElement,
+  strokeCss: string,
+  style: LineStyle,
+): void {
+  if (style === "solid") {
+    line.style.width = "2px";
+    line.style.backgroundColor = strokeCss;
+    line.style.borderLeft = "none";
+  } else {
+    line.style.width = "0";
+    line.style.backgroundColor = "transparent";
+    line.style.borderLeft = `2px ${style} ${strokeCss}`;
+  }
+}
+
+/** Applies a cursor's colors + line style: rgba stroke, solid handle. */
 function applyCursorPalette(
   line: HTMLElement,
   handle: HTMLElement,
   strokeCss: string,
   id: "C1" | "C2",
+  lineStyle: LineStyle,
 ): void {
-  line.style.backgroundColor = strokeCss;
+  applyCursorLineStyle(line, strokeCss, lineStyle);
   handle.style.backgroundColor = effectiveCursor(id);
   handle.style.color = currentPalette().cursorHandleText;
+}
+
+/** Issue #226: the cursor's configured line style (solid default). */
+function effectiveLineStyle(id: "C1" | "C2"): LineStyle {
+  return useCursorDisplayStore.getState().lineStyles[id];
 }
 
 export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
@@ -121,7 +153,13 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
   c1Handle.style.textAlign = "center";
   c1Handle.style.fontSize = "10px";
   c1Handle.style.fontWeight = "700";
-  applyCursorPalette(c1Line, c1Handle, effectiveCursorStrokeCss("C1"), "C1");
+  applyCursorPalette(
+    c1Line,
+    c1Handle,
+    effectiveCursorStrokeCss("C1"),
+    "C1",
+    effectiveLineStyle("C1"),
+  );
   c1Handle.title = getCursorHandleTitle("C1");
   c1Handle.setAttribute("aria-label", getCursorHandleAriaLabel("C1"));
   c1Handle.style.borderRadius = "0 0 3px 3px";
@@ -154,7 +192,13 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
   c2Handle.style.textAlign = "center";
   c2Handle.style.fontSize = "10px";
   c2Handle.style.fontWeight = "700";
-  applyCursorPalette(c2Line, c2Handle, effectiveCursorStrokeCss("C2"), "C2");
+  applyCursorPalette(
+    c2Line,
+    c2Handle,
+    effectiveCursorStrokeCss("C2"),
+    "C2",
+    effectiveLineStyle("C2"),
+  );
   c2Handle.title = getCursorHandleTitle("C2");
   c2Handle.setAttribute("aria-label", getCursorHandleAriaLabel("C2"));
   c2Handle.style.borderRadius = "0 0 3px 3px";
@@ -166,6 +210,7 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
   let unsubscribeStore: (() => void) | null = null;
   let unsubscribeTheme: (() => void) | null = null;
   let unsubscribePalette: (() => void) | null = null;
+  let unsubscribeCursorDisplay: (() => void) | null = null;
   let pendingClientX: number | null = null;
   let rafId: number | null = null;
 
@@ -173,8 +218,20 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
     if (!uplot) return;
     // Issue #38/#40: cursor line/handle colors follow the active viewport
     // theme and any user palette overrides
-    applyCursorPalette(c1Line, c1Handle, effectiveCursorStrokeCss("C1"), "C1");
-    applyCursorPalette(c2Line, c2Handle, effectiveCursorStrokeCss("C2"), "C2");
+    applyCursorPalette(
+      c1Line,
+      c1Handle,
+      effectiveCursorStrokeCss("C1"),
+      "C1",
+      effectiveLineStyle("C1"),
+    );
+    applyCursorPalette(
+      c2Line,
+      c2Handle,
+      effectiveCursorStrokeCss("C2"),
+      "C2",
+      effectiveLineStyle("C2"),
+    );
     const capture = options.getCapture();
     if (!capture || capture.timestamps.length === 0) {
       c1Line.style.display = "none";
@@ -468,6 +525,10 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
         unsubscribePalette = usePaletteStore.subscribe(() => {
           updateVisuals();
         });
+        // Issue #226: line-style edits restyle the lines in place.
+        unsubscribeCursorDisplay = useCursorDisplayStore.subscribe(() => {
+          updateVisuals();
+        });
 
         updateVisuals();
       },
@@ -490,6 +551,10 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
         if (unsubscribePalette) {
           unsubscribePalette();
           unsubscribePalette = null;
+        }
+        if (unsubscribeCursorDisplay) {
+          unsubscribeCursorDisplay();
+          unsubscribeCursorDisplay = null;
         }
         window.removeEventListener("keydown", onKeyDown);
         if (plotArea) {

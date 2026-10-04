@@ -11,6 +11,10 @@ import {
 import { useCaptureStore } from "../../state/captureStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useCursorStore } from "../../state/cursorStore";
+import {
+  CURSOR_DISPLAY_STORAGE_KEY,
+  useCursorDisplayStore,
+} from "../../state/cursorDisplayStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useThemeStore } from "../../state/themeStore";
@@ -54,6 +58,46 @@ function createTestCapture(sampleCount = 1000): ParsedCapture {
       ],
     },
     channels: [{ name: "A", label: "Input A", derived: false, data: ch1Data }],
+    derivedChannels: [],
+    timestamps,
+    warnings: [],
+  };
+}
+
+function createVoltCapture(sampleCount = 1000): ParsedCapture {
+  const timestamps = new Float32Array(sampleCount);
+  const dataA = new Float32Array(sampleCount);
+  const dataB = new Float32Array(sampleCount);
+  const dt = 1e-5;
+  const center = Math.floor(sampleCount / 2);
+  for (let i = 0; i < sampleCount; i += 1) {
+    timestamps[i] = (i - center) * dt;
+    dataA[i] = 3 * Math.sin(i * 0.05);
+    dataB[i] = 1.5 * Math.cos(i * 0.04);
+  }
+  const channels = [
+    { name: "A", label: "Input A", derived: false, data: dataA },
+    { name: "B", label: "Input B", derived: false, data: dataB },
+  ];
+  return {
+    metadata: {
+      version: 1,
+      flavor: "synthetic",
+      timebaseRaw: "10 us/Div",
+      secondsPerDiv: dt,
+      timestamp14: "12300020261004",
+      samples: sampleCount,
+      deltaT: dt,
+      channels: channels.map((c) => ({
+        name: c.name,
+        label: c.label,
+        derived: false,
+        samples: sampleCount,
+        deltaT: dt,
+        unit: "V",
+      })),
+    },
+    channels,
     derivedChannels: [],
     timestamps,
     warnings: [],
@@ -154,6 +198,8 @@ describe("Draggable cursor readout card (Issue #58)", () => {
 
   beforeEach(() => {
     localStorage.removeItem(READOUT_CARD_STORAGE_KEY);
+    localStorage.removeItem(CURSOR_DISPLAY_STORAGE_KEY);
+    useCursorDisplayStore.getState().reset();
     useReadoutCardStore.getState().reset();
     useCursorStore.getState().reset();
     useViewportStore.getState().reset();
@@ -684,6 +730,135 @@ describe("Draggable cursor readout card (Issue #58)", () => {
     const deltaB = card().querySelector("[data-testid='cursor-delta-v-B']");
     expect(deltaA?.textContent).toContain("ΔA(A):");
     expect(deltaB?.textContent).toContain("ΔA(B):");
+  });
+
+  it("issue #226 AC1/AC2: global display units reformat the HUD card measurements", () => {
+    // Local volt-channel capture: sample i sits at (i-500)*10µs and
+    // channel A reads 3·sin(i·0.05) V (unit "V" so the voltage override
+    // applies — the shared fixture's unit-less channel would not).
+    capture = createVoltCapture();
+    useCaptureStore.setState({ capture });
+    mount();
+    const total = 1000;
+    act(() => {
+      useCursorStore.getState().setCursorSample("C1", 50, total);
+      useCursorStore.getState().setCursorActive("C2", true, total);
+      useCursorStore.getState().setCursorSample("C2", 550, total);
+    });
+
+    const timeC1 = card().querySelector(
+      "[data-testid='cursor-time-c1']",
+    ) as HTMLElement;
+    const deltaT = card().querySelector(
+      "[data-testid='cursor-delta-t']",
+    ) as HTMLElement;
+    const freq = card().querySelector(
+      "[data-testid='cursor-frequency']",
+    ) as HTMLElement;
+
+    // Defaults keep the SI ladder: t1 = -4.5 ms, Δt = 5 ms, 1/Δt = 200 Hz.
+    expect(timeC1.textContent).toBe("-4.500 ms");
+    expect(deltaT.textContent).toBe("5.000 ms");
+    expect(freq.textContent).toBe("200.0 Hz");
+
+    // Pin Time = s: absolute cursor time and Δt reformat (no promotion).
+    act(() => {
+      useCursorDisplayStore.getState().setTimeUnit("s");
+    });
+    expect(timeC1.textContent).toBe("-0.0045 s");
+    expect(deltaT.textContent).toBe("0.005 s");
+
+    // Pin Frequency = kHz: the 1/Δt reciprocal formats in the pinned unit.
+    act(() => {
+      useCursorDisplayStore.getState().setFrequencyUnit("kHz");
+    });
+    expect(freq.textContent).toBe("0.2 kHz");
+
+    // Pin Voltage = dBV: volt channels render 20·log10(|V|) —
+    // 3·sin(2.5) V ≈ 1.7954 V → 5.083 dBV.
+    act(() => {
+      useCursorDisplayStore.getState().setVoltageUnit("dBV");
+    });
+    const voltC1 = card().querySelector(
+      "[data-testid='cursor-c1-ch-A'] .cursor-voltage-value",
+    ) as HTMLElement;
+    expect(voltC1.textContent).toBe("5.083 dBV");
+
+    // Selections persist per session.
+    expect(
+      JSON.parse(window.localStorage.getItem(CURSOR_DISPLAY_STORAGE_KEY)!),
+    ).toEqual({
+      timeUnit: "s",
+      frequencyUnit: "kHz",
+      voltageUnit: "dBV",
+      lineStyles: { C1: "solid", C2: "solid" },
+      bindings: { C1: "all", C2: "all" },
+      deltaLocked: false,
+    });
+  });
+
+  it("issue #225 AC1/AC2: channel binding filters HUD rows, hidden bound channels fall back with a hint, and the Δt lock badge shows", () => {
+    capture = createVoltCapture();
+    useCaptureStore.setState({ capture });
+    mount();
+    const total = 1000;
+    act(() => {
+      useCursorStore.getState().setCursorActive("C2", true, total);
+    });
+
+    // Baseline: both cursors show every visible channel.
+    expect(
+      card().querySelector("[data-testid='cursor-c1-ch-A']"),
+    ).not.toBeNull();
+    expect(
+      card().querySelector("[data-testid='cursor-c1-ch-B']"),
+    ).not.toBeNull();
+
+    // Bind C1 to B: only C1's rows filter; C2 (unbound) still shows all.
+    act(() => {
+      useCursorDisplayStore.getState().setBinding("C1", "B");
+    });
+    expect(card().querySelector("[data-testid='cursor-c1-ch-A']")).toBeNull();
+    expect(
+      card().querySelector("[data-testid='cursor-c1-ch-B']"),
+    ).not.toBeNull();
+    expect(
+      card().querySelector("[data-testid='cursor-c2-ch-A']"),
+    ).not.toBeNull();
+
+    // Differential rows keep only the channels both cursors measure.
+    expect(card().querySelector("[data-testid='cursor-delta-v-A']")).toBeNull();
+    expect(
+      card().querySelector("[data-testid='cursor-delta-v-B']"),
+    ).not.toBeNull();
+
+    // Hiding the bound channel falls back to all visible channels with
+    // the explicit hint — never an empty card.
+    act(() => {
+      useViewportStore.getState().toggleChannel("B");
+    });
+    expect(
+      card().querySelector("[data-testid='cursor-c1-ch-A']"),
+    ).not.toBeNull();
+    const hint = card().querySelector(
+      "[data-testid='cursor-binding-hint-c1']",
+    ) as HTMLElement;
+    expect(hint.textContent).toContain("B hidden");
+    expect(
+      card().querySelector("[data-testid='cursor-binding-hint-c2']"),
+    ).toBeNull();
+
+    // Δt lock badge appears on the differential row while locked.
+    expect(
+      card().querySelector("[data-testid='cursor-dt-lock-badge']"),
+    ).toBeNull();
+    act(() => {
+      useViewportStore.getState().toggleChannel("B");
+      useCursorDisplayStore.getState().setDeltaLocked(true);
+    });
+    expect(
+      card().querySelector("[data-testid='cursor-dt-lock-badge']"),
+    ).not.toBeNull();
   });
 
   it("AC (Issue #143): help button tooltips 'Cursor help' and toggles the floating guidance panel", () => {

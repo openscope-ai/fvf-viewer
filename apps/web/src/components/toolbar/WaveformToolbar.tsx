@@ -266,6 +266,7 @@ export default function WaveformToolbar({
               >
                 {displayLabel}
               </button>
+              <span className="badge-split-divider" aria-hidden="true" />
               <button
                 type="button"
                 className="waveform-channel-badge-gear"
@@ -363,6 +364,7 @@ export default function WaveformToolbar({
               >
                 {id}
               </button>
+              <span className="badge-split-divider" aria-hidden="true" />
               <button
                 type="button"
                 className="waveform-cursor-badge-gear"

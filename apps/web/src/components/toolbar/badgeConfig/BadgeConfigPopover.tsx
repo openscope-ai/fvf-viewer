@@ -20,6 +20,12 @@ import { CURSOR_MOVEMENT_SUMMARY } from "../../cursors/cursorHelp";
 import { HeroIdentity } from "./HeroIdentity";
 import { QuickKnobs } from "./QuickKnobs";
 import { ColorDetail } from "./ColorDetail";
+import {
+  ChannelBindingSection,
+  LineStyleSection,
+  LockedDeltaSection,
+  MeasurementUnitsSection,
+} from "./CursorSettings";
 
 export type BadgeConfigTarget =
   | { kind: "channel"; paletteKey: PaletteKey; channelName: string }
@@ -56,14 +62,28 @@ export function BadgeConfigPopover({
         onClose={onClose}
       />
       <div className="badge-popover-body">
-        <QuickKnobs paletteKey={key} color={color} opacity={opacity} />
+        <QuickKnobs
+          kind={target.kind}
+          paletteKey={key}
+          color={color}
+          opacity={opacity}
+        />
         {detailOpen && (
           <ColorDetail paletteKey={key} color={color} opacity={opacity} />
         )}
         {target.kind === "cursor" && (
-          <p className="badge-popover-hint" data-testid="cursor-movement-hint">
-            {CURSOR_MOVEMENT_SUMMARY}
-          </p>
+          <>
+            <MeasurementUnitsSection />
+            <ChannelBindingSection cursorId={target.paletteKey} />
+            <LockedDeltaSection />
+            <LineStyleSection cursorId={target.paletteKey} />
+            <p
+              className="badge-popover-hint"
+              data-testid="cursor-movement-hint"
+            >
+              {CURSOR_MOVEMENT_SUMMARY}
+            </p>
+          </>
         )}
       </div>
     </>

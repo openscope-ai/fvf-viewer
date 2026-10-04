@@ -7,6 +7,7 @@ import Oscilloscope from "../canvas/Oscilloscope";
 import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useCursorStore } from "../../state/cursorStore";
+import { useCursorDisplayStore } from "../../state/cursorDisplayStore";
 import {
   composePrintSnapshot,
   composeSnapshotCanvas,
@@ -651,6 +652,59 @@ describe("PNG snapshot export (browser, issue #18)", () => {
     secondHost.remove();
   });
 
+  it("exports dashed/dotted cursor lines with dash patterns (issue #226)", async () => {
+    expect(useSnapshotStore.getState().exporter).not.toBeNull();
+
+    useCursorDisplayStore.getState().reset();
+    const total = useCaptureStore.getState().capture!.timestamps.length;
+    act(() => {
+      useCursorStore.getState().setCursorActive("C1", true, total);
+      useCursorStore.getState().setCursorActive("C2", true, total);
+      useCursorDisplayStore.getState().setLineStyle("C1", "dotted");
+    });
+
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click");
+    const setLineDash = vi.spyOn(
+      CanvasRenderingContext2D.prototype,
+      "setLineDash",
+    );
+    const createdUrls: string[] = [];
+    vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
+      const url = `blob:dash-${createdUrls.length}`;
+      createdUrls.push(url);
+      return url;
+    });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    const exportHost = document.createElement("div");
+    document.body.appendChild(exportHost);
+    const exportRoot = createRoot(exportHost);
+    await act(async () => {
+      exportRoot.render(<PngSnapshotButton />);
+    });
+    const button = exportHost.querySelector(
+      "[data-testid='png-export-button']",
+    ) as HTMLButtonElement;
+
+    await act(async () => {
+      button.click();
+      for (let i = 0; i < 40 && anchorClick.mock.calls.length < 1; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    });
+    expect(anchorClick).toHaveBeenCalledTimes(1);
+    // The dotted C1 line stroked with its dash pattern (solid C2 kept
+    // plain fills; nothing else uses the [1, 3] dotted pattern).
+    expect(setLineDash).toHaveBeenCalledWith([1, 3]);
+
+    act(() => {
+      exportRoot.unmount();
+    });
+    exportHost.remove();
+    vi.restoreAllMocks();
+    useCursorDisplayStore.getState().reset();
+  });
+
   it("registers the live exporter with the Oscilloscope and downloads via the toolbar button", async () => {
     // Before any Oscilloscope mount in this test: the store is clean.
     expect(useSnapshotStore.getState().exporter).not.toBeNull(); // registered by beforeEach mount
@@ -680,8 +734,13 @@ describe("PNG snapshot export (browser, issue #18)", () => {
 
     await act(async () => {
       button.click();
-      // toBlob resolves asynchronously — let the export chain finish.
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      // toBlob resolves asynchronously — poll until the download anchor
+      // fires. A fixed 60ms sleep flakes under CI load (issue #221): the
+      // offscreen compositing + toBlob chain regularly outlives it there,
+      // so the anchor-click spy is still at zero when the assertion runs.
+      for (let i = 0; i < 40 && anchorClick.mock.calls.length < 1; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
     });
     expect(anchorClick).toHaveBeenCalledTimes(1);
     const anchor = anchorClick.mock.instances[0] as HTMLAnchorElement;

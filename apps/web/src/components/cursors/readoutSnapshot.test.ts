@@ -212,3 +212,79 @@ describe("buildReadoutRows (issue #58 snapshot compositing)", () => {
     expect(rows[0]!.cells[1]!.text).toBe("#99");
   });
 });
+
+describe("buildReadoutRows cursor semantics (issue #225)", () => {
+  const capture = createCapture(100);
+  const cursors = {
+    c1Active: true,
+    c1SampleIndex: 10,
+    c2Active: true,
+    c2SampleIndex: 40,
+  };
+  const colors = {
+    c1: "#E040FB",
+    c2: "#B0B0B0",
+    channel: () => "#FFD700",
+  };
+  const active = ["A", "B"];
+  const texts = (rows: ReturnType<typeof buildReadoutRows>) =>
+    rows.map((row) => row.cells.map((cell) => cell.text).join(" "));
+
+  it("filters a bound cursor to its bound channel; differential rows keep the intersection", () => {
+    const rows = buildReadoutRows(
+      capture,
+      cursors,
+      active,
+      null,
+      null,
+      colors,
+      undefined,
+      undefined,
+      { c1Binding: "A", c2Binding: "all", deltaLocked: false },
+    );
+    const lines = texts(rows);
+    // C1 rows show only A; C2 rows show A and B.
+    expect(lines.some((l) => l.includes("A: 1.100 V"))).toBe(true);
+    const inputBRows = lines.filter((l) => l.includes("B:"));
+    // Exactly one channel-B value row (C2's), none for the bound C1.
+    expect(inputBRows.length).toBe(1);
+    // Δ rows: intersection = A only.
+    expect(lines.some((l) => l.includes("ΔV(A):"))).toBe(true);
+    expect(lines.some((l) => l.includes("ΔA(B):"))).toBe(false);
+  });
+
+  it("falls back to all visible channels with a hint when the bound channel is hidden", () => {
+    const rows = buildReadoutRows(
+      capture,
+      cursors,
+      ["B"], // A hidden
+      null,
+      null,
+      colors,
+      undefined,
+      undefined,
+      { c1Binding: "A", c2Binding: "all", deltaLocked: false },
+    );
+    const lines = texts(rows);
+    expect(
+      lines.some((l) => l.includes("A hidden — showing all visible channels")),
+    ).toBe(true);
+    // The fallback shows B rows for both cursors (never an empty card).
+    expect(lines.filter((l) => l.includes("B:")).length).toBe(2);
+  });
+
+  it("marks the Δt row locked while the pair lock is on", () => {
+    const rows = buildReadoutRows(
+      capture,
+      cursors,
+      active,
+      null,
+      null,
+      colors,
+      undefined,
+      undefined,
+      { c1Binding: "all", c2Binding: "all", deltaLocked: true },
+    );
+    expect(texts(rows).some((l) => l.startsWith("Δt (locked):"))).toBe(true);
+  });
+});

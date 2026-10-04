@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.9.4] - 2026-10-04
+
+### Fixed
+
+- PNG snapshot browser test no longer flakes under CI load (issue #221): the "registers the live exporter with the Oscilloscope and downloads via the toolbar button" test waited a fixed 60 ms sleep for the offscreen compositing + `canvas.toBlob` export chain before asserting the download anchor had fired — under CI load that chain regularly outlives the sleep (exactly how the v0.9.3 web CI run failed: `expected "click" to be called 1 times, but got 0 times`), so the test now polls up to the same bounded 1 s window its sibling compositing test already uses before asserting the anchor click, the `four-snapshot-*.png` download name, and the object-URL revocation. No production code changed.
+
+### Changed
+
+- Cursor popover preview shows a vertical cursor line over a mock waveform (issue #227): the dual-canvas preview in #204's spec-of-record stroked a mini _waveform_ in the configured color — correct for channel popovers (the trace is the colored object) but wrong for cursor popovers, whose visual identity is a vertical line. Cursor popovers now render each panel (dark `#000`/light `#FFF`) as a muted neutral mock waveform (deliberately low-contrast grays `#3f3f3f`/`#a9a9a9`, so it can never be mistaken for a channel-trace preview) with a vertical line spanning the panel height in the cursor's current color at the current opacity — the element under evaluation — plus a tiny solid rounded-bottom handle glyph at the top echoing the on-canvas cursor handle (solid while the line carries the per-key opacity, matching canvas semantics). Channel popovers keep the waveform-stroke preview unchanged, and the preview still updates live while picking colors, scrubbing opacity, or using preset chips.
+
+### Added
+
+- Cursor display settings: measurement units & line style (issue #226): both cursor popovers gain a **Measurement units** section writing one _global_ selection (the HUD readout card is a single shared surface) — **Time** (SI · s · ms · µs · ns), **Frequency** (1/Δt · Hz · kHz · MHz), and **Voltage** (SI · V · mV · dBV) — that reformats every HUD readout-card measurement (cursor timestamps, Δt, the 1/Δt reciprocal of the cursor separation, per-channel values and Δ rows), the PNG-embedded readout card, and the popover position line; pinned units scale without SI promotion, `1/Δt` keeps the reciprocal SI ladder, `dBV` renders 20·log10(|V|) for volt-family channels (zero/non-finite read "—"), non-volt channels (A, raw) never take the voltage override, and the default `SI` selection is byte-identical to the previous `siFormat`/`channelUnits` behavior. A per-cursor **Line style** section (solid/dashed/dotted, independent per C1/C2) renders in `cursorPlugin` — dashed/dotted switch the 2px line to a same-position left border in the effective rgba stroke while handles stay solid — and in PNG exports, where the compositor strokes the line with dash patterns (dashed [6,4], dotted [1,3] round-cap) instead of the solid fill. All settings persist per session in `fvf.cursor-display` local storage with validated hydration.
+
+### Added
+
+- Cursor measurement semantics: channel source binding & locked Δt tracking (issue #225; cursors keep snapping strictly to discrete sample indices — the permanent non-goal of a continuous-time snap toggle is unchanged): each cursor popover gains a **Channel source** segmented section binding C1/C2 individually to `CH A`…`CH D` or leaving them unbound (**All channels**, default) — a bound cursor's HUD readout-card measurements filter to that channel, the differential rows keep the channels both cursors measure (their intersection), and a hidden (or absent) bound channel falls back to all visible channels with an explicit "X hidden — showing all visible channels" hint so the card is never empty; reference channels (#96) extend the binding list when dual-file comparison ships. A pair-level **Locked Δt** toggle — one shared setting surfaced identically in both popovers — makes any cursor move (drag, Ctrl+click, Ctrl+arrows, Ctrl+wheel) slide _both_ cursors by the same integer sample delta, preserving the separation exactly even at the sample-range boundaries (the dragged cursor is constrained to the window where its partner stays in range); the readout card marks the Δt row with a `locked` badge (and the PNG-embedded card writes `Δt (locked):`), and a new atomic `setCursorPositions` store action sets both positions at once without pair-slip, so #97's future Align-at-Cursors can place the pair and the lock then preserves the newly aligned separation. Bindings and the lock persist per session in `fvf.cursor-display`.
+
+### Changed
+
+- Channel/cursor toolbar badges rebuilt as M3 filter-chip split-action chips (issue #228): each badge splits its two jobs into distinct non-overlapping hit zones — the label zone (padding `0 10px 0 12px`) keeps the visibility cycle and double-click rename, the trailing gear zone (padding `0 8px 0 6px`) opens the per-key config popover — separated by a 1px vertical divider at 12% outline alpha. Standard M3 chip geometry replaces the #204 "Tonal Capsule": `rounded-lg` 8px corners (no full pill), a ~32px visible container, and true 48×48px transparent-bounds touch targets per zone (the buttons extend 8px beyond the chip invisibly) with independent 8% hover / 12% press white state layers constrained to the visible band. The active/inactive paradigm is unified across every channel and cursor badge: active sits on `surfaceContainerHigh` (#2A2A2A) with the label tinted in the trace color and a 1px accent stroke in the same color (1.5px + glow when selected, white label), inactive sits on `surfaceContainerLow` (#1A1A1A) with a subtle neutral outline and the label/gear dimmed to 38%; the gear meets WCAG AA in the active state via `onSurfaceVariant` #C4C7C5, brightening to full white on hover or while its popover is open. All existing badge `data-testid` hooks, the visibility cycle, the rename flow, and the popover behaviors are unchanged.
+
 ## [0.9.3] - 2026-10-03
 
 ### Added
@@ -101,6 +123,7 @@ _This changelog records the public release history; releases appear here as they
 
 - Open-source readiness: MIT license (`FVF Viewer Contributors`); CHANGELOG refactored to Keep a Changelog 1.1.0 with no issue links; committed prose and metadata genericized to corpus-level references (no capture names, counts, or measurement contexts); the local-corpus and coverage suites degrade gracefully when the private empirical oracle manifest is absent; and a one-way release publisher workflow snapshots each release tag to the public repository as a single orphan commit (private artifacts excluded, internal URLs rewritten, coverage report regenerated synthetic-only).
 
+[0.9.4]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/openscope-ai/fvf-viewer/compare/v0.9.0...v0.9.1

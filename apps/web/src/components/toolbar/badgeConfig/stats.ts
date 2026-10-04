@@ -4,7 +4,8 @@
  * capture, cursor sample positions with SI-formatted timestamps.
  */
 
-import { formatTime } from "../../cursors/siFormat";
+import { formatTimeWithUnit } from "../../cursors/displayUnits";
+import type { TimeUnit } from "../../../state/cursorDisplayStore";
 import type { WaveformChannel } from "../../../types/capture";
 
 function formatCount(value: number): string {
@@ -49,11 +50,13 @@ export function channelStatsLine(
 
 /**
  * Cursor stats line: `Sample <index> · <timestamp>` from the cursor store's
- * sample index and the capture's stored time axis.
+ * sample index and the capture's stored time axis. The timestamp follows
+ * the global time display unit (issue #226); `auto` keeps the SI ladder.
  */
 export function cursorPositionLine(
   sampleIndex: number,
   timestamps: ArrayLike<number> | undefined,
+  timeUnit: TimeUnit = "auto",
 ): string {
   if (!timestamps || timestamps.length === 0) {
     return `Sample ${formatCount(Math.max(0, sampleIndex))}`;
@@ -62,5 +65,5 @@ export function cursorPositionLine(
     0,
     Math.min(Math.round(sampleIndex), timestamps.length - 1),
   );
-  return `Sample ${formatCount(clamped)} · ${formatTime(timestamps[clamped]!)}`;
+  return `Sample ${formatCount(clamped)} · ${formatTimeWithUnit(timestamps[clamped]!, timeUnit)}`;
 }
