@@ -37,6 +37,8 @@ import {
 import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useReadoutCardStore } from "../../state/readoutCardStore";
+import { useReferenceStore } from "../../state/referenceStore";
+import { alignSlipDelta, slipSeconds } from "../canvas/timeSlip";
 import {
   formatReadoutChannelName,
   useChannelNamesStore,
@@ -160,6 +162,9 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
   const deltaLocked = useCursorDisplayStore((state) => state.deltaLocked);
   const collapsed = useReadoutCardStore((state) => state.collapsed);
   const setPosition = useReadoutCardStore((state) => state.setPosition);
+  // Issue #97: Align at Cursors exists only in compare mode (File 2).
+  const refCapture = useReferenceStore((state) => state.capture);
+  const timeSlipSamples = useReferenceStore((state) => state.timeSlipSamples);
 
   const [dragPos, setDragPos] = useState<CardPoint | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -619,6 +624,37 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
               className="cursor-readout-differential"
               data-testid="cursor-readout-differential"
             >
+              {refCapture && (
+                <div className="cursor-align-row">
+                  <button
+                    type="button"
+                    className="cursor-align-btn"
+                    data-testid="align-at-cursors-btn"
+                    aria-label="Align File 2 with cursors: move the feature under C2 exactly onto C1"
+                    title={`Align at Cursors: snaps File 2 so the feature under C2 lands exactly on C1 (current slip ${slipSeconds(
+                      capture.timestamps,
+                      timeSlipSamples,
+                    ).toFixed(6)} s)`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.stopPropagation();
+                      }
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      // slip' = slip + (i1 - i2): the File 2 feature under
+                      // C2 lands exactly on C1 (exact sample arithmetic).
+                      const reference = useReferenceStore.getState();
+                      reference.setTimeSlip(
+                        reference.timeSlipSamples + alignSlipDelta(i1, i2),
+                      );
+                    }}
+                  >
+                    Align at Cursors
+                  </button>
+                </div>
+              )}
               <div className="cursor-diff-row">
                 <span className="cursor-diff-label">
                   Δt:

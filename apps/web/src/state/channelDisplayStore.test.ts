@@ -48,6 +48,7 @@ describe("channelDisplayStore (issue #224)", () => {
   let backing: Map<string, string>;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.resetModules();
     backing = stubStorage();
   });
@@ -71,6 +72,7 @@ describe("channelDisplayStore (issue #224)", () => {
     expect(state.keyConfigs.A?.yScalePercent).toBe(250);
     expect(state.keyConfigs.B?.offset).toBe(3.5);
     expect(state.keyConfigs.C?.inverted).toBe(true);
+    vi.advanceTimersByTime(200);
     expect(storedConfigs(backing)).toEqual({
       A: { yScalePercent: 250 },
       B: { offset: 3.5 },
@@ -84,12 +86,68 @@ describe("channelDisplayStore (issue #224)", () => {
     ).toBe(500);
   });
 
+  it("issue #238: persistence is trailing-debounced — bursts coalesce, the final state lands", async () => {
+    const { display } = await importStores();
+    const store = display.useChannelDisplayStore.getState();
+    // A scrub-like burst: many commits in one debounce window.
+    for (let i = 0; i < 25; i += 1) {
+      store.setYScale("A", 100 + i);
+    }
+    // Nothing persisted synchronously mid-burst (no per-commit write).
+    expect(backing.has(KEY)).toBe(false);
+    vi.advanceTimersByTime(200);
+    expect(storedConfigs(backing).A).toEqual({ yScalePercent: 124 });
+
+    // flushPersist forces the trailing write immediately.
+    store.setOffset("A", 2);
+    display.flushPersist();
+    vi.advanceTimersByTime(200);
+    expect(storedConfigs(backing).A).toEqual({
+      yScalePercent: 124,
+      offset: 2,
+    });
+  });
+
+  it("issue #98: stack mode toggles, persists, and resets", async () => {
+    const { display } = await importStores();
+    const store = display.useChannelDisplayStore.getState();
+    expect(store.stackMode).toBe(false);
+    store.setStackMode(true);
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(true);
+    vi.advanceTimersByTime(200);
+    const raw = JSON.parse(backing.get(KEY)!) as { stackMode?: boolean };
+    expect(raw.stackMode).toBe(true);
+
+    // reset() collapses back to Overlay.
+    display.useChannelDisplayStore.getState().reset();
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
+  });
+
+  it("hydrates a persisted stackMode", async () => {
+    backing.set(
+      KEY,
+      JSON.stringify({ keyConfigs: {}, solo: null, stackMode: true }),
+    );
+    const { display } = await importStores();
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(true);
+  });
+
+  it("drops a non-boolean persisted stackMode", async () => {
+    backing.set(
+      KEY,
+      JSON.stringify({ keyConfigs: {}, solo: null, stackMode: "yes" }),
+    );
+    const { display } = await importStores();
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
+  });
+
   it("prunes fields back at defaults and drops empty records", async () => {
     const { display } = await importStores();
     const s = display.useChannelDisplayStore.getState();
     s.setYScale("A", 250);
     s.setOffset("A", 2);
     s.setInverted("A", true);
+    vi.advanceTimersByTime(200);
     expect(storedConfigs(backing).A).toEqual({
       yScalePercent: 250,
       offset: 2,
@@ -97,13 +155,16 @@ describe("channelDisplayStore (issue #224)", () => {
     });
 
     s.setYScale("A", 100);
+    vi.advanceTimersByTime(200);
     expect(storedConfigs(backing).A).toEqual({ offset: 2, inverted: true });
     s.setOffset("A", 0);
+    vi.advanceTimersByTime(200);
     expect(storedConfigs(backing).A).toEqual({ inverted: true });
     s.setInverted("A", false);
     expect(
       display.useChannelDisplayStore.getState().keyConfigs.A,
     ).toBeUndefined();
+    vi.advanceTimersByTime(200); // flush the debounced pruning write
     expect(backing.has(KEY)).toBe(false); // fully pruned record removes the key
   });
 
@@ -175,7 +236,8 @@ describe("channelDisplayStore (issue #224)", () => {
       key: "B",
       savedActive: ["A", "B", "C", "D"],
     });
-    // Persisted per key (issue #224 AC1).
+    // Persisted per key (issue #224 AC1; #238 debounced write).
+    vi.advanceTimersByTime(200);
     const persisted = JSON.parse(backing.get(KEY)!) as {
       solo: { key: string; savedActive: string[] };
     };

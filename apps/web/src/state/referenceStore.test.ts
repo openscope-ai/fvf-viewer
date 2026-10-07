@@ -91,6 +91,35 @@ describe("referenceStore (issue #96)", () => {
     expect(capture.useCaptureStore.getState().parseState).toBe("idle");
   });
 
+  it("issue #97: time slip state sets, nudges, and resets on load/clear", async () => {
+    const { reference, capture } = await importStores();
+    const store = reference.useReferenceStore;
+
+    expect(store.getState().timeSlipSamples).toBe(0);
+    store.getState().setTimeSlip(12.5);
+    expect(store.getState().timeSlipSamples).toBe(12.5);
+    store.getState().nudgeTimeSlip(-2);
+    expect(store.getState().timeSlipSamples).toBe(10.5);
+    // Non-finite input never corrupts the slip.
+    store.getState().setTimeSlip(Number.POSITIVE_INFINITY);
+    expect(store.getState().timeSlipSamples).toBe(0);
+
+    // A successful File 2 load starts the new comparison unslipped.
+    capture.useCaptureStore.setState({ capture: makeCapture(["A"], 100) });
+    parseCaptureBuffer.mockResolvedValue(makeCapture(["A"], 50));
+    resampleToGrid.mockResolvedValue(new Float32Array(100));
+    store.getState().setTimeSlip(7);
+    await store
+      .getState()
+      .parseReferenceBuffer(new ArrayBuffer(8), "file2.fvf");
+    expect(store.getState().timeSlipSamples).toBe(0);
+
+    store.getState().nudgeTimeSlip(3);
+    expect(store.getState().timeSlipSamples).toBe(3);
+    store.getState().clear();
+    expect(store.getState().timeSlipSamples).toBe(0);
+  });
+
   it("lands typed errors without touching a loaded reference", async () => {
     const { reference } = await importStores();
     parseCaptureBuffer.mockRejectedValue(new Error("bad signature"));

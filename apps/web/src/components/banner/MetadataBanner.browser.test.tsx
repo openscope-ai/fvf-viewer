@@ -44,6 +44,41 @@ describe("MetadataBanner browser integration (real worker round-trip)", () => {
     hostElement.remove();
   });
 
+  it("issue #239: '+ Compare' renders beside 'Open file…' with identical chrome and fires onCompareFile", async () => {
+    const buffer = await fetchFixture(fourChUrl);
+    const capture = await parseCaptureBuffer(buffer);
+    const onCompareFile = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <MetadataBanner
+          capture={capture}
+          fileName="four-channel.fvf"
+          onOpenFile={() => {}}
+          onCompareFile={onCompareFile}
+        />,
+      );
+    });
+
+    const openButton = hostElement.querySelector(
+      ".banner-open-btn",
+    ) as HTMLButtonElement;
+    const compareButton = hostElement.querySelector(
+      "[data-testid='compare-file-button']",
+    ) as HTMLButtonElement;
+
+    expect(compareButton).not.toBeNull();
+    expect(compareButton.textContent).toContain("+ Compare");
+    // Identical chrome: same class list, immediately after Open file….
+    expect(compareButton.className).toBe(openButton.className);
+    expect(openButton.nextElementSibling).toBe(compareButton);
+
+    await act(async () => {
+      compareButton.click();
+    });
+    expect(onCompareFile).toHaveBeenCalledTimes(1);
+  });
+
   it("triggers onOpenFile callback when 'Open file…' button is clicked", async () => {
     const buffer = await fetchFixture(fourChUrl);
     const capture = await parseCaptureBuffer(buffer);

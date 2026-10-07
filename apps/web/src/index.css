@@ -381,26 +381,8 @@ body,
   padding: 0 16px;
 }
 
-.waveform-compare-button {
-  background: #1e1e1e;
-  color: #e8eaed;
-  border: 1px solid #3a3a3a;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.waveform-compare-button:hover {
-  background: #2a2a2a;
-  border-color: #4a4a4a;
-}
-
-.waveform-compare-button:focus-visible {
-  outline: 2px solid #00bfff;
-  outline-offset: 2px;
-}
+/* Issue #239: '+ Compare' moved to the banner with the shared
+   .banner-open-btn chrome; the toolbar-specific rules are gone. */
 
 /* Metadata Banner */
 .metadata-banner {
@@ -2246,4 +2228,111 @@ body,
 .png-copy-button--copied {
   color: #4ade80;
   border-color: rgba(74, 222, 128, 0.4);
+}
+
+/* Issue #97: T2 time-slip hit-strip over the top graticule margin.
+ * Invisible; covers the canvas-drawn falling-edge glyph. Focus is the
+ * "File 2 selected" state that owns plain-arrow keyboard nudging. */
+.t2-hitstrip {
+  position: absolute;
+  z-index: 12;
+  cursor: ew-resize;
+  display: none;
+  border-radius: 3px;
+}
+
+.t2-hitstrip:focus-visible {
+  outline: 1px solid #ff6ec7;
+  outline-offset: -1px;
+  background: rgba(255, 110, 199, 0.12);
+}
+
+/* Issue #97: Align at Cursors action in the HUD readout card's
+ * differential section (compare mode only). */
+.cursor-align-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.cursor-align-btn {
+  background: rgba(255, 110, 199, 0.12);
+  border: 1px solid rgba(255, 110, 199, 0.45);
+  color: #ff9ada;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.cursor-align-btn:hover,
+.cursor-align-btn:focus-visible {
+  background: rgba(255, 110, 199, 0.24);
+  border-color: #ff6ec7;
+  color: #ffc4e9;
+}
+
+.cursor-align-btn:focus-visible {
+  outline: 1px solid #ff6ec7;
+  outline-offset: 1px;
+}
+
+.cursor-align-btn:active {
+  background: rgba(255, 110, 199, 0.32);
+}
+
+/* Issue #98: ground-marker hit strips in the left graticule margin. */
+.ground-marker-hit {
+  position: absolute;
+  z-index: 12;
+  cursor: ns-resize;
+  display: none;
+  border-radius: 3px;
+}
+
+.ground-marker-hit:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+}
+
+/* Issue #98: Overlay/Stack segmented toggle in the waveform toolbar. */
+.waveform-stack-toggle {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.waveform-stack-option {
+  background: transparent;
+  border: none;
+  color: #9a9a9a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.waveform-stack-option--active {
+  background: #2a2a2a;
+  color: #ffffff;
+}
+
+.waveform-stack-option:hover:not(.waveform-stack-option--active),
+.waveform-stack-option:focus-visible {
+  color: #ffffff;
+  background: #222222;
+}
+
+.waveform-stack-option:focus-visible {
+  outline: 1px solid #00bfff;
+  outline-offset: -1px;
 }

@@ -24,6 +24,7 @@ import {
 import { effectiveTraceColor, resolveThemePalette } from "./themePalette";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
+import { useReferenceStore } from "../../state/referenceStore";
 import type { ParsedCapture } from "../../types/capture";
 import type { ChannelTag } from "../../state/viewportStore";
 import { invertSign } from "./channelDisplay";
@@ -152,6 +153,7 @@ export function hoverTooltipPlugin(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastKey: string | null = null;
   let unsubscribeTheme: (() => void) | null = null;
+  let unsubscribeReference: (() => void) | null = null;
 
   function clearTimer(): void {
     if (timer !== null) {
@@ -271,6 +273,11 @@ export function hoverTooltipPlugin(
         plotArea.addEventListener("mousedown", hide);
         // Theme restyle in place when the viewport theme changes while shown.
         unsubscribeTheme = useThemeStore.subscribe(() => applyTheme());
+        // Issue #97: a time slip (T2 drag, keyboard nudge, Align at
+        // Cursors) rewrites the reference lanes programmatically — the
+        // shown tooltip's anchored dot is stale until the next mousemove,
+        // so the dwell resets exactly like on setScale.
+        unsubscribeReference = useReferenceStore.subscribe(() => hide());
       },
       setScale() {
         // Zoom/pan moves the dot; the dwell restarts on the next mousemove.
@@ -281,6 +288,10 @@ export function hoverTooltipPlugin(
         if (unsubscribeTheme) {
           unsubscribeTheme();
           unsubscribeTheme = null;
+        }
+        if (unsubscribeReference) {
+          unsubscribeReference();
+          unsubscribeReference = null;
         }
         if (plotArea) {
           plotArea.removeEventListener("mousemove", onMouseMove);

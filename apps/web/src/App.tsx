@@ -101,11 +101,10 @@ export default function App() {
                 capture={capture}
                 fileName={fileName}
                 onOpenFile={() => openPickerRef.current?.()}
+                onCompareFile={() => openComparePickerRef.current?.()}
                 onReturnToLanding={returnToLanding}
               />
-              <WaveformToolbar
-                onCompareFile={() => openComparePickerRef.current?.()}
-              />
+              <WaveformToolbar />
               <Oscilloscope capture={capture} />
             </>
           ) : null}

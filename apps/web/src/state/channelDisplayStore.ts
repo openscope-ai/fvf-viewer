@@ -46,13 +46,14 @@ function isChannelKey(value: unknown): value is ChannelKey {
 function readStored(): {
   keyConfigs: ChannelDisplayConfigs;
   solo: SoloState | null;
+  stackMode: boolean;
 } {
   try {
     const raw = window.localStorage.getItem(CHANNEL_DISPLAY_STORAGE_KEY);
-    if (!raw) return { keyConfigs: {}, solo: null };
+    if (!raw) return { keyConfigs: {}, solo: null, stackMode: false };
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) {
-      return { keyConfigs: {}, solo: null };
+      return { keyConfigs: {}, solo: null, stackMode: false };
     }
     const record = parsed as Record<string, unknown>;
     const keyConfigs: ChannelDisplayConfigs = {};
@@ -96,20 +97,28 @@ function readStored(): {
         solo = { key: rawSolo.key, savedActive };
       }
     }
-    return { keyConfigs, solo };
+    return { keyConfigs, solo, stackMode: record.stackMode === true };
   } catch {
-    return { keyConfigs: {}, solo: null };
+    return { keyConfigs: {}, solo: null, stackMode: false };
   }
 }
 
 function writeStored(state: ChannelDisplayStoreState): void {
   try {
-    if (Object.keys(state.keyConfigs).length === 0 && !state.solo) {
+    if (
+      Object.keys(state.keyConfigs).length === 0 &&
+      !state.solo &&
+      !state.stackMode
+    ) {
       window.localStorage.removeItem(CHANNEL_DISPLAY_STORAGE_KEY);
     } else {
       window.localStorage.setItem(
         CHANNEL_DISPLAY_STORAGE_KEY,
-        JSON.stringify({ keyConfigs: state.keyConfigs, solo: state.solo }),
+        JSON.stringify({
+          keyConfigs: state.keyConfigs,
+          solo: state.solo,
+          stackMode: state.stackMode,
+        }),
       );
     }
   } catch {
@@ -123,6 +132,16 @@ export interface ChannelDisplayStoreState {
   keyConfigs: ChannelDisplayConfigs;
   /** Solo quick-knob state (null = no channel isolated). */
   solo: SoloState | null;
+  /**
+   * Issue #98 Quick-Stack: Overlay (false, default) or Stack (true) —
+   * the canvas partitions visible channels into equal horizontal lanes
+   * while stacked. Persisted with the display record (validated
+   * hydration); the lane windowing itself is applied by the canvas at
+   * toggle time, so pan/zoom keeps working on top of it.
+   */
+  stackMode: boolean;
+  /** Toggles Overlay/Stack lane partitioning (issue #98). */
+  setStackMode: (stacked: boolean) => void;
   /** Sets the Y-scale percent (clamped 10–500; 100 prunes the field). */
   setYScale: (key: ChannelKey, percent: number) => void;
   /** Sets the vertical offset (0 prunes the field). */
@@ -143,7 +162,43 @@ export interface ChannelDisplayStoreState {
   reset: () => void;
 }
 
-/** Applies a partial patch, persisting the resulting complete state. */
+/**
+ * Issue #238: persistence is trailing-debounced (120 ms). Scrub drags
+ * commit at pointer cadence (60–120 Hz); a synchronous JSON.stringify +
+ * localStorage write per commit made the fields feel sluggish. The
+ * debounce coalesces bursts; the final state always lands one window
+ * after the last edit, and `flushPersist` forces it out (unload, tests).
+ */
+const PERSIST_DEBOUNCE_MS = 120;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Persists the current state immediately, cancelling any pending write. */
+export function flushPersist(): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  writeStored(useChannelDisplayStore.getState());
+}
+
+function schedulePersist(): void {
+  if (persistTimer !== null) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    writeStored(useChannelDisplayStore.getState());
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+if (
+  typeof window !== "undefined" &&
+  typeof window.addEventListener === "function"
+) {
+  // A closed tab must never lose the trailing edit waiting in the
+  // debounce window.
+  window.addEventListener("pagehide", flushPersist);
+}
+
+/** Applies a partial patch, scheduling the debounced persistence. */
 function commit(
   set: (
     fn: (state: ChannelDisplayStoreState) => ChannelDisplayStoreState,
@@ -154,7 +209,7 @@ function commit(
 ): void {
   set((state) => {
     const next = { ...state, ...updater(state) };
-    writeStored(next);
+    schedulePersist();
     return next;
   });
 }
@@ -178,6 +233,9 @@ export function createChannelDisplayStore() {
   return create<ChannelDisplayStoreState>((set) => ({
     keyConfigs: initial.keyConfigs,
     solo: initial.solo,
+    stackMode: initial.stackMode,
+
+    setStackMode: (stacked) => commit(set, () => ({ stackMode: stacked })),
 
     setYScale: (key, percent) =>
       commit(set, (state) => {
@@ -258,7 +316,8 @@ export function createChannelDisplayStore() {
         return { keyConfigs: next };
       }),
 
-    reset: () => commit(set, () => ({ keyConfigs: {}, solo: null })),
+    reset: () =>
+      commit(set, () => ({ keyConfigs: {}, solo: null, stackMode: false })),
   }));
 }
 

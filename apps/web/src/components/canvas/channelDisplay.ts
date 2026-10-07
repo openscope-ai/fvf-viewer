@@ -164,30 +164,40 @@ export function channelDisplayValue(
  * rail-clipped lane (issue #106 `buildDisplayData` output). Returns the
  * input array unchanged when every transform is at its default, so the
  * 100% / 0 / non-inverted state stays zero-copy and byte-identical.
+ *
+ * Issue #238: an optional `out` buffer lets high-frequency callers
+ * (scrub drags at pointer cadence) reuse one allocation per series
+ * instead of churning the GC with a fresh lane per commit.
  */
 export function transformDisplayLane(
   lane: Float32Array,
   yScalePercent: number,
   offset: number,
   inverted: boolean,
+  out?: Float32Array,
 ): Float32Array {
   if (
     yScalePercent === DEFAULT_Y_SCALE_PERCENT &&
     offset === DEFAULT_OFFSET &&
     !inverted
   ) {
+    if (out && out !== lane && out.length === lane.length) {
+      out.set(lane);
+      return out;
+    }
     return lane;
   }
-  const out = new Float32Array(lane.length);
+  const target =
+    out && out.length === lane.length ? out : new Float32Array(lane.length);
   for (let i = 0; i < lane.length; i += 1) {
-    out[i] = channelDisplayValue(
+    target[i] = channelDisplayValue(
       lane[i] ?? Number.NaN,
       yScalePercent,
       offset,
       inverted,
     );
   }
-  return out;
+  return target;
 }
 
 /** Transforms a [min, max] bounds pair into display space (affine). */
