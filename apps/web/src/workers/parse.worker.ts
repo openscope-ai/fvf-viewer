@@ -9,16 +9,24 @@
  * memory and kill every subsequent parse in this worker.
  */
 
-import init, { parse_capture } from "@fvf/fvf-wasm";
+import init, { parse_capture, resample_to_grid } from "@fvf/fvf-wasm";
 import wasmUrl from "@fvf/fvf-wasm/fvf_wasm_bg.wasm?url";
 import { assembleCapture } from "./capturePayload";
 import {
   PARSE_ERROR,
   PARSE_FVF,
   PARSE_SUCCESS,
+  RESAMPLE_ERROR,
+  RESAMPLE_SUCCESS,
+  RESAMPLE_TO_GRID,
   isParseErrorPayload,
 } from "./protocol";
-import type { ParseFvfRequest, WorkerErrorResponsePayload } from "./protocol";
+import type {
+  ParseFvfRequest,
+  ResampleToGridRequest,
+  WorkerErrorResponsePayload,
+  WorkerRequest,
+} from "./protocol";
 import type { ParseErrorPayload } from "../types/capture";
 
 let engine: Promise<WebAssembly.Memory> | null = null;
@@ -60,12 +68,19 @@ function toErrorPayload(
   };
 }
 
-self.addEventListener("message", (event: MessageEvent<ParseFvfRequest>) => {
+self.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
   const message = event.data;
-  if (!message || message.type !== PARSE_FVF) {
+  if (!message) {
     return;
   }
+  if (message.type === PARSE_FVF) {
+    handleParse(message);
+  } else if (message.type === RESAMPLE_TO_GRID) {
+    handleResample(message);
+  }
+});
 
+function handleParse(message: ParseFvfRequest): void {
   ensureEngine()
     .then((memory) => {
       const { capture, transfer } = assembleCapture(
@@ -85,4 +100,43 @@ self.addEventListener("message", (event: MessageEvent<ParseFvfRequest>) => {
     .catch((error: unknown) => {
       post({ type: PARSE_ERROR, id: message.id, ...toErrorPayload(error) });
     });
-});
+}
+
+/**
+ * Issue #96: resamples one reference lane onto the primary time grid in
+ * the Wasm engine. The output lane aliases Wasm linear memory, so it is
+ * copied into a standalone Float32Array (detachment guard) before the
+ * result handle is freed and the copy enters the transfer list.
+ */
+function handleResample(message: ResampleToGridRequest): void {
+  ensureEngine()
+    .then((memory) => {
+      const result = resample_to_grid(
+        message.timestamps,
+        message.values,
+        message.grid,
+      );
+      const len = result.values_len;
+      let values: Float32Array;
+      if (len === 0 || len !== message.grid.length) {
+        values = new Float32Array(message.grid.length).fill(Number.NaN);
+      } else {
+        // View aliasing Wasm linear memory — copied immediately and never
+        // exposed further (same guard as the parse path).
+        const view = new Float32Array(memory.buffer, result.values_ptr, len);
+        values = new Float32Array(view);
+      }
+      result.free();
+      post(
+        { type: RESAMPLE_SUCCESS, id: message.id, values, transferCount: 1 },
+        [values.buffer as ArrayBuffer],
+      );
+    })
+    .catch((error: unknown) => {
+      post({
+        type: RESAMPLE_ERROR,
+        id: message.id,
+        ...toErrorPayload(error),
+      });
+    });
+}

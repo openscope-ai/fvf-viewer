@@ -7,6 +7,8 @@
 import { formatTimeWithUnit } from "../../cursors/displayUnits";
 import type { TimeUnit } from "../../../state/cursorDisplayStore";
 import type { WaveformChannel } from "../../../types/capture";
+import { invertSign } from "../../canvas/channelDisplay";
+import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 
 function formatCount(value: number): string {
   return value.toLocaleString("en-US");
@@ -44,8 +46,16 @@ export function channelStatsLine(
   const count = formatCount(channel.data.length);
   const extent = finiteExtent(channel.data);
   if (!extent) return `${count} samples`;
+  // Issue #224: an inverted channel reports sign-flipped extents so the
+  // hero stats line agrees with the displayed trace and every readout.
+  const sign = invertSign(
+    useChannelDisplayStore.getState().keyConfigs,
+    channel.name,
+  );
+  const min = extent.min * sign;
+  const max = extent.max * sign;
   const suffix = unit && unit.trim() ? ` ${unit.trim()}` : "";
-  return `${count} samples · ${formatExtentValue(extent.min)}${suffix} \u2026 ${formatExtentValue(extent.max)}${suffix}`;
+  return `${count} samples · ${formatExtentValue(Math.min(min, max))}${suffix} \u2026 ${formatExtentValue(Math.max(min, max))}${suffix}`;
 }
 
 /**

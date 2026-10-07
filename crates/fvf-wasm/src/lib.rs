@@ -22,6 +22,7 @@ pub mod error;
 pub mod fixed_point;
 pub mod header;
 pub mod records;
+pub mod resample;
 pub mod timebase;
 pub mod types;
 

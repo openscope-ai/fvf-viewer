@@ -41,6 +41,20 @@ import {
 } from "./themePalette";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import {
+  refChannelName as toRefName,
+  refLaneFitBounds,
+  useReferenceStore,
+} from "../../state/referenceStore";
+import {
+  displayKeyForChannel,
+  effectiveInverted,
+  effectiveOffset,
+  effectiveYScale,
+  transformBounds,
+  transformDisplayLane,
+} from "./channelDisplay";
 import { boxZoomPlugin } from "./plugins/boxZoomPlugin";
 import {
   AXIS_FONT,
@@ -167,16 +181,32 @@ export function resolveActiveIndex(
   return firstVisible >= 0 ? firstVisible : 0;
 }
 
-/** Applies per-channel fit bounds to the uPlot instance and syncs the store. */
+/**
+ * Applies per-channel fit bounds to the uPlot instance and syncs the store.
+ * Issue #224: the physical fit bounds pass through the channel's display
+ * transform first, so Fit Waveform frames the *displayed* trace (a scaled,
+ * offset, or inverted channel fits exactly like an untouched one).
+ */
 export function applyFitBounds(
   instance: uPlot,
   capture: ParsedCapture,
   activeChannels: readonly ChannelTag[],
 ): void {
   const fit = computeCaptureFit(capture);
+  const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
   instance.setScale("x", { min: fit.xMin, max: fit.xMax });
   fit.channels.forEach((bounds, index) => {
-    instance.setScale(yScaleKey(index), { min: bounds.min, max: bounds.max });
+    const key = displayKeyForChannel(capture.channels[index]!.name);
+    const display = transformBounds(
+      bounds,
+      effectiveYScale(displayConfigs, key),
+      effectiveOffset(displayConfigs, key),
+      effectiveInverted(displayConfigs, key),
+    );
+    instance.setScale(yScaleKey(index), {
+      min: display.min,
+      max: display.max,
+    });
   });
 
   const selectedChannel = useViewportStore.getState().selectedChannel;
@@ -271,11 +301,17 @@ function applyTraceStrokes(
   theme: ViewportTheme,
 ): void {
   const { customColors, keyConfigs } = usePaletteStore.getState();
-  capture.channels.forEach((channel, index) => {
+  const names = capture.channels.map((channel) => channel.name);
+  // Issue #96: reference series trail the primary channels.
+  const reference = useReferenceStore.getState();
+  if (reference.capture) {
+    names.push(...reference.capture.channels.map((c) => toRefName(c.name)));
+  }
+  names.forEach((name, index) => {
     const series = instance.series[index + 1];
     if (series) {
       series.stroke = () =>
-        effectiveTraceStroke(theme, customColors, keyConfigs, channel.name);
+        effectiveTraceStroke(theme, customColors, keyConfigs, name);
     }
   });
   instance.redraw();
@@ -298,6 +334,13 @@ export default function Oscilloscope({
 
   const activeChannels = useViewportStore((state) => state.activeChannels);
   const selectedChannel = useViewportStore((state) => state.selectedChannel);
+  // Issue #96: the File 2 comparison slot — lanes are resampled onto
+  // File 1's time grid, so the x axis is shared by construction.
+  const refCapture = useReferenceStore((state) => state.capture);
+  const refLanes = useReferenceStore((state) => state.lanes);
+  const refActiveChannels = useReferenceStore(
+    (state) => state.refActiveChannels,
+  );
   const fitRequest = useViewportStore((state) => state.fitRequest);
   const theme = useThemeStore((state) => state.theme);
   const keyConfigs = usePaletteStore((state) => state.keyConfigs);
@@ -320,6 +363,9 @@ export default function Oscilloscope({
   // Ingesting a new capture file initializes cursors and selection defaults.
   useEffect(() => {
     if (capture) {
+      // Issue #224: capture ingestion/replacement clears solo state
+      // (restoring the pre-solo visibility set).
+      useChannelDisplayStore.getState().clearSolo();
       useCursorStore.getState().initForCapture(capture.timestamps.length);
       const curSelected = useViewportStore.getState().selectedChannel;
       const isValid =
@@ -337,20 +383,46 @@ export default function Oscilloscope({
     if (!capture || capture.channels.length === 0) {
       return null;
     }
+    const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
+    // Issue #96: reference lanes trail the primary channels (Wasm-
+    // resampled onto File 1's grid, then #224-transformed like any
+    // primary lane).
+    const reference = useReferenceStore.getState();
+    const refNames = reference.capture
+      ? reference.capture.channels.map((c) => toRefName(c.name))
+      : [];
     return [
       capture.timestamps,
       ...capture.channels.map((channel, index) => {
         const info = capture.metadata.channels[index];
         const physical = info && !info.derived ? info : undefined;
-        return buildDisplayData(
-          channel.data,
-          channel.rawCounts,
-          physical?.windowMin,
-          physical?.windowMax,
+        const key = displayKeyForChannel(channel.name);
+        // Issue #224: the rail-clipped physical lane passes through the
+        // per-channel display transform (Y-scale %, offset, invert ±) —
+        // readouts keep reading the untouched capture buffers.
+        return transformDisplayLane(
+          buildDisplayData(
+            channel.data,
+            channel.rawCounts,
+            physical?.windowMin,
+            physical?.windowMax,
+          ),
+          effectiveYScale(displayConfigs, key),
+          effectiveOffset(displayConfigs, key),
+          effectiveInverted(displayConfigs, key),
+        );
+      }),
+      ...(reference.lanes ?? []).map((lane, index) => {
+        const refKey = displayKeyForChannel(refNames[index] ?? "");
+        return transformDisplayLane(
+          lane,
+          effectiveYScale(displayConfigs, refKey),
+          effectiveOffset(displayConfigs, refKey),
+          effectiveInverted(displayConfigs, refKey),
         );
       }),
     ] as AlignedData;
-  }, [capture]);
+  }, [capture, refLanes]);
 
   // Mount/re-create uPlot instance only when capture structure/buffers change
   useEffect(() => {
@@ -450,6 +522,19 @@ export default function Oscilloscope({
             ];
           }),
         ),
+        // Issue #96: reference channels render as trailing series with
+        // their own pinned scales (zero-centered symmetric fit of the
+        // resampled lane) and NO left axis column — the shared overlay
+        // graticule belongs to the primary channels.
+        ...Object.fromEntries(
+          (useReferenceStore.getState().lanes ?? []).map((lane, index) => {
+            const bounds = refLaneFitBounds(lane);
+            return [
+              yScaleKey(capture.channels.length + index),
+              { auto: false, min: bounds.min, max: bounds.max },
+            ];
+          }),
+        ),
       },
       axes: [
         {
@@ -537,6 +622,33 @@ export default function Oscilloscope({
           points: { show: false },
           show: mountChannels.includes(channel.name),
         })),
+        ...(() => {
+          // Issue #96: trailing reference series (Ref-A…): secondary
+          // palette strokes, own scales, independent visibility, full
+          // #204/#224 per-key appearance participation. Selection stays
+          // a primary-channel concern (trace-click snap skips them).
+          const reference = useReferenceStore.getState();
+          const lanes = reference.lanes ?? [];
+          const active = reference.refActiveChannels;
+          const customNames = useChannelNamesStore.getState().names;
+          return lanes.map((lane, index) => {
+            const raw = reference.capture?.channels[index];
+            const name = raw ? toRefName(raw.name) : `Ref-${index}`;
+            return {
+              label: channelDisplayName(name, undefined, customNames[name]),
+              scale: yScaleKey(capture.channels.length + index),
+              stroke: effectiveTraceStroke(
+                useThemeStore.getState().theme,
+                usePaletteStore.getState().customColors,
+                usePaletteStore.getState().keyConfigs,
+                name,
+              ),
+              width: 1.5,
+              points: { show: false },
+              show: active.includes(name),
+            };
+          });
+        })(),
       ],
       hooks: {
         drawClear: [
@@ -875,6 +987,31 @@ export default function Oscilloscope({
       }
     });
 
+    // Issue #96: reference visibility is independent (refActiveChannels);
+    // toggling a Ref badge must not rescale its lane.
+    if (refCapture) {
+      refCapture.channels.forEach((channel, refIdx) => {
+        const seriesIdx = capture.channels.length + refIdx + 1;
+        const name = toRefName(channel.name);
+        const shouldShow = refActiveChannels.includes(name);
+        if (
+          instance.series[seriesIdx] &&
+          instance.series[seriesIdx].show !== shouldShow
+        ) {
+          instance.setSeries(seriesIdx, { show: shouldShow });
+        }
+        const scaleKey = yScaleKey(capture.channels.length + refIdx);
+        const scale = instance.scales[scaleKey];
+        if (scale?.min != null && scale.max != null) {
+          pinned.push({
+            key: scaleKey,
+            min: scale.min,
+            max: scale.max,
+          });
+        }
+      });
+    }
+
     for (const pin of pinned) {
       if (pin.min != null && pin.max != null) {
         instance.setScale(pin.key, { min: pin.min, max: pin.max });
@@ -882,7 +1019,68 @@ export default function Oscilloscope({
     }
 
     instance.redraw(false, true);
-  }, [activeChannels, selectedChannel, capture]);
+  }, [activeChannels, selectedChannel, capture, refCapture, refActiveChannels]);
+
+  // Issue #224: per-channel display transforms (Y-scale %, offset, invert)
+  // update the rendered lanes in place — scrubbing never re-creates the
+  // uPlot instance. Scale bounds are pinned around the lane swap so the
+  // transform never fights the user's zoom.
+  const displayConfigs = useChannelDisplayStore((s) => s.keyConfigs);
+  useEffect(() => {
+    const instance = uplotRef.current;
+    if (!instance || !capture) return;
+
+    const pinned = capture.channels.map((_, index) => {
+      const scale = instance.scales[yScaleKey(index)];
+      return {
+        key: yScaleKey(index),
+        min: scale?.min ?? null,
+        max: scale?.max ?? null,
+      };
+    });
+
+    capture.channels.forEach((channel, index) => {
+      const info = capture.metadata.channels[index];
+      const physical = info && !info.derived ? info : undefined;
+      const key = displayKeyForChannel(channel.name);
+      instance.data[index + 1] = transformDisplayLane(
+        buildDisplayData(
+          channel.data,
+          channel.rawCounts,
+          physical?.windowMin,
+          physical?.windowMax,
+        ),
+        effectiveYScale(displayConfigs, key),
+        effectiveOffset(displayConfigs, key),
+        effectiveInverted(displayConfigs, key),
+      );
+    });
+
+    // Issue #96: reference lanes re-transform in place exactly like the
+    // primary lanes (they are already resampled onto File 1's grid).
+    const reference = useReferenceStore.getState();
+    const refNames = reference.capture
+      ? reference.capture.channels.map((c) => toRefName(c.name))
+      : [];
+    (reference.lanes ?? []).forEach((lane, refIdx) => {
+      const refKey = displayKeyForChannel(refNames[refIdx] ?? "");
+      instance.data[capture.channels.length + refIdx + 1] =
+        transformDisplayLane(
+          lane,
+          effectiveYScale(displayConfigs, refKey),
+          effectiveOffset(displayConfigs, refKey),
+          effectiveInverted(displayConfigs, refKey),
+        );
+    });
+
+    for (const pin of pinned) {
+      if (pin.min != null && pin.max != null) {
+        instance.setScale(pin.key, { min: pin.min, max: pin.max });
+      }
+    }
+
+    instance.redraw(false, true);
+  }, [displayConfigs, capture]);
 
   // Selected channel changes: move horizontal gridlines and mirror bounds
   useEffect(() => {
@@ -946,6 +1144,20 @@ export default function Oscilloscope({
         if (axis) {
           axis.label = adapter.label;
         }
+      }
+    });
+
+    // Issue #96: reference series labels track custom names too.
+    const reference = useReferenceStore.getState();
+    reference.capture?.channels.forEach((refChannel, refIdx) => {
+      const name = toRefName(refChannel.name);
+      const refSeriesIdx = capture.channels.length + refIdx + 1;
+      if (instance.series[refSeriesIdx]) {
+        instance.series[refSeriesIdx].label = channelDisplayName(
+          name,
+          undefined,
+          customNames[name],
+        );
       }
     });
 

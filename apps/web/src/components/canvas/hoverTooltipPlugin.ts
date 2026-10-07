@@ -26,6 +26,8 @@ import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import type { ParsedCapture } from "../../types/capture";
 import type { ChannelTag } from "../../state/viewportStore";
+import { invertSign } from "./channelDisplay";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 
 /** Dwell time on the same snap point before the tooltip appears. */
 export const HOVER_DWELL_MS = 500;
@@ -115,7 +117,13 @@ export function formatHoverTooltipLines(
   customNames?: Record<string, string>,
 ): { name: string; x: string; y: string } {
   const channel = capture.channels[hover.channelIndex]!;
-  const value = channel.data[hover.sampleIndex] ?? Number.NaN;
+  // Issue #224: invert ± flips tooltip readouts consistently (scale and
+  // offset never alter them — those are display-only).
+  const sign = invertSign(
+    useChannelDisplayStore.getState().keyConfigs,
+    channel.name,
+  );
+  const value = (channel.data[hover.sampleIndex] ?? Number.NaN) * sign;
   const time = capture.timestamps[hover.sampleIndex] ?? 0;
   const unit = getPhysicalChannelUnit(capture, hover.channelIndex);
   return {

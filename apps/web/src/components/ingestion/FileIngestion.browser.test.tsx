@@ -274,7 +274,11 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
       "[data-testid='shell-drop-overlay']",
     );
     expect(overlay).not.toBeNull();
-    expect(overlay?.textContent).toContain("Drop to replace capture");
+    // Issue #96: the overlay splits 50/50 — left replaces, right compares.
+    expect(overlay?.textContent).toContain("Drop to Replace Active Capture");
+    expect(overlay?.textContent).toContain(
+      "Drop to Compare as Reference (File 2)",
+    );
 
     // Second drop: 2ch fixture replaces capture
     await dropFileAndWait(

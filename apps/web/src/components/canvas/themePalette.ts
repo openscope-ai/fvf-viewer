@@ -40,6 +40,13 @@ export const DARK_THEME: ThemePalette = {
     B: "#00BFFF",
     C: "#FF4500",
     D: "#00FF7F",
+    // Issue #96: high-contrast secondary palette for File 2 reference
+    // channels — distinct hues/families from every primary trace and the
+    // C1/C2 cursor strokes.
+    "Ref-A": "#FF6EC7",
+    "Ref-B": "#00CED1",
+    "Ref-C": "#C8A2FF",
+    "Ref-D": "#C8FF4D",
   },
   traceFallback: "#00BFFF",
 };
@@ -60,6 +67,12 @@ export const LIGHT_THEME: ThemePalette = {
   cursorHandleText: "#FFFFFF",
   triggerAccent: "#888888",
   traces: {
+    // Issue #96: darkened secondary reference variants holding contrast
+    // on the white canvas (same adaptation rule as the primaries).
+    "Ref-A": "#C2185B",
+    "Ref-B": "#00838F",
+    "Ref-C": "#6D4C41",
+    "Ref-D": "#9E9D24",
     A: "#B8860B",
     // Issue #145: dodger blue replaces navy (#00008B), which was easily
     // confused with the C1 cursor purple (#6A1B9A) and invisible on the
@@ -101,13 +114,18 @@ export function resolveTraceColor(
 // ---------------------------------------------------------------------------
 
 /** Entries of the palette a user may customize (issue #40). */
-export type PaletteKey = "A" | "B" | "C" | "D" | "C1" | "C2";
+export type PaletteKey =
+  "A" | "B" | "C" | "D" | "Ref-A" | "Ref-B" | "Ref-C" | "Ref-D" | "C1" | "C2";
 
 export const PALETTE_KEYS: readonly PaletteKey[] = [
   "A",
   "B",
   "C",
   "D",
+  "Ref-A",
+  "Ref-B",
+  "Ref-C",
+  "Ref-D",
   "C1",
   "C2",
 ];

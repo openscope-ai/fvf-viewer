@@ -714,7 +714,12 @@ export async function composePrintSnapshot(
         capture.timestamps,
         // Issue #106: the print render plots the same NaN edge-clipped
         // display lanes as the live canvas, never the raw NaN buffers.
+        // Issue #224: the live lanes already carry the per-channel display
+        // transform (Y-scale %, offset, invert), so the print export stays
+        // pixel-consistent with the dark-path snapshot of the live raster.
         ...capture.channels.map((channel, index) => {
+          const liveLane = liveUplot.data[index + 1];
+          if (liveLane) return liveLane;
           const info = capture.metadata.channels[index];
           const physical = info && !info.derived ? info : undefined;
           return buildDisplayData(
