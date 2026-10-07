@@ -196,7 +196,7 @@ describe("Dual-file comparison (issue #96)", () => {
     expect(refGear).not.toBeNull();
   });
 
-  it("the + Compare toolbar action opens the File 2 picker", async () => {
+  it("the + Compare banner action opens the File 2 picker (issue #239)", async () => {
     const file1 = await createFixtureFile(fourChUrl, "file1.fvf");
     await act(async () => {
       root.render(<App />);
@@ -224,6 +224,16 @@ describe("Dual-file comparison (issue #96)", () => {
     ) as HTMLButtonElement;
     expect(compareButton).not.toBeNull();
     expect(compareButton.textContent).toContain("+ Compare");
+    // Issue #239: the control sits in the banner header row, immediately
+    // after 'Open file…', styled exactly like it (same class).
+    expect(compareButton.closest(".banner-top-row")).not.toBeNull();
+    expect(compareButton.className).toBe(
+      (hostElement.querySelector(".banner-open-btn") as HTMLElement).className,
+    );
+    expect(
+      (hostElement.querySelector(".banner-open-btn") as HTMLElement)
+        .nextElementSibling,
+    ).toBe(compareButton);
 
     await act(async () => {
       compareButton.click();

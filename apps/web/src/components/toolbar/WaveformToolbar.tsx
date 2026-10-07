@@ -19,6 +19,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
 import { useReferenceStore } from "../../state/referenceStore";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import {
   CHANNEL_NAME_MAX_LENGTH,
   useChannelNamesStore,
@@ -51,15 +52,12 @@ export interface WaveformToolbarProps {
   channels?: string[];
   /** Optional extra callback invoked when Fit Waveform is clicked. */
   onFit?: () => void;
-  /** Issue #96: opens the native file picker loading File 2 (+ Compare). */
-  onCompareFile?: () => void;
   className?: string;
 }
 
 export default function WaveformToolbar({
   channels: channelsOverride,
   onFit,
-  onCompareFile,
   className,
 }: WaveformToolbarProps) {
   const captureChannels = useCaptureStore((state) => state.capture?.channels);
@@ -126,6 +124,10 @@ export default function WaveformToolbar({
     selectedChannel: ChannelTag | null;
     timestamp: number;
   } | null>(null);
+
+  // Issue #98: 1-click Overlay/Stack lane partitioning.
+  const stackMode = useChannelDisplayStore((state) => state.stackMode);
+  const setStackMode = useChannelDisplayStore((state) => state.setStackMode);
 
   const handleFit = useCallback(() => {
     onFit?.();
@@ -518,18 +520,35 @@ export default function WaveformToolbar({
           );
         })}
       </div>
-      {onCompareFile ? (
+      <div
+        className="waveform-stack-toggle"
+        role="group"
+        aria-label="Channel lane layout"
+        data-testid="stack-mode-toggle"
+      >
         <button
           type="button"
-          className="waveform-compare-button"
-          aria-label="Compare: load a second capture as reference (File 2)"
-          title="Compare: load a second capture as reference (File 2)"
-          data-testid="compare-file-button"
-          onClick={onCompareFile}
+          className={`waveform-stack-option${!stackMode ? " waveform-stack-option--active" : ""}`}
+          aria-pressed={!stackMode}
+          aria-label="Overlay: all channels share the full graticule"
+          title="Overlay: all channels share the full graticule"
+          data-testid="stack-mode-overlay"
+          onClick={() => setStackMode(false)}
         >
-          + Compare
+          Overlay
         </button>
-      ) : null}
+        <button
+          type="button"
+          className={`waveform-stack-option${stackMode ? " waveform-stack-option--active" : ""}`}
+          aria-pressed={stackMode}
+          aria-label="Stack: partition the canvas into equal horizontal lanes per visible channel"
+          title="Stack: partition the canvas into equal horizontal lanes per visible channel"
+          data-testid="stack-mode-stack"
+          onClick={() => setStackMode(true)}
+        >
+          Stack
+        </button>
+      </div>
       <button
         type="button"
         className="waveform-fit-button"

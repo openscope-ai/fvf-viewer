@@ -36,6 +36,12 @@ export interface MetadataBannerProps {
   capture: ParsedCapture;
   fileName: string | null;
   onOpenFile?: () => void;
+  /**
+   * Issue #239: opens the File 2 compare picker — the '+ Compare'
+   * control lives here in the banner header row, immediately next to
+   * 'Open file…' and styled exactly like it.
+   */
+  onCompareFile?: () => void;
   /** Issue #208: activates the brand lockup's back-to-landing affordance. */
   onReturnToLanding?: () => void;
 }
@@ -44,6 +50,7 @@ export default function MetadataBanner({
   capture,
   fileName,
   onOpenFile,
+  onCompareFile,
   onReturnToLanding,
 }: MetadataBannerProps) {
   const customNames = useChannelNamesStore((state) => state.names);
@@ -72,6 +79,18 @@ export default function MetadataBanner({
               aria-label="Open capture file"
             >
               Open file…
+            </button>
+          ) : null}
+          {onCompareFile ? (
+            <button
+              type="button"
+              className="banner-open-btn"
+              onClick={onCompareFile}
+              aria-label="Compare: load a second capture as reference (File 2)"
+              title="Compare: load a second capture as reference (File 2)"
+              data-testid="compare-file-button"
+            >
+              + Compare
             </button>
           ) : null}
         </div>

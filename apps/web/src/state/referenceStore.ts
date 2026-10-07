@@ -90,6 +90,17 @@ export interface ReferenceStoreState {
   parseState: ParseState;
   error: CaptureError | null;
   /**
+   * Issue #97: horizontal time slip of File 2 in File 1 grid samples
+   * (positive = shifted right). Fractional while dragging; the keyboard
+   * nudge and Align-at-Cursors write exact integers. Session state —
+   * reset by a new File 2 load and `clear()`, never persisted.
+   */
+  timeSlipSamples: number;
+  /** Sets the time slip (grid samples; drag writes fractional values). */
+  setTimeSlip: (samples: number) => void;
+  /** Adds to the time slip (keyboard nudge, Align-at-Cursors delta). */
+  nudgeTimeSlip: (deltaSamples: number) => void;
+  /**
    * Parses and resamples File 2 onto File 1's time grid. Requires a
    * loaded primary capture; failures land in `error` (rendered by the
    * same ErrorModal surface, issue #11 taxonomy).
@@ -146,6 +157,19 @@ export function createReferenceStore() {
     refActiveChannels: [],
     parseState: "idle",
     error: null,
+    timeSlipSamples: 0,
+
+    setTimeSlip: (samples) =>
+      set(() => ({
+        timeSlipSamples: Number.isFinite(samples) ? samples : 0,
+      })),
+
+    nudgeTimeSlip: (deltaSamples) =>
+      set((state) => ({
+        timeSlipSamples: Number.isFinite(deltaSamples)
+          ? state.timeSlipSamples + deltaSamples
+          : state.timeSlipSamples,
+      })),
 
     parseReferenceBuffer: async (buffer, fileName) => {
       referenceSequence += 1;
@@ -196,6 +220,7 @@ export function createReferenceStore() {
           ),
           parseState: "success",
           error: null,
+          timeSlipSamples: 0,
         });
       } catch (error) {
         if (ticket !== referenceSequence) return;
@@ -231,6 +256,7 @@ export function createReferenceStore() {
         refActiveChannels: [],
         parseState: "idle",
         error: null,
+        timeSlipSamples: 0,
       });
     },
   }));

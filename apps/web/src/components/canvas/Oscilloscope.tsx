@@ -56,6 +56,11 @@ import {
   transformDisplayLane,
 } from "./channelDisplay";
 import { boxZoomPlugin } from "./plugins/boxZoomPlugin";
+import { timeSlipPlugin } from "./plugins/timeSlipPlugin";
+import { groundMarkerPlugin } from "./plugins/groundMarkerPlugin";
+import { stackLaneBounds } from "./channelLayout";
+import { slippedRefDisplayLane } from "./timeSlip";
+import { physicalDisplayLane } from "./displayLaneCache";
 import {
   AXIS_FONT,
   AXIS_GAP_PX,
@@ -82,7 +87,6 @@ import {
   useChannelNamesStore,
 } from "../../state/channelNamesStore";
 import {
-  buildDisplayData,
   channelFitRange,
   getPhysicalChannelUnit,
   splitUnit,
@@ -223,6 +227,14 @@ export function applyFitBounds(
     yMin: selectedFit?.min ?? null,
     yMax: selectedFit?.max ?? null,
   });
+}
+
+/** True when two (scale, offset, invert) display triples are equal. */
+function tripleEquals(
+  a: [number, number, boolean],
+  b: [number, number, boolean],
+): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 
 /** Shallow-compares two per-key config records for restyle decisions. */
@@ -393,20 +405,15 @@ export default function Oscilloscope({
       : [];
     return [
       capture.timestamps,
-      ...capture.channels.map((channel, index) => {
-        const info = capture.metadata.channels[index];
-        const physical = info && !info.derived ? info : undefined;
-        const key = displayKeyForChannel(channel.name);
+      ...capture.channels.map((_channel, index) => {
+        const key = displayKeyForChannel(capture.channels[index]!.name);
         // Issue #224: the rail-clipped physical lane passes through the
         // per-channel display transform (Y-scale %, offset, invert ±) —
-        // readouts keep reading the untouched capture buffers.
+        // readouts keep reading the untouched capture buffers. Issue
+        // #238: the O(N) rail-clip pass is cached per capture; the
+        // transform stays a cheap affine pass.
         return transformDisplayLane(
-          buildDisplayData(
-            channel.data,
-            channel.rawCounts,
-            physical?.windowMin,
-            physical?.windowMax,
-          ),
+          physicalDisplayLane(capture, index),
           effectiveYScale(displayConfigs, key),
           effectiveOffset(displayConfigs, key),
           effectiveInverted(displayConfigs, key),
@@ -414,8 +421,11 @@ export default function Oscilloscope({
       }),
       ...(reference.lanes ?? []).map((lane, index) => {
         const refKey = displayKeyForChannel(refNames[index] ?? "");
-        return transformDisplayLane(
+        // Issue #97: the time slip fuses into the same single pass; the
+        // plugin owns live slip updates (in-place rewrite, no remount).
+        return slippedRefDisplayLane(
           lane,
+          reference.timeSlipSamples,
           effectiveYScale(displayConfigs, refKey),
           effectiveOffset(displayConfigs, refKey),
           effectiveInverted(displayConfigs, refKey),
@@ -435,6 +445,8 @@ export default function Oscilloscope({
     ) {
       return;
     }
+    // Issue #98: a new plot invalidates any saved pre-stack windows.
+    preStackRef.current.clear();
 
     const initialW =
       width > 0 ? width : Math.max(container.clientWidth || 800, 100);
@@ -498,6 +510,11 @@ export default function Oscilloscope({
       },
       plugins: [
         boxZoomPlugin(),
+        // Issue #98: ground markers + ctrl+vertical-drag offset —
+        // registered BEFORE the cursor plugin so a ctrl+press on a
+        // trace can claim the vertical gesture (and forward unclaimed
+        // ctrl+clicks to the #14 cursor relocation).
+        groundMarkerPlugin({ getCapture: () => captureRef.current }),
         cursorPlugin({ getCapture: () => captureRef.current }),
         // Issue #150: dwell tooltip on the hovered snap point (x/y sample readout)
         hoverTooltipPlugin({
@@ -505,6 +522,8 @@ export default function Oscilloscope({
           getActiveChannels: () => useViewportStore.getState().activeChannels,
           getCustomNames: () => useChannelNamesStore.getState().names,
         }),
+        // Issue #97: T2 trigger glyph + tactile time slip for File 2.
+        timeSlipPlugin({ getCapture: () => captureRef.current }),
       ],
       scales: {
         x: {
@@ -1025,61 +1044,143 @@ export default function Oscilloscope({
   // update the rendered lanes in place — scrubbing never re-creates the
   // uPlot instance. Scale bounds are pinned around the lane swap so the
   // transform never fights the user's zoom.
+  //
+  // Issue #238: the lane source is the cached rail-clipped physical lane
+  // (no O(N) re-derivation per commit), lanes whose transform triple is
+  // unchanged are skipped, transformed output reuses per-series scratch
+  // buffers, and the repaint is the full synchronous redraw — the exact
+  // paint path a palette/opacity edit uses — so a committed value shows
+  // up on the canvas immediately instead of riding uPlot's deferred
+  // commit() microtask.
   const displayConfigs = useChannelDisplayStore((s) => s.keyConfigs);
+  const laneScratchRef = useRef(new Map<number, Float32Array>());
+  const lastTransformRef = useRef<{
+    instance: uPlot | null;
+    capture: ParsedCapture | null;
+    params: Map<string, [number, number, boolean]>;
+    slip: number;
+  }>({ instance: null, capture: null, params: new Map(), slip: 0 });
   useEffect(() => {
     const instance = uplotRef.current;
     if (!instance || !capture) return;
 
-    const pinned = capture.channels.map((_, index) => {
-      const scale = instance.scales[yScaleKey(index)];
-      return {
-        key: yScaleKey(index),
-        min: scale?.min ?? null,
-        max: scale?.max ?? null,
-      };
-    });
+    const referenceNow = useReferenceStore.getState();
+    const scratch = laneScratchRef.current;
+    const last = lastTransformRef.current;
+    const fresh = last.instance !== instance || last.capture !== capture;
+    if (fresh) {
+      scratch.clear();
+      last.instance = instance;
+      last.capture = capture;
+      last.params = new Map();
+      last.slip = referenceNow.timeSlipSamples;
+    }
+
+    /** True when the (scale, offset, invert) triple changed for a key. */
+    const changed = (key: string, triple: [number, number, boolean]) => {
+      const prev = last.params.get(key);
+      last.params.set(key, triple);
+      return fresh || prev === undefined || !tripleEquals(prev, triple);
+    };
+
+    // Deferred lane swaps + the rewritten lanes' bound re-pins execute
+    // together inside ONE uPlot immediate-mode batch — the repaint is
+    // synchronous with the commit, never a deferred microtask paint.
+    const swaps: (() => void)[] = [];
+    const pins: (() => void)[] = [];
 
     capture.channels.forEach((channel, index) => {
-      const info = capture.metadata.channels[index];
-      const physical = info && !info.derived ? info : undefined;
       const key = displayKeyForChannel(channel.name);
-      instance.data[index + 1] = transformDisplayLane(
-        buildDisplayData(
-          channel.data,
-          channel.rawCounts,
-          physical?.windowMin,
-          physical?.windowMax,
-        ),
+      const triple: [number, number, boolean] = [
         effectiveYScale(displayConfigs, key),
         effectiveOffset(displayConfigs, key),
         effectiveInverted(displayConfigs, key),
-      );
+      ];
+      if (!changed(key ?? `ch${index}`, triple)) return;
+      let buffer = scratch.get(index);
+      if (!buffer || buffer.length !== capture.timestamps.length) {
+        buffer = new Float32Array(capture.timestamps.length);
+        scratch.set(index, buffer);
+      }
+      const lane = physicalDisplayLane(capture, index);
+      swaps.push(() => {
+        instance.data[index + 1] = transformDisplayLane(
+          lane,
+          triple[0],
+          triple[1],
+          triple[2],
+          buffer,
+        );
+      });
+      const scale = instance.scales[yScaleKey(index)];
+      const min = scale?.min ?? null;
+      const max = scale?.max ?? null;
+      if (min != null && max != null) {
+        pins.push(() => {
+          instance.setScale(yScaleKey(index), { min, max });
+        });
+      }
     });
 
     // Issue #96: reference lanes re-transform in place exactly like the
     // primary lanes (they are already resampled onto File 1's grid).
-    const reference = useReferenceStore.getState();
-    const refNames = reference.capture
-      ? reference.capture.channels.map((c) => toRefName(c.name))
+    const refNames = referenceNow.capture
+      ? referenceNow.capture.channels.map((c) => toRefName(c.name))
       : [];
-    (reference.lanes ?? []).forEach((lane, refIdx) => {
+    const refLanes = referenceNow.lanes ?? [];
+    const slipChanged = last.slip !== referenceNow.timeSlipSamples;
+    last.slip = referenceNow.timeSlipSamples;
+    refLanes.forEach((lane, refIdx) => {
       const refKey = displayKeyForChannel(refNames[refIdx] ?? "");
-      instance.data[capture.channels.length + refIdx + 1] =
-        transformDisplayLane(
+      const triple: [number, number, boolean] = [
+        effectiveYScale(displayConfigs, refKey),
+        effectiveOffset(displayConfigs, refKey),
+        effectiveInverted(displayConfigs, refKey),
+      ];
+      // Issue #97: reads the live slip so a display-config change never
+      // reverts an applied time slip (slip-only updates stay owned by
+      // the time-slip plugin; a slip change rewrites every ref lane).
+      if (!slipChanged && !changed(refKey ?? `ref${refIdx}`, triple)) {
+        return;
+      }
+      const seriesIdx = capture.channels.length + refIdx;
+      let buffer = scratch.get(seriesIdx);
+      if (!buffer || buffer.length !== lane.length) {
+        buffer = new Float32Array(lane.length);
+        scratch.set(seriesIdx, buffer);
+      }
+      const slip = referenceNow.timeSlipSamples;
+      swaps.push(() => {
+        instance.data[seriesIdx + 1] = slippedRefDisplayLane(
           lane,
-          effectiveYScale(displayConfigs, refKey),
-          effectiveOffset(displayConfigs, refKey),
-          effectiveInverted(displayConfigs, refKey),
+          slip,
+          triple[0],
+          triple[1],
+          triple[2],
+          buffer,
         );
+      });
     });
 
-    for (const pin of pinned) {
-      if (pin.min != null && pin.max != null) {
-        instance.setScale(pin.key, { min: pin.min, max: pin.max });
-      }
-    }
+    if (swaps.length === 0) return;
 
-    instance.redraw(false, true);
+    // Immediate-mode batch = synchronous repaint. Guarded: before the
+    // constructor's first real paint (zero-size mount) uPlot's axes
+    // carry no computed increments, and a forced immediate _commit
+    // would throw in drawAxesGrid — fall back to the deferred commit.
+    const axesReady = instance.axes.every(
+      (axis) => (axis as unknown as { _found?: unknown })._found != null,
+    );
+    if (axesReady) {
+      instance.batch(() => {
+        swaps.forEach((swap) => swap());
+        pins.forEach((pin) => pin());
+      });
+    } else {
+      swaps.forEach((swap) => swap());
+      pins.forEach((pin) => pin());
+      instance.redraw(false, true);
+    }
   }, [displayConfigs, capture]);
 
   // Selected channel changes: move horizontal gridlines and mirror bounds
@@ -1197,6 +1298,75 @@ export default function Oscilloscope({
     styledConfigsRef.current = { ...keyConfigs };
     applyTraceStrokes(instance, capture, theme);
   }, [theme, keyConfigs, capture]);
+
+  // Issue #98 Quick-Stack: Overlay/Stack lane partitioning. Toggling
+  // rewrites every visible channel's (own-axis) scale window so its
+  // trace occupies one equal horizontal lane (top-first, primary file
+  // order then visible reference channels); collapsing restores the
+  // saved pre-stack windows. Pan/zoom keeps working on top of either
+  // state — the mode applies at toggle time.
+  const stackMode = useChannelDisplayStore((s) => s.stackMode);
+  const preStackRef = useRef<Map<string, { min: number; max: number }>>(
+    new Map(),
+  );
+  useEffect(() => {
+    const instance = uplotRef.current;
+    if (!instance || !capture) return;
+
+    const visibleKeys: { scaleKey: string }[] = [];
+    capture.channels.forEach((channel, index) => {
+      if (!useViewportStore.getState().activeChannels.includes(channel.name))
+        return;
+      visibleKeys.push({ scaleKey: yScaleKey(index) });
+    });
+    const reference = useReferenceStore.getState();
+    (reference.lanes ?? []).forEach((_lane, refIdx) => {
+      const raw = reference.capture?.channels[refIdx];
+      const name = raw ? toRefName(raw.name) : null;
+      if (!name || !reference.refActiveChannels.includes(name)) return;
+      visibleKeys.push({
+        scaleKey: yScaleKey(capture.channels.length + refIdx),
+      });
+    });
+    if (visibleKeys.length === 0) return;
+    const restoring = !stackMode && preStackRef.current.size > 0;
+    if (!stackMode && !restoring) return;
+
+    // Same pre-first-paint guard as the display-transform effect (#238):
+    // an immediate-mode batch needs computed axis increments.
+    const axesReady = instance.axes.every(
+      (axis) => (axis as unknown as { _found?: unknown })._found != null,
+    );
+    const apply = (): void => {
+      visibleKeys.forEach(({ scaleKey }, laneIndex) => {
+        const scale = instance.scales[scaleKey];
+        if (!scale || scale.min == null || scale.max == null) return;
+        const current = { min: scale.min, max: scale.max };
+        if (stackMode) {
+          if (!preStackRef.current.has(scaleKey)) {
+            preStackRef.current.set(scaleKey, current);
+          }
+          // Review F1: lane the SAVED pre-stack window, never the live
+          // (already laned) one — visibility toggles while stacked must
+          // re-partition idempotently, not multiply the span again.
+          const base = preStackRef.current.get(scaleKey)!;
+          const lane = stackLaneBounds(base, laneIndex, visibleKeys.length);
+          instance.setScale(scaleKey, { min: lane.min, max: lane.max });
+        } else {
+          const saved = preStackRef.current.get(scaleKey);
+          if (saved) {
+            instance.setScale(scaleKey, { min: saved.min, max: saved.max });
+          }
+        }
+      });
+    };
+    if (axesReady) instance.batch(apply);
+    else {
+      apply();
+      instance.redraw(false, true);
+    }
+    if (!stackMode) preStackRef.current.clear();
+  }, [stackMode, capture, refLanes, activeChannels, refActiveChannels]);
 
   // Fit Waveform (100%) command channel
   useEffect(() => {

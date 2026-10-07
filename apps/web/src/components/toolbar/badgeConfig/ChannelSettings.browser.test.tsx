@@ -92,6 +92,22 @@ describe("Channel display settings (issue #224)", () => {
     ) as HTMLElement;
   };
 
+  /** Issue #238: persistence is trailing-debounced (120 ms). */
+  const settlePersistence = async (): Promise<void> => {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 220));
+    });
+  };
+
+  const pressEnter = async (input: HTMLInputElement): Promise<void> => {
+    await act(async () => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+      await new Promise((r) => setTimeout(r, 20));
+    });
+  };
+
   const stored = (): { keyConfigs: Record<string, unknown> } | null => {
     const raw = window.localStorage.getItem(CHANNEL_DISPLAY_STORAGE_KEY);
     return raw
@@ -155,30 +171,85 @@ describe("Channel display settings (issue #224)", () => {
     ).toBeNull();
   });
 
-  it("Y-scale commits through the scrub field, clamps to 10–500, and persists per key", async () => {
+  it("issue #238: typed Y-scale never commits per keystroke; Enter/Tab/blur commit and clamp 10–500", async () => {
     const popover = await openPopover("channel-gear-A");
     const input = popover.querySelector(
       "[data-testid='scale-scrub-input']",
     ) as HTMLInputElement;
+
+    // Drafting "250" — no store write while typing.
+    await act(async () => {
+      setReactInputValue(input, "2");
+    });
+    await act(async () => {
+      setReactInputValue(input, "25");
+    });
     await act(async () => {
       setReactInputValue(input, "250");
     });
+    expect(
+      useChannelDisplayStore.getState().keyConfigs.A?.yScalePercent,
+    ).toBeUndefined();
+    expect(window.localStorage.getItem(CHANNEL_DISPLAY_STORAGE_KEY)).toBeNull();
+
+    // Enter commits (the user's primary path).
+    await pressEnter(input);
     expect(useChannelDisplayStore.getState().keyConfigs.A?.yScalePercent).toBe(
       250,
     );
-    expect(stored()?.keyConfigs.A).toEqual({ yScalePercent: 250 });
 
+    // Clamping still applies through the typed path.
     await act(async () => {
       setReactInputValue(input, "9999");
     });
+    await pressEnter(input);
     expect(useChannelDisplayStore.getState().keyConfigs.A?.yScalePercent).toBe(
       500,
     );
     await act(async () => {
       setReactInputValue(input, "1");
     });
+    await pressEnter(input);
     expect(useChannelDisplayStore.getState().keyConfigs.A?.yScalePercent).toBe(
       10,
+    );
+
+    // Debounced persistence lands with the final value only.
+    await settlePersistence();
+    expect(stored()?.keyConfigs.A).toEqual({ yScalePercent: 10 });
+  });
+
+  it("issue #238: Tab and blur (click outside) commit the drafted Y-scale", async () => {
+    const popover = await openPopover("channel-gear-A");
+    const input = popover.querySelector(
+      "[data-testid='scale-scrub-input']",
+    ) as HTMLInputElement;
+
+    // Tab commits.
+    await act(async () => {
+      setReactInputValue(input, "175");
+    });
+    await act(async () => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", bubbles: true }),
+      );
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(useChannelDisplayStore.getState().keyConfigs.A?.yScalePercent).toBe(
+      175,
+    );
+
+    // Blur commits (focus loss by clicking outside the field).
+    useChannelDisplayStore.getState().setYScale("A", 100);
+    await act(async () => {
+      setReactInputValue(input, "300");
+    });
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(useChannelDisplayStore.getState().keyConfigs.A?.yScalePercent).toBe(
+      300,
     );
   });
 
@@ -193,6 +264,7 @@ describe("Channel display settings (issue #224)", () => {
       ).click();
     });
     expect(useChannelDisplayStore.getState().keyConfigs.A).toBeUndefined();
+    await settlePersistence();
     expect(stored()?.keyConfigs.A).toBeUndefined();
   });
 
@@ -210,7 +282,13 @@ describe("Channel display settings (issue #224)", () => {
     await act(async () => {
       setReactInputValue(input, "2.5");
     });
+    // Issue #238: no commit until Enter.
+    expect(
+      useChannelDisplayStore.getState().keyConfigs.A?.offset,
+    ).toBeUndefined();
+    await pressEnter(input);
     expect(useChannelDisplayStore.getState().keyConfigs.A?.offset).toBe(2.5);
+    await settlePersistence();
     expect(stored()?.keyConfigs.A).toEqual({ offset: 2.5 });
 
     await act(async () => {
@@ -221,6 +299,7 @@ describe("Channel display settings (issue #224)", () => {
       ).click();
     });
     expect(useChannelDisplayStore.getState().keyConfigs.A).toBeUndefined();
+    await settlePersistence();
     expect(stored()?.keyConfigs.A).toBeUndefined();
   });
 
@@ -247,6 +326,7 @@ describe("Channel display settings (issue #224)", () => {
       ).click();
     });
     expect(useChannelDisplayStore.getState().keyConfigs.D?.inverted).toBe(true);
+    await settlePersistence();
     expect(stored()?.keyConfigs.D).toEqual({
       yScalePercent: 250,
       offset: 3,

@@ -77,6 +77,24 @@ function ScrubField({
   const valueRef = useRef(value);
   valueRef.current = value;
 
+  /**
+   * Issue #238 typed-commit semantics (owner decision): typing NEVER
+   * commits per keystroke — the value applies when the user presses
+   * Enter or Tab, or when the field loses focus (click outside). The
+   * steppers (−/+) and the drag-scrub keep applying immediately, as
+   * before. Clearing the draft text first makes the trailing blur
+   * commit (Enter focuses-out, Tab default-moves focus) a no-op.
+   */
+  const commitTyped = () => {
+    const raw = text;
+    setText(null);
+    if (raw == null) return;
+    const parsed = Number(raw);
+    if (raw !== "" && Number.isFinite(parsed) && parsed !== valueRef.current) {
+      commitRef.current(parsed);
+    }
+  };
+
   useEffect(() => {
     const zone = zoneRef.current;
     if (!zone) return;
@@ -153,17 +171,19 @@ function ScrubField({
           aria-label={`${ariaLabel}, drag to scrub or type exact value`}
           data-testid={`${testidPrefix}-scrub-input`}
           onChange={(event) => {
+            // Issue #238: drafting only — no store write per keystroke.
             setText(event.target.value);
-            const parsed = Number(event.target.value);
-            if (event.target.value !== "" && Number.isFinite(parsed)) {
-              onCommit(parsed);
-            }
           }}
-          onBlur={() => setText(null)}
+          onBlur={commitTyped}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
+              commitTyped();
               event.currentTarget.blur();
+            } else if (event.key === "Tab") {
+              // Let the default focus move happen; commitTyped clears
+              // the draft so the trailing blur commit is a no-op.
+              commitTyped();
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
               onCommit(value + 1);
