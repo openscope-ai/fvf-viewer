@@ -14,8 +14,10 @@ import {
 import useNarrowViewport from "./hooks/useNarrowViewport";
 import { useDocumentTitle } from "./hooks/useDocumentTitle";
 import { useCaptureStore } from "./state/captureStore";
+import { useReferenceStore } from "./state/referenceStore";
 import { useCursorStore } from "./state/cursorStore";
 import { useViewportStore } from "./state/viewportStore";
+import { useChannelDisplayStore } from "./state/channelDisplayStore";
 
 export default function App() {
   const capture = useCaptureStore((state) => state.capture);
@@ -23,6 +25,11 @@ export default function App() {
   const fileName = useCaptureStore((state) => state.fileName);
   const reset = useCaptureStore((state) => state.reset);
   const openPickerRef = useRef<(() => void) | null>(null);
+  const openComparePickerRef = useRef<(() => void) | null>(null);
+  // Issue #96: the File 2 comparison slot (rendered state only — the
+  // reference's own parse errors surface through the modal below).
+  const referenceError = useReferenceStore((state) => state.error);
+  const clearReferenceError = useReferenceStore((state) => state.clearError);
 
   // Issue #208: the banner brand lockup is the app's back-to-landing
   // affordance. Discarding the capture is intentionally immediate (no
@@ -31,6 +38,11 @@ export default function App() {
   const returnToLanding = useCallback(() => {
     useViewportStore.getState().reset();
     useCursorStore.getState().reset();
+    // Issue #224: the solo quick-knob state resets with the loaded
+    // capture's other view state.
+    useChannelDisplayStore.getState().clearSolo();
+    // Issue #96: discarding the capture discards the comparison too.
+    useReferenceStore.getState().clear();
     reset();
   }, [reset]);
   const narrowViewport = useNarrowViewport();
@@ -64,6 +76,13 @@ export default function App() {
     );
   }, [fileName, capture, setChannelNamesFileKey]);
 
+  // Issue #96: replacing File 1 drops the File 2 comparison (its resampled
+  // lanes belong to the old primary time grid) and clears solo with it.
+  useEffect(() => {
+    useReferenceStore.getState().clear();
+    useChannelDisplayStore.getState().clearSolo();
+  }, [capture]);
+
   return (
     <div className="app-frame">
       <main
@@ -72,7 +91,10 @@ export default function App() {
         inert={narrowViewport}
         tabIndex={-1}
       >
-        <FileIngestion onOpenFileRef={openPickerRef}>
+        <FileIngestion
+          onOpenFileRef={openPickerRef}
+          onOpenCompareRef={openComparePickerRef}
+        >
           {capture ? (
             <>
               <MetadataBanner
@@ -81,12 +103,17 @@ export default function App() {
                 onOpenFile={() => openPickerRef.current?.()}
                 onReturnToLanding={returnToLanding}
               />
-              <WaveformToolbar />
+              <WaveformToolbar
+                onCompareFile={() => openComparePickerRef.current?.()}
+              />
               <Oscilloscope capture={capture} />
             </>
           ) : null}
         </FileIngestion>
         {error ? <ErrorModal error={error} onDismiss={reset} /> : null}
+        {referenceError ? (
+          <ErrorModal error={referenceError} onDismiss={clearReferenceError} />
+        ) : null}
       </main>
       <SiteFooter />
       {narrowViewport ? <DesktopRoadblock /> : null}

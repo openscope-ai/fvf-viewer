@@ -352,6 +352,56 @@ body,
   margin: 0;
 }
 
+/* Issue #96: 50/50 split drop targets (left replaces File 1, right loads
+   the File 2 reference). The half under the pointer lights up. */
+.shell-drop-half {
+  flex: 1 1 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.shell-drop-half--active {
+  opacity: 1;
+  background: rgba(0, 191, 255, 0.08);
+}
+
+.shell-drop-half--active .shell-drop-overlay-text {
+  text-shadow: 0 0 24px rgba(0, 191, 255, 0.9);
+}
+
+/* Split halves read at a comfortable size on narrow viewports while the
+   full sentence stays on one line wherever it fits. */
+.shell-drop-half .shell-drop-overlay-text {
+  font-size: clamp(1.05rem, 2.2vw, 2rem);
+  text-align: center;
+  padding: 0 16px;
+}
+
+.waveform-compare-button {
+  background: #1e1e1e;
+  color: #e8eaed;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.waveform-compare-button:hover {
+  background: #2a2a2a;
+  border-color: #4a4a4a;
+}
+
+.waveform-compare-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
 /* Metadata Banner */
 .metadata-banner {
   display: flex;
@@ -990,6 +1040,14 @@ body,
   font-size: 0.66rem;
   color: #9a9a9a;
   letter-spacing: 0.02em;
+}
+
+.badge-perdiv-readout {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--badge-dim, #9aa0a6);
+  white-space: nowrap;
+  user-select: none;
 }
 
 .badge-setting-chip {

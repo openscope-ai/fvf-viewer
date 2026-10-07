@@ -26,6 +26,7 @@ import {
   LockedDeltaSection,
   MeasurementUnitsSection,
 } from "./CursorSettings";
+import { ChannelDisplaySection } from "./ChannelSettings";
 
 export type BadgeConfigTarget =
   | { kind: "channel"; paletteKey: PaletteKey; channelName: string }
@@ -68,6 +69,12 @@ export function BadgeConfigPopover({
           color={color}
           opacity={opacity}
         />
+        {target.kind === "channel" && (
+          <ChannelDisplaySection
+            paletteKey={target.paletteKey}
+            channelName={target.channelName}
+          />
+        )}
         {detailOpen && (
           <ColorDetail paletteKey={key} color={color} opacity={opacity} />
         )}

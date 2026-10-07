@@ -15,6 +15,10 @@
 
 import { useCallback, useRef } from "react";
 import { useCaptureStore } from "../state/captureStore";
+import { useReferenceStore } from "../state/referenceStore";
+
+/** Which capture slot an ingested file targets (issue #96). */
+export type IngestRole = "primary" | "reference";
 
 export function extractFirstFile(
   files: FileList | File[] | null | undefined,
@@ -27,11 +31,32 @@ export function extractFirstFile(
 
 export function useFileIngestion() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const compareInputRef = useRef<HTMLInputElement>(null);
 
   const ingestFiles = useCallback(
-    async (files: FileList | File[] | null | undefined): Promise<void> => {
+    async (
+      files: FileList | File[] | null | undefined,
+      role: IngestRole = "primary",
+    ): Promise<void> => {
       const file = extractFirstFile(files);
       if (!file) {
+        return;
+      }
+      if (role === "reference") {
+        // Issue #96: File 2 parses and Wasm-resamples onto File 1's time
+        // grid through the reference store — File 1's capture, tickets,
+        // and parse state stay untouched.
+        try {
+          const buffer = await file.arrayBuffer();
+          await useReferenceStore
+            .getState()
+            .parseReferenceBuffer(buffer, file.name);
+        } catch (error) {
+          console.error(
+            "[useFileIngestion] failed to read or parse reference file",
+            error,
+          );
+        }
         return;
       }
       // Allocate ticket from captureStore: immediately invalidates any
@@ -94,11 +119,18 @@ export function useFileIngestion() {
     fileInputRef.current?.click();
   }, []);
 
+  // Issue #96: the File 2 picker feeding the reference slot.
+  const openCompareDialog = useCallback(() => {
+    compareInputRef.current?.click();
+  }, []);
+
   return {
     fileInputRef,
+    compareInputRef,
     ingestFiles,
     ingestFile,
     ingestUrl,
     openFileDialog,
+    openCompareDialog,
   };
 }

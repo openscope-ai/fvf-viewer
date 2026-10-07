@@ -47,6 +47,46 @@ export type ParseErrorResponse = {
 
 export type ParseFvfResponse = ParseSuccessResponse | ParseErrorResponse;
 
+// ---------------------------------------------------------------------------
+// Unified-timeline resampling (issue #96): a reference capture's sample
+// sequence maps onto the primary capture's monotonic time grid inside the
+// worker's Wasm engine — never on the main thread.
+// ---------------------------------------------------------------------------
+
+export const RESAMPLE_TO_GRID = "RESAMPLE_TO_GRID";
+export const RESAMPLE_SUCCESS = "RESAMPLE_SUCCESS";
+export const RESAMPLE_ERROR = "RESAMPLE_ERROR";
+
+export interface ResampleToGridRequest {
+  type: typeof RESAMPLE_TO_GRID;
+  /** Correlation id owned by the main-thread client. */
+  id: number;
+  /** Reference record's monotonic timestamps (trigger-relative seconds). */
+  timestamps: Float32Array;
+  /** Reference record's sample values, index-aligned with `timestamps`. */
+  values: Float32Array;
+  /** Primary capture's monotonic time grid to interpolate onto. */
+  grid: Float32Array;
+}
+
+export interface ResampleSuccessResponse {
+  type: typeof RESAMPLE_SUCCESS;
+  id: number;
+  /** Resampled lane, index-aligned with the requested grid. */
+  values: Float32Array;
+  transferCount: number;
+}
+
+export type ResampleErrorResponse = {
+  type: typeof RESAMPLE_ERROR;
+  id: number;
+} & WorkerErrorResponsePayload;
+
+export type ResampleResponse = ResampleSuccessResponse | ResampleErrorResponse;
+
+export type WorkerRequest = ParseFvfRequest | ResampleToGridRequest;
+export type WorkerResponse = ParseFvfResponse | ResampleResponse;
+
 export function isParseErrorPayload(
   value: unknown,
 ): value is ParseErrorPayload {

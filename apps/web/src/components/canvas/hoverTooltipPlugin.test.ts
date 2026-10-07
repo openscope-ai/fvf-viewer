@@ -11,6 +11,7 @@ import {
 } from "./hoverTooltipPlugin";
 import { yScaleKey } from "../../capture/channelUnits";
 import type { ParsedCapture } from "../../types/capture";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 
 function makeCapture(): ParsedCapture {
   return {
@@ -132,6 +133,22 @@ describe("formatHoverTooltipLines", () => {
     expect(lines.name).toBe("A");
     expect(lines.x).toBe("4.000 s");
     expect(lines.y).toBe("4.000 V");
+  });
+
+  it("flips y consistently for an inverted channel, never for scale/offset (issue #224)", () => {
+    const capture = makeCapture();
+    const hover = { channelIndex: 0, sampleIndex: 4, x: 4, y: 4 };
+    // Display-only transforms leave the physical tooltip untouched.
+    useChannelDisplayStore.setState({
+      keyConfigs: { A: { yScalePercent: 250, offset: 3 } },
+    });
+    expect(formatHoverTooltipLines(capture, hover).y).toBe("4.000 V");
+    // Invert ± flips the readout consistently with the displayed trace.
+    useChannelDisplayStore.setState({
+      keyConfigs: { A: { inverted: true } },
+    });
+    expect(formatHoverTooltipLines(capture, hover).y).toBe("-4.000 V");
+    useChannelDisplayStore.setState({ keyConfigs: {} });
   });
 
   it("reads Overload-NaN samples as an em dash", () => {

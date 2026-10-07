@@ -16,8 +16,9 @@
  * retired; its curated colors live on inside the popover.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
+import { useReferenceStore } from "../../state/referenceStore";
 import {
   CHANNEL_NAME_MAX_LENGTH,
   useChannelNamesStore,
@@ -50,15 +51,38 @@ export interface WaveformToolbarProps {
   channels?: string[];
   /** Optional extra callback invoked when Fit Waveform is clicked. */
   onFit?: () => void;
+  /** Issue #96: opens the native file picker loading File 2 (+ Compare). */
+  onCompareFile?: () => void;
   className?: string;
 }
 
 export default function WaveformToolbar({
   channels: channelsOverride,
   onFit,
+  onCompareFile,
   className,
 }: WaveformToolbarProps) {
   const captureChannels = useCaptureStore((state) => state.capture?.channels);
+  // Issue #96: File 2 reference channels render as Ref-A… badges with
+  // independent visibility and the full #204/#224 popover surface. The
+  // selector must return a stable reference (the capture object), with
+  // the name list memoized — a fresh array per notification would loop
+  // useSyncExternalStore re-renders.
+  const refCapture = useReferenceStore((state) => state.capture);
+  const refChannels = useMemo(
+    () =>
+      refCapture
+        ? refCapture.channels.map(
+            (c) => `Ref-${c.name.replace(/^Input\s+/i, "")}`,
+          )
+        : [],
+    [refCapture],
+  );
+  const refActiveChannels = useReferenceStore(
+    (state) => state.refActiveChannels,
+  );
+  const toggleRefChannel = useReferenceStore((state) => state.toggleRefChannel);
+  const refChannelGearRefs = useRef(new Map<string, HTMLButtonElement>());
   const activeChannels = useViewportStore((state) => state.activeChannels);
   const selectedChannel = useViewportStore((state) => state.selectedChannel);
   const cycleChannelBadge = useViewportStore(
@@ -311,6 +335,94 @@ export default function WaveformToolbar({
             </span>
           );
         })}
+        {refChannels.map((name) => {
+          // Issue #96: reference badges reuse the #228 split-action chip
+          // chrome; visibility is independent from the primary set and
+          // selection stays a primary-channel concern.
+          const active = refActiveChannels.includes(name);
+          const color = effectiveTraceColor(theme, customColors, name);
+          const custom = customNames[name];
+          const displayLabel = custom ? `${name}: ${custom}` : name;
+          const popoverKey = `channel:${name}`;
+          const popoverOpen = openKey === popoverKey;
+          return (
+            <span
+              key={name}
+              className={`waveform-channel-badge${
+                active ? " waveform-channel-badge--active" : ""
+              }${popoverOpen ? " waveform-channel-badge--open" : ""}`}
+              role="group"
+              aria-label={`Reference channel ${name}`}
+              data-testid={`channel-badge-group-${name}`}
+              style={{ "--badge-color": color } as React.CSSProperties}
+            >
+              <button
+                type="button"
+                className="waveform-channel-badge-body"
+                aria-pressed={active}
+                aria-label={`Toggle reference channel ${displayLabel} visibility (double-click to rename)`}
+                title={`Toggle reference channel ${displayLabel} visibility (double-click to rename)`}
+                data-testid={`channel-badge-${name}`}
+                onClick={() => toggleRefChannel(name)}
+                onDoubleClick={() => {
+                  setEditingChannel(name);
+                  preDoubleClickRef.current = {
+                    channel: name,
+                    activeChannels: [],
+                    selectedChannel: null,
+                    timestamp: Date.now(),
+                  };
+                  cancelledRef.current = false;
+                  draftRef.current = custom ?? "";
+                }}
+              >
+                {displayLabel}
+              </button>
+              <span className="badge-split-divider" aria-hidden="true" />
+              <button
+                type="button"
+                className="waveform-channel-badge-gear"
+                aria-haspopup="dialog"
+                aria-expanded={popoverOpen}
+                aria-label={`Configure reference channel ${name}`}
+                title={`Configure reference channel ${name}`}
+                data-testid={`channel-gear-${name}`}
+                ref={(el) => {
+                  if (el) refChannelGearRefs.current.set(name, el);
+                  else refChannelGearRefs.current.delete(name);
+                }}
+                onClick={() => setOpenKey(popoverOpen ? null : popoverKey)}
+              >
+                <GearIcon />
+              </button>
+              {popoverOpen && (
+                <AnchoredPopover
+                  openKey={popoverKey}
+                  anchorEl={refChannelGearRefs.current.get(name) ?? null}
+                  ariaLabel={`Configure reference channel ${name}`}
+                  onClose={(refocusAnchor) => {
+                    setOpenKey(null);
+                    if (refocusAnchor) {
+                      refChannelGearRefs.current.get(name)?.focus();
+                    }
+                  }}
+                >
+                  <BadgeConfigPopover
+                    target={{
+                      kind: "channel",
+                      paletteKey: name as PaletteKey,
+                      channelName: name,
+                    }}
+                    onClose={() => {
+                      setOpenKey(null);
+                      refChannelGearRefs.current.get(name)?.focus();
+                    }}
+                  />
+                </AnchoredPopover>
+              )}
+            </span>
+          );
+        })}
       </div>
       <div
         className="waveform-toolbar-cursors"
@@ -406,6 +518,18 @@ export default function WaveformToolbar({
           );
         })}
       </div>
+      {onCompareFile ? (
+        <button
+          type="button"
+          className="waveform-compare-button"
+          aria-label="Compare: load a second capture as reference (File 2)"
+          title="Compare: load a second capture as reference (File 2)"
+          data-testid="compare-file-button"
+          onClick={onCompareFile}
+        >
+          + Compare
+        </button>
+      ) : null}
       <button
         type="button"
         className="waveform-fit-button"

@@ -4,8 +4,18 @@
  * ArrayBuffer to the worker on every request.
  */
 
-import { PARSE_FVF, PARSE_SUCCESS } from "./protocol";
-import type { ParseFvfRequest, ParseFvfResponse } from "./protocol";
+import {
+  PARSE_FVF,
+  PARSE_SUCCESS,
+  RESAMPLE_SUCCESS,
+  RESAMPLE_TO_GRID,
+} from "./protocol";
+import type {
+  ParseFvfRequest,
+  ResampleResponse,
+  ResampleToGridRequest,
+  WorkerResponse,
+} from "./protocol";
 import type { ParsedCapture, StoreErrorCode } from "../types/capture";
 
 /** Typed parse failure raised into main-thread callers. */
@@ -33,10 +43,19 @@ let nextId = 1;
 const pending = new Map<
   number,
   {
-    resolve: (capture: ParsedCapture) => void;
+    resolve: (value: ParsedCapture | Float32Array) => void;
     reject: (error: unknown) => void;
   }
 >();
+
+function rejectEntry(id: number, error: unknown): void {
+  const entry = pending.get(id);
+  if (!entry) {
+    return;
+  }
+  pending.delete(id);
+  entry.reject(error);
+}
 
 function ensureWorker(): Worker {
   if (worker) {
@@ -46,32 +65,60 @@ function ensureWorker(): Worker {
 
   instance.addEventListener(
     "message",
-    (event: MessageEvent<ParseFvfResponse>) => {
+    (event: MessageEvent<WorkerResponse>) => {
       const message = event.data;
       if (!message) {
         return;
       }
-      const entry = pending.get(message.id);
-      if (!entry) {
+      if (message.type === PARSE_SUCCESS || message.type === "PARSE_ERROR") {
+        const entry = pending.get(message.id);
+        if (!entry) {
+          return;
+        }
+        pending.delete(message.id);
+        if (message.type === PARSE_SUCCESS) {
+          entry.resolve(message.capture);
+        } else {
+          entry.reject(
+            new ParseWorkerError(
+              message.code,
+              message.message,
+              message.details,
+            ),
+          );
+        }
         return;
       }
-      pending.delete(message.id);
-      if (message.type === PARSE_SUCCESS) {
-        entry.resolve(message.capture);
-      } else {
-        entry.reject(
-          new ParseWorkerError(message.code, message.message, message.details),
-        );
+      const resample = message as ResampleResponse;
+      if (
+        resample.type === RESAMPLE_SUCCESS ||
+        resample.type === "RESAMPLE_ERROR"
+      ) {
+        const entry = pending.get(resample.id);
+        if (!entry) {
+          return;
+        }
+        pending.delete(resample.id);
+        if (resample.type === RESAMPLE_SUCCESS) {
+          entry.resolve(resample.values);
+        } else {
+          entry.reject(
+            new ParseWorkerError(
+              resample.code,
+              resample.message,
+              resample.details,
+            ),
+          );
+        }
       }
     },
   );
 
   const failAll = (reason: string): void => {
     const failure = new ParseWorkerError("worker_error", reason, "");
-    for (const entry of pending.values()) {
-      entry.reject(failure);
+    for (const id of [...pending.keys()]) {
+      rejectEntry(id, failure);
     }
-    pending.clear();
   };
   instance.addEventListener("error", (event: ErrorEvent) => {
     event.preventDefault();
@@ -98,9 +145,46 @@ export function parseCaptureBuffer(
   const id = nextId;
   nextId += 1;
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    pending.set(id, {
+      resolve: resolve as (value: ParsedCapture | Float32Array) => void,
+      reject,
+    });
     target.postMessage(
       { type: PARSE_FVF, id, buffer } satisfies ParseFvfRequest,
+      transfer,
+    );
+  });
+}
+
+/**
+ * Issue #96: resamples one reference lane onto the primary capture's
+ * time grid inside the worker's Wasm engine. The input arrays are
+ * structured-cloned (small) or transferred when the caller passes a
+ * transfer list; the returned lane is a standalone Float32Array
+ * index-aligned with `grid`.
+ */
+export function resampleToGrid(
+  timestamps: Float32Array,
+  values: Float32Array,
+  grid: Float32Array,
+  transfer: Transferable[] = [],
+): Promise<Float32Array> {
+  const target = ensureWorker();
+  const id = nextId;
+  nextId += 1;
+  return new Promise((resolve, reject) => {
+    pending.set(id, {
+      resolve: resolve as (value: ParsedCapture | Float32Array) => void,
+      reject,
+    });
+    target.postMessage(
+      {
+        type: RESAMPLE_TO_GRID,
+        id,
+        timestamps,
+        values,
+        grid,
+      } satisfies ResampleToGridRequest,
       transfer,
     );
   });

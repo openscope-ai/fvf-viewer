@@ -44,6 +44,8 @@ import {
 import { clampCardPosition, type CardPoint } from "./readoutCardPosition";
 import { CURSOR_MOVEMENT_GUIDE, CURSOR_MOVEMENT_SUMMARY } from "./cursorHelp";
 import type { ParsedCapture } from "../../types/capture";
+import { invertSign } from "../canvas/channelDisplay";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 
 export interface CursorReadoutCardProps {
   capture: ParsedCapture;
@@ -133,6 +135,9 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
   const xMin = useViewportStore((state) => state.xMin);
   const xMax = useViewportStore((state) => state.xMax);
   const customNames = useChannelNamesStore((state) => state.names);
+  // Issue #224: invert ± flips readouts consistently (a reactive
+  // subscription so popover toggles re-render the card immediately).
+  const displayConfigs = useChannelDisplayStore((s) => s.keyConfigs);
   // Issue #143: identity colors resolve under the active viewport theme so
   // the card matches the canvas traces exactly. Readability on the dark
   // card backdrop is carried by swatches/rings, not tinted text.
@@ -454,7 +459,11 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
         </div>
         <div className="cursor-channel-voltages">
           {channelList.list.map(({ channel, index }) => {
-            const v = channel.data[idx] ?? 0;
+            // Issue #224: inverted channels report sign-flipped physical
+            // volts (scale/offset never alter readouts).
+            const v =
+              (channel.data[idx] ?? 0) *
+              invertSign(displayConfigs, channel.name);
             // Issue #143: the swatch carries the exact canvas trace color
             // in the active theme; the name stays readable on the dark
             // card. A renamed channel shows no trailing colon.
@@ -646,9 +655,12 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
                   ),
                 )
                 .map(({ channel, index }) => {
+                  // Issue #224: a single sign factor flips the differential
+                  // readout consistently with the inverted display.
+                  const sign = invertSign(displayConfigs, channel.name);
                   const v1 = channel.data[i1] ?? 0;
                   const v2 = channel.data[i2] ?? 0;
-                  const deltaV = v2 - v1;
+                  const deltaV = (v2 - v1) * sign;
                   const unit = getPhysicalChannelUnit(capture, index);
                   const { base } = splitUnit(unit);
                   // Issue #143: same swatch treatment as the channel rows —

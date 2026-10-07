@@ -143,15 +143,42 @@ export function HeroDropZone({
   );
 }
 
-export function ShellDropOverlay() {
+export function ShellDropOverlay({
+  dropHalf,
+}: {
+  dropHalf?: "left" | "right" | null;
+}) {
   return (
     <div
       className="shell-drop-overlay"
-      aria-label="Drop to replace capture"
+      aria-label="Drop file: left half replaces the capture, right half compares as reference"
       data-testid="shell-drop-overlay"
     >
-      <div className="shell-drop-overlay-content">
-        <p className="shell-drop-overlay-text">Drop to replace capture</p>
+      {/* Issue #96: 50/50 split targets — left replaces File 1, right
+          loads the file as the File 2 reference. */}
+      <div
+        className={`shell-drop-half${
+          dropHalf === "left" ? " shell-drop-half--active" : ""
+        }`}
+        data-testid="split-drop-replace"
+      >
+        <div className="shell-drop-overlay-content">
+          <p className="shell-drop-overlay-text">
+            Drop to Replace Active Capture
+          </p>
+        </div>
+      </div>
+      <div
+        className={`shell-drop-half shell-drop-half--right${
+          dropHalf === "right" ? " shell-drop-half--active" : ""
+        }`}
+        data-testid="split-drop-compare"
+      >
+        <div className="shell-drop-overlay-content">
+          <p className="shell-drop-overlay-text">
+            Drop to Compare as Reference (File 2)
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -159,17 +186,26 @@ export function ShellDropOverlay() {
 
 export interface FileIngestionProps {
   onOpenFileRef?: React.MutableRefObject<(() => void) | null>;
+  /** Issue #96: exposes the File 2 compare picker (+ Compare). */
+  onOpenCompareRef?: React.MutableRefObject<(() => void) | null>;
   children?: React.ReactNode;
 }
 
 export default function FileIngestion({
   onOpenFileRef,
+  onOpenCompareRef,
   children,
 }: FileIngestionProps) {
   const capture = useCaptureStore((state) => state.capture);
   const parseState = useCaptureStore((state) => state.parseState);
-  const { fileInputRef, ingestFiles, ingestUrl, openFileDialog } =
-    useFileIngestion();
+  const {
+    fileInputRef,
+    compareInputRef,
+    ingestFiles,
+    ingestUrl,
+    openFileDialog,
+    openCompareDialog,
+  } = useFileIngestion();
 
   useEffect(() => {
     if (onOpenFileRef) {
@@ -177,8 +213,18 @@ export default function FileIngestion({
     }
   }, [onOpenFileRef, openFileDialog]);
 
-  const { isDragActive, dropTargetProps } = useDropTarget({
-    onDrop: ingestFiles,
+  useEffect(() => {
+    if (onOpenCompareRef) {
+      onOpenCompareRef.current = openCompareDialog;
+    }
+  }, [onOpenCompareRef, openCompareDialog]);
+
+  const { isDragActive, dropHalf, dropTargetProps } = useDropTarget({
+    // Issue #96: releasing over the left half replaces File 1; the right
+    // half loads the file as the File 2 reference.
+    onDrop: (files, half) => {
+      void ingestFiles(files, half === "right" ? "reference" : "primary");
+    },
   });
 
   return (
@@ -202,6 +248,19 @@ export default function FileIngestion({
           event.target.value = "";
         }}
       />
+      <input
+        ref={compareInputRef}
+        type="file"
+        accept=".fvf"
+        hidden
+        aria-hidden="true"
+        tabIndex={-1}
+        data-testid="compare-picker-input"
+        onChange={(event) => {
+          void ingestFiles(event.target.files, "reference");
+          event.target.value = "";
+        }}
+      />
 
       {!capture ? (
         <>
@@ -218,7 +277,7 @@ export default function FileIngestion({
       ) : (
         <>
           {children}
-          {isDragActive ? <ShellDropOverlay /> : null}
+          {isDragActive ? <ShellDropOverlay dropHalf={dropHalf} /> : null}
         </>
       )}
     </div>

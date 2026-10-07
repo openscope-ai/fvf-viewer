@@ -21,6 +21,8 @@ import {
 } from "./colorMath";
 import { rgbaFromHex } from "../../canvas/themePalette";
 import { PencilIcon } from "./icons";
+import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
+import { findChannelByName } from "../../../state/referenceStore";
 
 export interface HeroIdentityProps {
   kind: "channel" | "cursor";
@@ -76,13 +78,19 @@ export function HeroIdentity({
   // Issue #226: the position line's timestamp follows the global time
   // display unit selected in the cursor popovers.
   const timeUnit = useCursorDisplayStore((s) => s.timeUnit);
+  // Issue #224: invert ± flips the hero extents consistently with the
+  // displayed trace, so the stats line re-renders on display changes.
+  const displayRevision = useChannelDisplayStore((s) => s.keyConfigs);
 
   let stats: string;
   if (kind === "channel") {
-    const channel = capture?.channels.find((c) => c.name === channelName);
-    const index = channel ? capture!.channels.indexOf(channel) : -1;
-    const unit =
-      index >= 0 ? capture!.metadata.channels[index]?.unit : undefined;
+    // Issue #96: reference channels (Ref-A…) resolve against File 2.
+    const resolved = findChannelByName(channelName ?? "");
+    const channel = resolved?.channel;
+    const unit = resolved
+      ? resolved.capture.metadata.channels[resolved.index]?.unit
+      : undefined;
+    void displayRevision; // re-render trigger for the inverted extents
     stats = channelStatsLine(channel, unit);
   } else {
     stats = cursorPositionLine(cursorSample, capture?.timestamps, timeUnit);

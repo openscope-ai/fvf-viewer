@@ -19,6 +19,8 @@ import type {
 } from "../../state/cursorDisplayStore";
 import { getPhysicalChannelUnit, splitUnit } from "../../capture/channelUnits";
 import type { ParsedCapture } from "../../types/capture";
+import { invertSign } from "../canvas/channelDisplay";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 
 /** Display-unit selections for one card render (issue #226). */
 export interface ReadoutDisplayUnits {
@@ -138,6 +140,9 @@ export function buildReadoutRows(
   const c2Channels = boundList(semantics.c2Binding);
 
   const rows: ReadoutSnapshotRow[] = [];
+  // Issue #224: invert ± flips the embedded card's readouts exactly like
+  // the live card (scale/offset never alter them).
+  const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
 
   const renderCursor = (
     id: "C1" | "C2",
@@ -163,7 +168,10 @@ export function buildReadoutRows(
       ],
     });
     for (const { channel, index } of channelList.list) {
-      const v = channel.data[idx] ?? 0;
+      // Issue #224: invert ± flips the embedded card's readouts exactly
+      // like the live card (scale/offset never alter them).
+      const v =
+        (channel.data[idx] ?? 0) * invertSign(displayConfigs, channel.name);
       const unit = getPhysicalChannelUnit(capture, index);
       // Issue #143: no trailing colon after a renamed channel, mirroring
       // the live DOM card.
@@ -243,6 +251,8 @@ export function buildReadoutRows(
     for (const { channel, index } of c1Channels.list.filter(({ channel }) =>
       c2Channels.list.some((entry) => entry.channel.name === channel.name),
     )) {
+      // Issue #224: one sign factor flips the differential consistently.
+      const sign = invertSign(displayConfigs, channel.name);
       const v1 = channel.data[i1] ?? 0;
       const v2 = channel.data[i2] ?? 0;
       const displayName = formatReadoutChannelName(
@@ -259,7 +269,7 @@ export function buildReadoutRows(
             color: colors.channel(channel.name),
           },
           {
-            text: formatVoltageWithUnit(v2 - v1, unit, units.voltage),
+            text: formatVoltageWithUnit((v2 - v1) * sign, unit, units.voltage),
             alignRight: true,
           },
         ],

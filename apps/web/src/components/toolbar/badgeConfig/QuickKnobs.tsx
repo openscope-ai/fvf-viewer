@@ -18,6 +18,8 @@ import {
   type ViewportTheme,
 } from "../../canvas/themePalette";
 import { usePaletteStore } from "../../../state/paletteStore";
+import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
+import { isChannelKey } from "../../canvas/channelDisplay";
 import { isLowContrastOnDark, previewStroke } from "./colorMath";
 
 /** Deterministic decorative mini-waveform (preview only). */
@@ -66,6 +68,13 @@ export function QuickKnobs({
   opacity,
 }: QuickKnobsProps) {
   const setKeyOpacity = usePaletteStore((s) => s.setKeyOpacity);
+  // Issue #224: the Solo quick-knob sits beside the opacity presets for
+  // channel popovers (one click isolates this channel, second click
+  // restores the saved visibility set).
+  const solo = useChannelDisplayStore((s) => s.solo);
+  const toggleSolo = useChannelDisplayStore((s) => s.toggleSolo);
+  const soloed =
+    kind === "channel" && isChannelKey(paletteKey) && solo?.key === paletteKey;
   const stroke = previewStroke(color, opacity);
   const darkBackground = resolveThemePalette("dark").background;
   const lightBackground = resolveThemePalette("light").background;
@@ -88,6 +97,18 @@ export function QuickKnobs({
             {preset}%
           </button>
         ))}
+        {kind === "channel" && isChannelKey(paletteKey) && (
+          <button
+            type="button"
+            className="badge-opacity-chip badge-setting-chip"
+            data-testid={`solo-chip-${paletteKey}`}
+            aria-pressed={soloed}
+            aria-label="Solo this channel (show only it; click again to restore)"
+            onClick={() => toggleSolo(paletteKey)}
+          >
+            Solo
+          </button>
+        )}
       </div>
       <div className="badge-preview" data-testid="dual-canvas-preview">
         <div

@@ -12,7 +12,18 @@ import {
 
 describe("user-configurable palette resolution (issue #40)", () => {
   it("exposes exactly the six customizable palette keys", () => {
-    expect(PALETTE_KEYS).toEqual(["A", "B", "C", "D", "C1", "C2"]);
+    expect(PALETTE_KEYS).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+      "Ref-A",
+      "Ref-B",
+      "Ref-C",
+      "Ref-D",
+      "C1",
+      "C2",
+    ]);
   });
 
   it("hex validation accepts #RGB/#RRGGBB and rejects everything else", () => {
