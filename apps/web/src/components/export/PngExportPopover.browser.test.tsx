@@ -5,6 +5,7 @@ import type uPlot from "uplot";
 import fourChUrlQ from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-4ch-10000-10ms-div.fvf.bin?url";
 import Oscilloscope from "../canvas/Oscilloscope";
 import WaveformToolbar from "../toolbar/WaveformToolbar";
+import "../../index.css";
 import {
   PNG_EXPORT_DEFAULTS,
   usePngExportStore,
@@ -168,6 +169,84 @@ describe("PNG export options popover (issue #252)", () => {
     // The gear opens the options popover.
     await openPopover();
     expect(gear.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("split-action chip geometry & popover layout: padding, hero header, and badge chips", async () => {
+    await mountFullUi();
+
+    const chip = document.querySelector(".png-export-chip") as HTMLElement;
+    const main = document.querySelector(
+      "[data-testid='png-export-button']",
+    ) as HTMLButtonElement;
+    const gear = document.querySelector(
+      "[data-testid='png-export-gear']",
+    ) as HTMLButtonElement;
+    const divider = chip.querySelector(".badge-split-divider") as HTMLElement;
+
+    // M3 split-action chip geometry
+    const chipStyle = window.getComputedStyle(chip);
+    expect(chipStyle.borderRadius).toBe("8px");
+    expect(chip.offsetHeight).toBe(32);
+    expect(divider).not.toBeNull();
+    expect(window.getComputedStyle(divider).width).toBe("1px");
+
+    // Transparent-bounds touch targets (>= 48px) and M3 state layers
+    expect(main.offsetHeight).toBeGreaterThanOrEqual(48);
+    expect(gear.offsetHeight).toBeGreaterThanOrEqual(48);
+    const mainLayer = window.getComputedStyle(main, "::before");
+    const gearLayer = window.getComputedStyle(gear, "::before");
+    expect(mainLayer.content).not.toBe("none");
+    expect(gearLayer.content).not.toBe("none");
+
+    // Copy button geometry matches (32px height, 8px radius)
+    const copyBtn = document.querySelector(
+      "[data-testid='png-copy-button']",
+    ) as HTMLButtonElement | null;
+    if (copyBtn) {
+      expect(copyBtn.offsetHeight).toBe(32);
+      expect(window.getComputedStyle(copyBtn).borderRadius).toBe("8px");
+    }
+
+    // Open popover: chip gets --open class and gear brightens
+    await openPopover();
+    await settle(200);
+    expect(chip.className).toContain("png-export-chip--open");
+    expect(window.getComputedStyle(gear).color).toBe("rgb(255, 255, 255)");
+
+    const popover = document.querySelector(
+      "[data-testid='png-export-popover']",
+    ) as HTMLElement;
+    const hero = popover.querySelector(".badge-popover-hero") as HTMLElement;
+    const body = popover.querySelector(".badge-popover-body") as HTMLElement;
+    const closeBtn = popover.querySelector(
+      "[data-testid='png-popover-close']",
+    ) as HTMLButtonElement;
+
+    // Popover has hero header and body with horizontal padding
+    expect(hero).not.toBeNull();
+    expect(body).not.toBeNull();
+    expect(window.getComputedStyle(body).paddingLeft).toBe("14px");
+    expect(window.getComputedStyle(body).paddingRight).toBe("14px");
+
+    // Options use badge-opacity-chip badge-setting-chip and domains don't wrap awkwardly
+    const domainLabels = popover.querySelectorAll(".png-export-domain");
+    expect(domainLabels.length).toBeGreaterThan(0);
+    const themeChip = popover.querySelector(
+      "[data-testid='png-theme-dark']",
+    ) as HTMLButtonElement;
+    expect(themeChip.className).toContain("badge-opacity-chip");
+    expect(themeChip.className).toContain("badge-setting-chip");
+    expect(themeChip.getAttribute("aria-pressed")).toBe("true");
+
+    // Close button dismisses popover and returns focus to gear
+    await act(async () => {
+      closeBtn.click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(
+      document.querySelector("[data-testid='png-export-popover']"),
+    ).toBeNull();
+    expect(document.activeElement).toBe(gear);
   });
 
   it("AC2+AC11: anchored-portal popover with mutual exclusivity and the accessibility bar", async () => {

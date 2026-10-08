@@ -174,7 +174,7 @@ export default function PngSnapshotButton() {
     <>
       <span className="png-export-controls">
         <span
-          className="png-export-chip"
+          className={`png-export-chip${popoverOpen ? " png-export-chip--open" : ""}`}
           role="group"
           aria-label="Export PNG and its options"
         >
