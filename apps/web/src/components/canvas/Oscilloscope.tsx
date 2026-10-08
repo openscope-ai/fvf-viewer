@@ -61,6 +61,7 @@ import { groundMarkerPlugin } from "./plugins/groundMarkerPlugin";
 import { stackLaneBounds } from "./channelLayout";
 import { slippedRefDisplayLane } from "./timeSlip";
 import { physicalDisplayLane } from "./displayLaneCache";
+import { invalidateSeriesPaths } from "./seriesPathCache";
 import {
   AXIS_FONT,
   AXIS_GAP_PX,
@@ -1104,6 +1105,10 @@ export default function Oscilloscope({
       }
       const lane = physicalDisplayLane(capture, index);
       swaps.push(() => {
+        // Issue #245: the lane swap is invisible to uPlot's per-series
+        // path cache — clear it so the repaint rebuilds this series'
+        // geometry instead of stroking the stale pre-transform Path2D.
+        invalidateSeriesPaths(instance, index + 1);
         instance.data[index + 1] = transformDisplayLane(
           lane,
           triple[0],
@@ -1151,6 +1156,9 @@ export default function Oscilloscope({
       }
       const slip = referenceNow.timeSlipSamples;
       swaps.push(() => {
+        // Issue #245: same scoped path-cache invalidation for the
+        // rewritten reference lanes.
+        invalidateSeriesPaths(instance, seriesIdx + 1);
         instance.data[seriesIdx + 1] = slippedRefDisplayLane(
           lane,
           slip,

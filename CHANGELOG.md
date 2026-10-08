@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.10.2] - 2026-10-08
+
+[v0.10.1...v0.10.2](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.1...v0.10.2)
+
+### Fixed
+
+- Channel display transforms & ground-marker drags no longer leave the waveform canvas unchanged (issue #245): every surface that rewrites a display lane in place — popover typed commits (Y-scale % / vertical offset via Enter, Tab, or blur), −/+ steppers, drag-scrubbing, ground-marker and Ctrl+drag offset moves, double-click / Enter resets, and reference channel transforms & T₂ time-slip drags — now explicitly invalidates uPlot's per-series path cache (`series._paths = null`, via a new `seriesPathCache.invalidateSeriesPaths` seam) for exactly the mutated series before the immediate-mode `batch()` repaint. uPlot 1.6.x rebuilds a series' `Path2D` geometry only when that cache is null, when `setData` swaps the dataset, or when scale bounds actually change; the display pipeline swaps lane buffers in place with pinned scale bounds, so the repaint kept stroking the stale pre-transform geometry — the canvas trace stayed frozen while lane data and store state were already correct, until an unrelated resize or full redraw incidentally rebuilt everything (which is also why the #238-era pixel tests never caught it). The invalidation is scoped per mutated series (untouched channels keep their cached paths, so a one-channel edit still costs one geometry rebuild), the T₂ drag path renews reference geometry at drag cadence, and new browser tests prove path-object renewal on every commit surface plus canvas pixels byte-identical to a forced full redraw's ground truth.
+
 ## [0.10.1] - 2026-10-08
 
 [v0.10.0...v0.10.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.0...v0.10.1)
