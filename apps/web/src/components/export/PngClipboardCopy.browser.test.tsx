@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useSnapshotStore } from "./snapshotStore";
+import { usePngExportStore } from "../../state/pngExportStore";
 import PngSnapshotButton, { supportsImageClipboard } from "./PngSnapshotButton";
 import * as canvasPermission from "./canvasPermission";
 
@@ -26,11 +27,18 @@ function pngBlob(): Blob {
 describe("PNG clipboard copy control (browser, issue #158)", () => {
   let hostElement: HTMLDivElement;
   let root: Root;
-  let exporterCalls: boolean[];
+  let exporterCalls: string[];
   let clipboardWrites: ClipboardItem[];
 
   beforeEach(() => {
     useSnapshotStore.getState().registerExporter(null);
+    window.localStorage.clear();
+    usePngExportStore.getState().setTheme("dark");
+    usePngExportStore.getState().setBackground("opaque");
+    usePngExportStore.getState().setReadoutCard("full");
+    usePngExportStore.getState().setCursors(true);
+    usePngExportStore.getState().setGrid(true);
+    usePngExportStore.getState().setFileName("");
     exporterCalls = [];
     clipboardWrites = [];
     canvasPermission.setCanvasReadbackOverride(() => true);
@@ -52,8 +60,8 @@ describe("PNG clipboard copy control (browser, issue #158)", () => {
   });
 
   function mountWithExporter(): void {
-    useSnapshotStore.getState().registerExporter(async (inverted: boolean) => {
-      exporterCalls.push(inverted);
+    useSnapshotStore.getState().registerExporter(async (settings) => {
+      exporterCalls.push(settings.theme);
       return pngBlob();
     });
     act(() => {
@@ -91,13 +99,14 @@ describe("PNG clipboard copy control (browser, issue #158)", () => {
     expect(button.getAttribute("aria-label")).toBe(
       "Copy PNG snapshot to clipboard",
     );
-    // Subtle icon-only control: no text content, sits after Export PNG.
+    // Subtle icon-only control: no text content, sits after the
+    // split-action Export chip (issue #252) inside the same controls.
     expect((button.textContent ?? "").trim()).toBe("");
     const controls = hostElement.querySelector(".png-export-controls")!;
-    const children = Array.from(controls.children).map((el) => el.tagName);
-    expect(children.indexOf("BUTTON")).toBeLessThan(
-      children.lastIndexOf("BUTTON"),
-    );
+    const chip = controls.querySelector(".png-export-chip")!;
+    expect(chip).not.toBeNull();
+    expect(chip.contains(exportButton())).toBe(true);
+    expect(chip.nextElementSibling).toBe(button);
     expect(exportButton()).not.toBeNull();
   });
 
@@ -119,7 +128,7 @@ describe("PNG clipboard copy control (browser, issue #158)", () => {
     expect(writeSpy).toHaveBeenCalledTimes(1);
     // No download path ran for a copy.
     expect(createObjectURL).not.toHaveBeenCalled();
-    expect(exporterCalls).toEqual([false]);
+    expect(exporterCalls).toEqual(["dark"]);
 
     const item = clipboardWrites[0]!;
     const blob = await item.getType("image/png");
@@ -127,17 +136,13 @@ describe("PNG clipboard copy control (browser, issue #158)", () => {
     expect(blob.size).toBe(6);
   });
 
-  it("the print invert toggle is honored by the copy path", async () => {
+  it("the light (print) theme setting is honored by the copy path (issue #252)", async () => {
     spyOnClipboardWrite();
     mountWithExporter();
 
-    const toggle = hostElement.querySelector(
-      "[data-testid='png-invert-toggle']",
-    ) as HTMLInputElement;
     await act(async () => {
-      toggle.click();
+      usePngExportStore.getState().setTheme("light");
     });
-    expect(toggle.checked).toBe(true);
 
     await act(async () => {
       copyButton().click();
@@ -146,7 +151,7 @@ describe("PNG clipboard copy control (browser, issue #158)", () => {
       }
     });
 
-    expect(exporterCalls).toEqual([true]);
+    expect(exporterCalls).toEqual(["light"]);
     expect(clipboardWrites.length).toBe(1);
   });
 

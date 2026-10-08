@@ -2168,23 +2168,63 @@ body,
   gap: 6px;
 }
 
-.png-invert-toggle {
+/* Issue #252: M3 split-action Export chip (main zone exports, trailing
+ * gear opens the options popover) in the same chrome language as the
+ * channel/cursor badge capsules. */
+.png-export-chip {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.png-export-chip .badge-split-divider {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.png-export-gear {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  color: #bbbbbb;
-  font-size: 0.72rem;
-  cursor: pointer;
-  user-select: none;
-}
-
-.png-invert-toggle input {
-  accent-color: #00bfff;
+  justify-content: center;
+  min-width: 36px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: #c4c7c5;
   cursor: pointer;
 }
 
-.png-invert-toggle input:disabled {
+.png-export-gear:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.png-export-gear:disabled {
   cursor: default;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+/* Export option segmented controls (theme/background/card/cursors/grid)
+ * share the stack-toggle visual language. */
+.png-export-segmented {
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.png-export-segment {
+  border: none;
+  background: transparent;
+  color: #c4c7c5;
+  font-size: 0.7rem;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.png-export-segment--active {
+  background: rgba(0, 191, 255, 0.18);
+  color: #ffffff;
 }
 
 /* Copy-to-clipboard snapshot control (issue #158): subtle icon-only button

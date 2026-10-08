@@ -37,6 +37,29 @@ export function stackLaneBounds(
 }
 
 /**
+ * Issue #251: the weighted generalization — the channel's current
+ * bounds (any zoom) re-windowed into a lane band that starts at
+ * `bandStart` (fraction of the plot height from the top) and spans
+ * `bandFraction` of it. The pre-stack span maps onto exactly the band's
+ * height, so a resized lane scales its trace's visual unit-per-pixel
+ * with the lane (taller lane = bigger trace). With equal fractions this
+ * reduces to `stackLaneBounds`.
+ */
+export function stackLaneBoundsWeighted(
+  current: Bounds,
+  bandStart: number,
+  bandFraction: number,
+): Bounds {
+  if (!(bandFraction > 0)) return { ...current };
+  const center = (current.min + current.max) / 2;
+  const span = (current.max - current.min) / bandFraction;
+  // Fraction of the plot height where this lane's center sits (0 = top).
+  const centerYFraction = bandStart + bandFraction / 2;
+  const max = center + centerYFraction * span;
+  return { min: max - span, max };
+}
+
+/**
  * Restores the pre-stack bounds for one channel after collapsing back
  * to Overlay (the saved window re-centers the trace at 50% height).
  */

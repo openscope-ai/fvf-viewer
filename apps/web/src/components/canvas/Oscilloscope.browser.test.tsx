@@ -24,6 +24,7 @@ import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { BOX_ZOOM_MIN_DRAG_PX } from "./plugins/boxZoomPlugin";
 import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import type { ParsedCapture } from "../../types/capture";
 import App from "../../App";
@@ -56,6 +57,10 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
   beforeEach(async () => {
     useCaptureStore.getState().reset();
     useViewportStore.getState().reset();
+    // The display store hydrates at module init: a previous test file's
+    // persisted record (e.g. stackMode) survives window.localStorage
+    // .clear(), so reset the in-memory state explicitly.
+    useChannelDisplayStore.getState().reset();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
@@ -356,6 +361,17 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     });
 
     expect(mountedUplot).not.toBeNull();
+    // Settle the instance before handing it back: the ResizeObserver can
+    // land a late setSize (axis measurement shifts under load), and
+    // bounds-comparison tests need the post-settle scales as their
+    // baseline. Two consecutive identical snapshots = stable.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const before = JSON.stringify(yScaleSnapshot(mountedUplot!));
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 80));
+      });
+      if (JSON.stringify(yScaleSnapshot(mountedUplot!)) === before) break;
+    }
     return { capture, uplot: mountedUplot! };
   }
 
@@ -1589,6 +1605,17 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
       await new Promise((r) => setTimeout(r, 60));
     });
     expect(mountedUplot).not.toBeNull();
+    // Settle the instance before handing it back: the ResizeObserver can
+    // land a late setSize (axis measurement shifts under load), and
+    // bounds-comparison tests need the post-settle scales as their
+    // baseline. Two consecutive identical snapshots = stable.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const before = JSON.stringify(yScaleSnapshot(mountedUplot!));
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 80));
+      });
+      if (JSON.stringify(yScaleSnapshot(mountedUplot!)) === before) break;
+    }
     return { capture, uplot: mountedUplot! };
   }
 

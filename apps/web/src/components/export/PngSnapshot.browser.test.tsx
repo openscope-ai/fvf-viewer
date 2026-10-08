@@ -15,6 +15,7 @@ import {
   type SnapshotOverlayState,
 } from "./pngSnapshot";
 import { useSnapshotStore } from "./snapshotStore";
+import { usePngExportStore } from "../../state/pngExportStore";
 import PngSnapshotButton, { snapshotFileName } from "./PngSnapshotButton";
 import * as canvasPermission from "./canvasPermission";
 import type { ParsedCapture } from "../../types/capture";
@@ -89,6 +90,15 @@ describe("PNG snapshot export (browser, issue #18)", () => {
     useViewportStore.getState().reset();
     useCursorStore.getState().reset();
     useSnapshotStore.getState().registerExporter(null);
+    window.localStorage.clear();
+    // Review F2: reset every settings field — non-default values written
+    // by tests (theme light, etc.) must not leak into the next one.
+    usePngExportStore.getState().setTheme("dark");
+    usePngExportStore.getState().setBackground("opaque");
+    usePngExportStore.getState().setReadoutCard("full");
+    usePngExportStore.getState().setCursors(true);
+    usePngExportStore.getState().setGrid(true);
+    usePngExportStore.getState().setFileName("");
 
     hostElement = document.createElement("div");
     hostElement.style.width = "800px";
@@ -580,7 +590,7 @@ describe("PNG snapshot export (browser, issue #18)", () => {
     ).toBe(true);
   });
 
-  it("toggle drives the exporter's inverted flag end-to-end (F1/F2 regression)", async () => {
+  it("the theme setting drives the print/screen paths end-to-end (F1/F2 regression, issue #252)", async () => {
     const capturedBlobs: Blob[] = [];
     vi.spyOn(URL, "createObjectURL").mockImplementation(
       (blob: Blob | MediaSource) => {
@@ -596,20 +606,15 @@ describe("PNG snapshot export (browser, issue #18)", () => {
     await act(async () => {
       secondRoot.render(<PngSnapshotButton />);
     });
-    const toggle = secondHost.querySelector(
-      "[data-testid='png-invert-toggle']",
-    ) as HTMLInputElement;
     const button = secondHost.querySelector(
       "[data-testid='png-export-button']",
     ) as HTMLButtonElement;
-    expect(toggle).not.toBeNull();
 
-    // Inverted export under the dark live theme: white corner proves the
-    // print path ran.
+    // Light (print) theme export under the dark live theme: the white
+    // corner proves the print path ran.
     await act(async () => {
-      toggle.click();
+      usePngExportStore.getState().setTheme("light");
     });
-    expect(toggle.checked).toBe(true);
     await act(async () => {
       button.click();
       // Poll: the offscreen print render + toBlob resolve asynchronously.
@@ -629,9 +634,8 @@ describe("PNG snapshot export (browser, issue #18)", () => {
 
     // Default export: dark corner (live theme path).
     await act(async () => {
-      toggle.click();
+      usePngExportStore.getState().setTheme("dark");
     });
-    expect(toggle.checked).toBe(false);
     await act(async () => {
       button.click();
       for (let i = 0; i < 40 && capturedBlobs.length < 2; i += 1) {

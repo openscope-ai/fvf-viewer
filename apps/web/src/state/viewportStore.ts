@@ -26,7 +26,7 @@ export interface ViewportStoreState extends ViewportBounds {
   fitRequest: number;
   setBounds: (bounds: Partial<ViewportBounds>) => void;
   resetBounds: () => void;
-  /** Requests a one-click Fit Waveform (100%) viewport reset. */
+  /** Requests a one-click Reset View viewport re-frame (full-capture fit). */
   requestFit: () => void;
   toggleChannel: (channel: ChannelTag) => void;
   cycleChannelBadge: (channel: ChannelTag) => void;

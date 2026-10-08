@@ -117,7 +117,7 @@ export interface YAxisLike {
 
 export interface YAxisAdapter {
   sync: (u: YAxisLike) => void;
-  values: (self: unknown, splits: number[]) => string[];
+  values: (self: unknown, splits: number[]) => Array<string | null>;
   label: string;
   unit: YAxisUnit;
   /** uPlot scale key this adapter follows (`y` or `yN`). */
@@ -215,6 +215,11 @@ export function createYAxisAdapter(config: YAxisConfig = {}): YAxisAdapter {
       setAxisLabel(u, target.label);
     },
     values: (_self: unknown, splits: number[]) =>
-      splits.map((tick) => formatScaledTick(tick, unit)),
+      // Issue #250: a lane-band filter nulls dropped splits — nulls must
+      // stay null so uPlot skips the label (formatting null would render
+      // a bogus "0" at every filtered position).
+      splits.map((tick) =>
+        tick == null ? null : formatScaledTick(tick, unit),
+      ),
   };
 }

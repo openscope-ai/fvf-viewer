@@ -70,8 +70,13 @@ export default defineConfig({
             "apps/web/src/**/*.browser.test.tsx",
             "apps/web/src/hooks/useResizeObserver.test.ts",
           ],
-          testTimeout: 30_000,
-          hookTimeout: 30_000,
+          // Browser tests mount the full app with real canvas pixel
+          // assertions; parallel files in one page starve each other
+          // (late paints, unresponsive moments) and flake. Sequential
+          // files give each suite the page to itself.
+          fileParallelism: false,
+          testTimeout: 90_000,
+          hookTimeout: 90_000,
           browser: {
             enabled: true,
             provider: playwright(),

@@ -11,7 +11,7 @@
  * - Tab-focusable <button> with Enter/Space keyboard activation
  * - Clicking or keyboard activation snaps cursor to 33% (C1) or 67% (C2) of viewport
  *   at the nearest discrete sample index and selects the cursor, dismissing the badge
- * - Dismisses immediately when cursor is toggled off, panned/zoomed into view, or "Fit Waveform (100%)" is triggered
+ * - Dismisses immediately when cursor is toggled off, panned/zoomed into view, or "Reset View" is triggered
  * - Stops pointer event propagation to avoid triggering canvas box-zoom
  */
 

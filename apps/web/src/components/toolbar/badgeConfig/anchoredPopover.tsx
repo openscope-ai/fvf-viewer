@@ -37,6 +37,8 @@ export interface AnchoredPopoverProps {
   anchorEl: HTMLElement | null;
   /** Accessible name for the dialog. */
   ariaLabel: string;
+  /** Test id for the portal surface (defaults to the badge popover id). */
+  testId?: string;
   /**
    * Closes the popover; `refocusAnchor` requests focus return to the gear
    * (keyboard dismissal) as opposed to outside-pointer dismissal.
@@ -59,6 +61,7 @@ export function AnchoredPopover({
   ariaLabel,
   onClose,
   children,
+  testId = "badge-config-popover",
 }: AnchoredPopoverProps) {
   const open = useBadgePopoverStore((s) => s.openKey) === openKey;
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -135,7 +138,7 @@ export function AnchoredPopover({
       ]
         .filter(Boolean)
         .join(" ")}
-      data-testid="badge-config-popover"
+      data-testid={testId}
       style={{
         top: placement ? placement.top : -9999,
         left: placement?.left,

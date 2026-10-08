@@ -11,6 +11,8 @@ import {
   captureFileKey,
   useChannelNamesStore,
 } from "./state/channelNamesStore";
+import { useLaneLayoutStore } from "./state/laneLayoutStore";
+import type { ChannelKey } from "./components/canvas/channelDisplay";
 import useNarrowViewport from "./hooks/useNarrowViewport";
 import { useDocumentTitle } from "./hooks/useDocumentTitle";
 import { useCaptureStore } from "./state/captureStore";
@@ -76,12 +78,34 @@ export default function App() {
     );
   }, [fileName, capture, setChannelNamesFileKey]);
 
+  // Issue #251: Stack-view lane proportions persist per .fvf file through
+  // the same capture-identity keying; a different file starts equal.
+  const setLaneWeightsFileKey = useLaneLayoutStore((state) => state.setFileKey);
+  useEffect(() => {
+    setLaneWeightsFileKey(
+      captureFileKey(fileName, capture?.metadata.timestamp14),
+    );
+  }, [fileName, capture, setLaneWeightsFileKey]);
+
   // Issue #96: replacing File 1 drops the File 2 comparison (its resampled
   // lanes belong to the old primary time grid) and clears solo with it.
   useEffect(() => {
     useReferenceStore.getState().clear();
     useChannelDisplayStore.getState().clearSolo();
   }, [capture]);
+
+  // Issue #251: whenever the comparison goes away (File 1 replacement or
+  // an explicit teardown), the reference lanes' weights drop with it.
+  const refCapture = useReferenceStore((state) => state.capture);
+  useEffect(() => {
+    if (refCapture) return;
+    const refKeys = Object.keys(useLaneLayoutStore.getState().weights).filter(
+      (key) => key.startsWith("Ref-"),
+    );
+    if (refKeys.length > 0) {
+      useLaneLayoutStore.getState().dropKeys(refKeys as ChannelKey[]);
+    }
+  }, [refCapture]);
 
   return (
     <div className="app-frame">
