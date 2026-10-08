@@ -116,7 +116,7 @@ describe("Ground markers, vertical offset & quick-stack (issue #98)", () => {
     window.localStorage.clear();
   });
 
-  it("AC1: ground markers render on the left margin at the displayed 0V baseline and follow the offset", async () => {
+  it("AC1 (#249): ground flags render on the channel's own axis column at the displayed 0V baseline and follow the offset", async () => {
     const uplot = await mountFullUi();
 
     const strip = document.querySelector(
@@ -131,13 +131,18 @@ describe("Ground markers, vertical offset & quick-stack (issue #98)", () => {
     const plotLeftCss = uplot.bbox.left / pxRatio;
     const plotTopCss = uplot.bbox.top / pxRatio;
     const zeroY = uplot.valToPos(0, yScaleKey(0)) / pxRatio;
-    // Marker strip covers the whole canvas triangle (plotLeft+1..+11)
-    // plus a 6 px margin grab: right edge = plotLeft + 12 (review N2).
-    expect(
-      Math.abs(
-        stripRect.left + stripRect.width - (rootRect.left + plotLeftCss) - 12,
-      ),
-    ).toBeLessThan(2);
+    // Issue #249: the strip spans channel A's OWN axis column (layout
+    // from uPlot's side-3 axis geometry) and never reaches the plot.
+    const axisA = uplot.axes.find(
+      (a) => a.scale === yScaleKey(0),
+    ) as unknown as { _pos: number; _size: number; _lpos: number };
+    expect(axisA).toBeDefined();
+    expect(stripRect.left).toBeGreaterThanOrEqual(
+      rootRect.left + axisA._lpos - 20 - 1,
+    );
+    expect(stripRect.right).toBeLessThanOrEqual(rootRect.left + axisA._pos + 1);
+    expect(stripRect.right).toBeLessThan(rootRect.left + plotLeftCss - 1);
+    // The strip centers on the displayed 0V baseline.
     expect(
       Math.abs(
         stripRect.top +
@@ -146,7 +151,7 @@ describe("Ground markers, vertical offset & quick-stack (issue #98)", () => {
       ),
     ).toBeLessThan(2);
 
-    // Offsetting channel A moves its ground marker with the baseline.
+    // Offsetting channel A moves its ground flag with the baseline.
     const before = strip!.getBoundingClientRect().top;
     useChannelDisplayStore.getState().setOffset("A", 1);
     await settle();

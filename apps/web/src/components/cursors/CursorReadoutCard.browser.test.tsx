@@ -673,7 +673,8 @@ describe("Draggable cursor readout card (Issue #58)", () => {
     const { useSnapshotStore } = await import("../export/snapshotStore");
     const exportFn = useSnapshotStore.getState().exporter;
     expect(exportFn).not.toBeNull();
-    const blob = await exportFn!(false);
+    const { PNG_EXPORT_DEFAULTS } = await import("../../state/pngExportStore");
+    const blob = await exportFn!(PNG_EXPORT_DEFAULTS);
     expect(blob.size).toBeGreaterThan(0);
     expect(blob.type).toBe("image/png");
   });

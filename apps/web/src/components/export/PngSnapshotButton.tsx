@@ -2,13 +2,14 @@
  * Toolbar PNG snapshot control (issue #18, overview §5.2-E): runs the
  * offscreen compositing exporter registered by the live Oscilloscope and
  * downloads the resulting high-resolution PNG. Nothing is uploaded (ADR 0006).
- * Issue #39 adds an "Invert colors for print / white background" toggle that
- * renders the snapshot through the print-friendly offscreen pass while the
- * live on-screen viewport stays completely unchanged.
- * Issue #158 adds a subtle copy control next to the Export PNG button that
- * writes the same snapshot PNG to the clipboard as an image instead of
- * downloading it. It stays hidden on browsers without image clipboard
- * support (progressive enhancement — Firefox only implements text writes).
+ *
+ * Issue #252: the control is an M3 split-action chip — the main zone
+ * exports immediately with the current settings; a trailing gear opens
+ * the options popover (theme / background / readout card / cursors /
+ * grid / filename) built on the anchored-portal primitive. The
+ * standalone "Invert for print" checkbox is gone: the popover's theme
+ * option drives the same print pass. The copy control (issue #158)
+ * keeps its placement and behavior and reads the same settings.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +18,10 @@ import { useSnapshotStore } from "./snapshotStore";
 import { isCanvasReadbackAllowed } from "./canvasPermission";
 import CanvasBlockedModal from "../modals/CanvasBlockedModal";
 import { snapshotFileName } from "./exportFileName";
+import { usePngExportStore } from "../../state/pngExportStore";
+import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
+import { GearIcon } from "../toolbar/badgeConfig/icons";
+import PngExportPopover, { EXPORT_POPOVER_KEY } from "./PngExportPopover";
 
 /** Image clipboard writes require ClipboardItem + clipboard.write (secure context). */
 export function supportsImageClipboard(): boolean {
@@ -70,14 +75,29 @@ export function CheckIcon({ className }: { className: string }) {
 /** How long the copied ✓ state stays visible before reverting to the copy icon. */
 const COPIED_FEEDBACK_MS = 1600;
 
+/** Resolves the download filename: custom name (with .png) or the derived capture name. */
+export function exportDownloadName(
+  custom: string,
+  captureFileName: string | null,
+): string {
+  const trimmed = custom.trim();
+  if (!trimmed) return snapshotFileName(captureFileName);
+  const stem = trimmed.replace(/\.png$/i, "");
+  return `${stem || "snapshot"}.png`;
+}
+
 export default function PngSnapshotButton() {
   const exporter = useSnapshotStore((state) => state.exporter);
   const fileName = useCaptureStore((state) => state.fileName);
+  const settings = usePngExportStore((state) => state.settings);
   const [exporting, setExporting] = useState(false);
-  const [inverted, setInverted] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<number | null>(null);
   const [showBlockedModal, setShowBlockedModal] = useState(false);
+  const gearRef = useRef<HTMLButtonElement | null>(null);
+  const openKey = useBadgePopoverStore((state) => state.openKey);
+  const setOpen = useBadgePopoverStore((state) => state.setOpen);
+  const popoverOpen = openKey === EXPORT_POPOVER_KEY;
 
   useEffect(
     () => () => {
@@ -96,12 +116,12 @@ export default function PngSnapshotButton() {
     }
     setExporting(true);
     try {
-      const blob = await exporter(inverted);
+      const blob = await exporter(settings);
       const url = URL.createObjectURL(blob);
       try {
         const anchor = document.createElement("a");
         anchor.href = url;
-        anchor.download = snapshotFileName(fileName);
+        anchor.download = exportDownloadName(settings.fileName, fileName);
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
@@ -115,7 +135,7 @@ export default function PngSnapshotButton() {
     } finally {
       setExporting(false);
     }
-  }, [exporter, exporting, inverted, fileName]);
+  }, [exporter, exporting, settings, fileName]);
 
   const handleCopy = useCallback(async () => {
     if (!exporter || exporting || copied) return;
@@ -125,7 +145,9 @@ export default function PngSnapshotButton() {
     }
     setExporting(true);
     try {
-      const blob = await exporter(inverted);
+      // Same settings as the download path (theme/background/card/
+      // cursors/grid); the clipboard write ignores the filename option.
+      const blob = await exporter(settings);
       await navigator.clipboard.write([
         new ClipboardItem({ "image/png": blob }),
       ]);
@@ -144,36 +166,47 @@ export default function PngSnapshotButton() {
     } finally {
       setExporting(false);
     }
-  }, [exporter, exporting, copied, inverted]);
+  }, [exporter, exporting, copied, settings]);
 
   const disabled = !exporter || exporting;
 
   return (
     <>
       <span className="png-export-controls">
-        <label className="png-invert-toggle">
-          <input
-            type="checkbox"
-            checked={inverted}
-            disabled={disabled}
-            onChange={(event) => setInverted(event.target.checked)}
-            aria-label="Invert colors for print / white background"
-            title="Invert colors for print / white background"
-            data-testid="png-invert-toggle"
-          />
-          <span>Invert for print</span>
-        </label>
-        <button
-          type="button"
-          className="waveform-png-button"
-          disabled={disabled}
-          aria-label="Export high-resolution PNG snapshot of the waveform"
-          title="Export high-resolution PNG snapshot of the waveform"
-          data-testid="png-export-button"
-          onClick={handleExport}
+        <span
+          className="png-export-chip"
+          role="group"
+          aria-label="Export PNG and its options"
         >
-          {exporting ? "Exporting…" : "Export PNG"}
-        </button>
+          <button
+            type="button"
+            className="waveform-png-button"
+            disabled={disabled}
+            aria-label="Export high-resolution PNG snapshot of the waveform with the current settings"
+            title="Export high-resolution PNG snapshot of the waveform with the current settings"
+            data-testid="png-export-button"
+            onClick={handleExport}
+          >
+            {exporting ? "Exporting…" : "Export PNG"}
+          </button>
+          <span className="badge-split-divider" aria-hidden="true" />
+          <button
+            type="button"
+            ref={gearRef}
+            className="png-export-gear"
+            disabled={disabled}
+            aria-haspopup="dialog"
+            aria-expanded={popoverOpen}
+            aria-label="PNG export options"
+            title="PNG export options"
+            data-testid="png-export-gear"
+            onClick={() => {
+              setOpen(popoverOpen ? null : EXPORT_POPOVER_KEY);
+            }}
+          >
+            <GearIcon size={13} />
+          </button>
+        </span>
         {supportsImageClipboard() && (
           <button
             type="button"
@@ -192,6 +225,13 @@ export default function PngSnapshotButton() {
           </button>
         )}
       </span>
+      <PngExportPopover
+        anchorEl={gearRef.current}
+        onClose={(refocusAnchor) => {
+          setOpen(null);
+          if (refocusAnchor) gearRef.current?.focus();
+        }}
+      />
       {showBlockedModal && (
         <CanvasBlockedModal onDismiss={() => setShowBlockedModal(false)} />
       )}

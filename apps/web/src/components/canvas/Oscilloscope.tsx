@@ -2,7 +2,8 @@
  * Oscilloscope component (issues #10, #12, #13, #119 / ADR 0011):
  * Canvas 2D uPlot wrapper with dark OLED theme, channel color palette, decoupled
  * viewport sync, zero-copy Float32Array consumption, scale-stable channel toggling,
- * one-click Fit Waveform (100%) reset, explicitly disabled mouse wheel zoom, and the
+ * one-click Reset View fit (issue #248 renamed the Fit Waveform action),
+ * explicitly disabled mouse wheel zoom, and the
  * custom rectangular box-zoom plugin (8px click-safe threshold, Escape cancellation,
  * atomic two-axis zoom).
  *
@@ -58,7 +59,15 @@ import {
 import { boxZoomPlugin } from "./plugins/boxZoomPlugin";
 import { timeSlipPlugin } from "./plugins/timeSlipPlugin";
 import { groundMarkerPlugin } from "./plugins/groundMarkerPlugin";
-import { stackLaneBounds } from "./channelLayout";
+import {
+  drawStackLaneDecorations,
+  laneTickFilter,
+  visibleLaneChannels,
+  type LaneAxisTitle,
+} from "./stackLaneDecorations";
+import { laneResizePlugin } from "./plugins/laneResizePlugin";
+import { laneFractions, useLaneLayoutStore } from "../../state/laneLayoutStore";
+import { stackLaneBoundsWeighted } from "./channelLayout";
 import { slippedRefDisplayLane } from "./timeSlip";
 import { physicalDisplayLane } from "./displayLaneCache";
 import { invalidateSeriesPaths } from "./seriesPathCache";
@@ -116,7 +125,7 @@ export { DARK_THEME as THEME_COLORS };
 
 /**
  * Fraction of the visible-channel data span padded on each side of the Y
- * axis by the Fit Waveform (100%) action ("optimal dynamic margins").
+ * axis by the Reset View fit action ("optimal dynamic margins").
  */
 export const FIT_PADDING_RATIO = 0.05;
 
@@ -133,7 +142,9 @@ export interface CaptureFit {
 }
 
 /**
- * Computes the Fit Waveform (100%) bounds (issue #129): the full capture timestamp range
+ * Computes the capture fit bounds backing the Reset View action
+ * (issue #129; the button was renamed from "Fit Waveform (100%)" in
+ * issue #248): the full capture timestamp range
  * on X and, per channel, zero-aligned symmetric bounds ([-bound, +bound]) with dynamic
  * margins (FIT_PADDING_RATIO) so all channel Y axes have their zero aligned at the vertical
  * center (50% height). Saturated (NaN) samples never stretch a fit; an all-NaN or all-zero
@@ -189,7 +200,7 @@ export function resolveActiveIndex(
 /**
  * Applies per-channel fit bounds to the uPlot instance and syncs the store.
  * Issue #224: the physical fit bounds pass through the channel's display
- * transform first, so Fit Waveform frames the *displayed* trace (a scaled,
+ * transform first, so the fit frames the *displayed* trace (a scaled,
  * offset, or inverted channel fits exactly like an untouched one).
  */
 export function applyFitBounds(
@@ -489,6 +500,33 @@ export default function Oscilloscope({
       adaptersRef.current.set(origIdx, adapter);
     });
 
+    // Issue #249: reference channels get their own y-axis columns (the
+    // ground flags render on each channel's own column) — adapters
+    // mirror the primary ones, with units resolved through File 2.
+    const mountReference = useReferenceStore.getState();
+    const refColumns = (mountReference.lanes ?? []).map((lane, refIdx) => {
+      const raw = mountReference.capture?.channels[refIdx];
+      const name = raw ? toRefName(raw.name) : `Ref-${refIdx}`;
+      const custom = customNames[name];
+      const heading = custom || name;
+      const { base } = raw
+        ? splitUnit(getPhysicalChannelUnit(mountReference.capture!, refIdx))
+        : { base: "V" };
+      const scaleKey = yScaleKey(capture.channels.length + refIdx);
+      const adapter = createYAxisAdapter({
+        quantity: heading,
+        unit: base,
+        scaleKey,
+      });
+      const bounds = refLaneFitBounds(lane);
+      adapter.sync({
+        scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
+        axes: [],
+      });
+      adaptersRef.current.set(capture.channels.length + refIdx, adapter);
+      return { name, refIdx, scaleKey };
+    });
+
     // Left axes registered in REVERSE channel file order:
     // outermost = first visible channel, innermost = last visible channel
     const reversedChannels = capture.channels
@@ -516,6 +554,9 @@ export default function Oscilloscope({
         // trace can claim the vertical gesture (and forward unclaimed
         // ctrl+clicks to the #14 cursor relocation).
         groundMarkerPlugin({ getCapture: () => captureRef.current }),
+        // Issue #251: Stack-view lane resizing handles on the lane
+        // separators (narrow hit strips, claimed up-front).
+        laneResizePlugin({ getCapture: () => captureRef.current }),
         cursorPlugin({ getCapture: () => captureRef.current }),
         // Issue #150: dwell tooltip on the hovered snap point (x/y sample readout)
         hoverTooltipPlugin({
@@ -544,8 +585,9 @@ export default function Oscilloscope({
         ),
         // Issue #96: reference channels render as trailing series with
         // their own pinned scales (zero-centered symmetric fit of the
-        // resampled lane) and NO left axis column — the shared overlay
-        // graticule belongs to the primary channels.
+        // resampled lane). Issue #249 adds their own left axis columns
+        // (see refColumns above); the shared overlay graticule still
+        // belongs to the primary channels (ref grid.show stays false).
         ...Object.fromEntries(
           (useReferenceStore.getState().lanes ?? []).map((lane, index) => {
             const bounds = refLaneFitBounds(lane);
@@ -588,18 +630,20 @@ export default function Oscilloscope({
           return {
             scale: scaleKey,
             side: 3,
+            // Issue #250: in Stack mode only splits inside the channel's
+            // lane band render (ticks + labels stay in the band).
+            filter: (self: uPlot, splits: number[]) =>
+              laneTickFilter(self, capture, scaleKey, splits),
             show: mountChannels.includes(channel.name),
-            stroke: () =>
-              effectiveTraceColor(
-                useThemeStore.getState().theme,
-                usePaletteStore.getState().customColors,
-                channel.name,
-              ),
+            // Issue #250: tick marks + the selected channel's grid lines
+            // stay inside the lane band too (null-masked same length).
             grid: {
               show: channel.name === mountSelected,
               stroke: () =>
                 resolveThemePalette(useThemeStore.getState().theme).grid,
               width: 1,
+              filter: (self: uPlot, splits: number[]) =>
+                laneTickFilter(self, capture, scaleKey, splits),
             },
             ticks: {
               show: true,
@@ -607,7 +651,15 @@ export default function Oscilloscope({
                 resolveThemePalette(useThemeStore.getState().theme).ticks,
               width: 1,
               size: AXIS_TICK_SIZE_PX,
+              filter: (self: uPlot, splits: number[]) =>
+                laneTickFilter(self, capture, scaleKey, splits),
             },
+            stroke: () =>
+              effectiveTraceColor(
+                useThemeStore.getState().theme,
+                usePaletteStore.getState().customColors,
+                channel.name,
+              ),
             font: AXIS_FONT,
             label: adapter.label,
             labelFont: AXIS_FONT,
@@ -620,6 +672,55 @@ export default function Oscilloscope({
               splits.map(String),
           };
         }),
+        // Issue #249: reference channels continue the column order
+        // leftward (…, B, A, Ref-A, Ref-B) — each channel, primary or
+        // reference, owns exactly one axis column, so a ground flag can
+        // never be ambiguous or trace-occluded. Selection stays a
+        // primary concern: a ref column never owns the graticule grid.
+        ...[...refColumns].reverse().map(({ name, refIdx, scaleKey }) => ({
+          scale: scaleKey,
+          side: 3,
+          // Issue #250: reference columns band-scope like primaries.
+          filter: (self: uPlot, splits: number[]) =>
+            laneTickFilter(self, capture, scaleKey, splits),
+          show: mountReference.refActiveChannels.includes(name),
+          stroke: () =>
+            effectiveTraceColor(
+              useThemeStore.getState().theme,
+              usePaletteStore.getState().customColors,
+              name,
+            ),
+          grid: {
+            show: false,
+            stroke: () =>
+              resolveThemePalette(useThemeStore.getState().theme).grid,
+            width: 1,
+            filter: (self: uPlot, splits: number[]) =>
+              laneTickFilter(self, capture, scaleKey, splits),
+          },
+          ticks: {
+            show: true,
+            stroke: () =>
+              resolveThemePalette(useThemeStore.getState().theme).ticks,
+            width: 1,
+            size: AXIS_TICK_SIZE_PX,
+            filter: (self: uPlot, splits: number[]) =>
+              laneTickFilter(self, capture, scaleKey, splits),
+          },
+          font: AXIS_FONT,
+          label: adaptersRef.current.get(capture.channels.length + refIdx)!
+            .label,
+          labelFont: AXIS_FONT,
+          labelSize: AXIS_LABEL_SIZE_PX,
+          gap: AXIS_GAP_PX,
+          labelGap: AXIS_LABEL_GAP_PX,
+          size: (_self: uPlot, values: string[]) => measureYAxisSize(values),
+          values: (_self: unknown, splits: number[]) =>
+            adaptersRef.current
+              .get(capture.channels.length + refIdx)
+              ?.values(_self, splits) ??
+            splits.map((v) => (v == null ? null : String(v))),
+        })),
       ],
       series: [
         {
@@ -690,6 +791,34 @@ export default function Oscilloscope({
           (u) => {
             const palette = resolveThemePalette(useThemeStore.getState().theme);
             drawTriggerGlyph(u, palette.triggerAccent, palette.background);
+            // Issue #250: Stack-mode lane banding — band-scoped axis
+            // columns (title/border) + lane separators across the plot
+            // width. No-op in Overlay mode.
+            const laneTitles = new Map<string, LaneAxisTitle>();
+            const themeNow = useThemeStore.getState().theme;
+            const colorsNow = usePaletteStore.getState().customColors;
+            capture.channels.forEach((channel, origIdx) => {
+              const adapter = adaptersRef.current.get(origIdx);
+              if (!adapter) return;
+              laneTitles.set(yScaleKey(origIdx), {
+                label: adapter.label,
+                color: effectiveTraceColor(themeNow, colorsNow, channel.name),
+              });
+            });
+            const refNow = useReferenceStore.getState();
+            (refNow.lanes ?? []).forEach((_lane, refIdx) => {
+              const raw = refNow.capture?.channels[refIdx];
+              const name = raw ? toRefName(raw.name) : null;
+              const adapter = adaptersRef.current.get(
+                capture.channels.length + refIdx,
+              );
+              if (!name || !adapter) return;
+              laneTitles.set(yScaleKey(capture.channels.length + refIdx), {
+                label: adapter.label,
+                color: effectiveTraceColor(themeNow, colorsNow, name),
+              });
+            });
+            drawStackLaneDecorations(u, capture, laneTitles);
           },
         ],
         setScale: [
@@ -778,7 +907,13 @@ export default function Oscilloscope({
     over.addEventListener("mousedown", onPointerDown);
     over.addEventListener("mouseup", onPointerUp);
 
-    // Axis column clicks inside container (x < plotLeft)
+    // Axis column clicks inside container (x < plotLeft). Issue #249
+    // review finding-1: the hit test reads each channel's ACTUAL column
+    // extents from the live side-3 axis layout — reference channel
+    // columns (when File 2 is active) occupy the outermost band and
+    // previously displaced the hardcoded primary-column accumulation,
+    // selecting the wrong channel. Reference columns stay hit-test
+    // silent: selection is a primary-channel concern (issue #96).
     const onContainerClick = (event: MouseEvent): void => {
       if (event.button !== 0) return;
       const live = captureRef.current;
@@ -788,43 +923,56 @@ export default function Oscilloscope({
       const instancePxRatio =
         instance.width > 0 ? instance.ctx.canvas.width / instance.width : 1;
       const plotLeft = instance.bbox.left / instancePxRatio;
+      if (clickX >= plotLeft || clickX < CANVAS_PADDING[3]) return;
 
-      if (clickX < plotLeft && clickX >= CANVAS_PADDING[3]) {
-        const active = useViewportStore.getState().activeChannels;
-        const visible = live.channels.filter((c) => active.includes(c.name));
-        let colLeft = CANVAS_PADDING[3];
-        for (const ch of visible) {
-          const origIdx = live.channels.indexOf(ch);
-          const axis = instance.axes.find(
-            (a) => a.scale === yScaleKey(origIdx),
-          );
-          const colWidth = axis
-            ? ((axis as unknown as { _size?: number })._size ?? 0) +
-              (axis.label != null ? (axis.labelSize ?? 0) : 0)
+      const active = useViewportStore.getState().activeChannels;
+      const visible = live.channels.filter((c) => active.includes(c.name));
+      for (const ch of visible) {
+        const origIdx = live.channels.indexOf(ch);
+        const axis = instance.axes.find(
+          (a) => a.scale === yScaleKey(origIdx),
+        ) as
+          | {
+              show?: boolean;
+              _pos?: number;
+              _size?: number;
+              _lpos?: number;
+              label?: unknown;
+              labelSize?: number;
+            }
+          | undefined;
+        if (!axis || axis.show === false) continue;
+        if (axis._pos == null || axis._size == null) continue;
+        const labelSize =
+          axis.label != null && typeof axis.labelSize === "number"
+            ? axis.labelSize
             : 0;
-          if (clickX >= colLeft && clickX < colLeft + colWidth) {
-            useViewportStore.getState().setSelectedChannel(ch.name);
-            break;
-          }
-          colLeft += colWidth;
+        const colLeft =
+          (typeof axis._lpos === "number"
+            ? axis._lpos
+            : axis._pos - axis._size) - labelSize;
+        if (clickX >= colLeft && clickX < axis._pos) {
+          useViewportStore.getState().setSelectedChannel(ch.name);
+          return;
         }
       }
     };
     container.addEventListener("click", onContainerClick);
 
-    // Register PNG snapshot exporter
-    useSnapshotStore.getState().registerExporter(async (inverted) => {
+    // Register PNG snapshot exporter (issue #252: settings-driven)
+    useSnapshotStore.getState().registerExporter(async (settings) => {
       const live = uplotRef.current ?? instance;
       const liveCapture = captureRef.current;
       if (!liveCapture) {
         throw new Error("no capture loaded for PNG snapshot");
       }
-      const themeNow = useThemeStore.getState().theme;
       const colorsNow = usePaletteStore.getState().customColors;
       const configsNow = usePaletteStore.getState().keyConfigs;
       const cursorState = useCursorStore.getState();
       const viewportState = useViewportStore.getState();
-      const renderTheme = inverted ? "light" : themeNow;
+      // The export theme is the popover's choice: dark = the screen
+      // palette, light = the print pass (today's invert toggle).
+      const renderTheme = settings.theme === "light" ? "light" : "dark";
       const customNames = useChannelNamesStore.getState().names;
       // Issue #226: the embedded readout card mirrors the live card's
       // display-unit selections.
@@ -858,16 +1006,28 @@ export default function Oscilloscope({
         background: resolveThemePalette(renderTheme).background,
         legend,
         selected: cursorState.selectedCursor,
-        selectedRingColor: inverted ? "#333333" : "#ffffff",
+        selectedRingColor: renderTheme === "light" ? "#333333" : "#ffffff",
       };
-      const cursorSnapshot = {
-        cursor: {
-          c1Active: cursorState.c1Active,
-          c1SampleIndex: cursorState.c1SampleIndex,
-          c2Active: cursorState.c2Active,
-          c2SampleIndex: cursorState.c2SampleIndex,
-        },
-      };
+      // Issue #252: cursor exclusion removes the lines (and their
+      // handles/labels) from the export only — the on-screen view is
+      // untouched because only the export args change.
+      const cursorSnapshot = settings.cursors
+        ? {
+            cursor: {
+              c1Active: cursorState.c1Active,
+              c1SampleIndex: cursorState.c1SampleIndex,
+              c2Active: cursorState.c2Active,
+              c2SampleIndex: cursorState.c2SampleIndex,
+            },
+          }
+        : {
+            cursor: {
+              c1Active: false,
+              c1SampleIndex: cursorState.c1SampleIndex,
+              c2Active: false,
+              c2SampleIndex: cursorState.c2SampleIndex,
+            },
+          };
 
       let readoutCard: ReadoutCardSnapshot | null = null;
       const cardEl = container.parentElement?.querySelector(
@@ -887,7 +1047,13 @@ export default function Oscilloscope({
           y: cardRect.top - canvasRect.top,
           width: cardRect.width,
           height: cardRect.height,
-          collapsed: useReadoutCardStore.getState().collapsed,
+          // Issue #252: `full` embeds the card exactly as the live card
+          // (as today, including its live collapse state); `collapsed`
+          // forces the header row; `excluded` drops it (below).
+          collapsed:
+            settings.readoutCard === "collapsed" ||
+            (settings.readoutCard === "full" &&
+              useReadoutCardStore.getState().collapsed),
           rows: buildReadoutRows(
             liveCapture,
             cursorState,
@@ -914,31 +1080,52 @@ export default function Oscilloscope({
           ),
         };
       }
-
-      if (inverted) {
-        const printSeries = liveCapture.channels.map((channel, index) => ({
-          label: channelDisplayName(
-            channel.name,
-            channel.label,
-            customNames[channel.name],
-          ),
-          color: effectiveTraceColor("light", colorsNow, channel.name),
-          show: live.series[index + 1]?.show ?? false,
-        }));
-        const printComposite = await composePrintSnapshot(
-          live,
-          liveCapture,
-          overlay,
-          { ...cursorSnapshot, readoutCard, series: printSeries },
-        );
-        return snapshotToBlob(printComposite.canvas);
+      if (settings.readoutCard === "excluded") {
+        readoutCard = null;
       }
 
-      const composite = composeSnapshotCanvas(live, liveCapture, overlay, {
-        ...cursorSnapshot,
-        readoutCard,
-      });
-      return snapshotToBlob(composite.canvas);
+      // Issue #252 routing: the dark theme with an opaque background and
+      // the grid included is exactly today's screen snapshot (the live
+      // raster carries the dark palette and the graticule) — byte-for-
+      // byte the historical export. The light theme (the historical
+      // invert toggle) and any non-default option (transparent
+      // background, excluded grid) render offscreen with the selected
+      // palette, where every option is under the compositor's control.
+      const screenPath =
+        renderTheme === "dark" &&
+        settings.background === "opaque" &&
+        settings.grid;
+      if (screenPath) {
+        const composite = composeSnapshotCanvas(live, liveCapture, overlay, {
+          ...cursorSnapshot,
+          readoutCard,
+        });
+        return snapshotToBlob(composite.canvas);
+      }
+
+      const printSeries = liveCapture.channels.map((channel, index) => ({
+        label: channelDisplayName(
+          channel.name,
+          channel.label,
+          customNames[channel.name],
+        ),
+        color: effectiveTraceColor(renderTheme, colorsNow, channel.name),
+        show: live.series[index + 1]?.show ?? false,
+      }));
+      const printComposite = await composePrintSnapshot(
+        live,
+        liveCapture,
+        overlay,
+        {
+          ...cursorSnapshot,
+          readoutCard,
+          series: printSeries,
+          palette: renderTheme,
+          transparent: settings.background === "transparent",
+          omitGrid: !settings.grid,
+        },
+      );
+      return snapshotToBlob(printComposite.canvas);
     });
 
     applyFitBounds(
@@ -1021,6 +1208,12 @@ export default function Oscilloscope({
           instance.setSeries(seriesIdx, { show: shouldShow });
         }
         const scaleKey = yScaleKey(capture.channels.length + refIdx);
+        // Issue #249: the Ref channel's axis column follows its
+        // visibility, exactly like a primary column.
+        const refAxis = instance.axes.find((a) => a.scale === scaleKey);
+        if (refAxis) {
+          refAxis.show = shouldShow;
+        }
         const scale = instance.scales[scaleKey];
         if (scale?.min != null && scale.max != null) {
           pinned.push({
@@ -1314,6 +1507,10 @@ export default function Oscilloscope({
   // saved pre-stack windows. Pan/zoom keeps working on top of either
   // state — the mode applies at toggle time.
   const stackMode = useChannelDisplayStore((s) => s.stackMode);
+  // Issue #251: lane weights are reactive — every drag frame re-runs the
+  // stack effect and re-windows the lanes from their saved pre-stack
+  // bounds.
+  const laneWeights = useLaneLayoutStore((s) => s.weights);
   const preStackRef = useRef<Map<string, { min: number; max: number }>>(
     new Map(),
   );
@@ -1321,21 +1518,19 @@ export default function Oscilloscope({
     const instance = uplotRef.current;
     if (!instance || !capture) return;
 
-    const visibleKeys: { scaleKey: string }[] = [];
-    capture.channels.forEach((channel, index) => {
-      if (!useViewportStore.getState().activeChannels.includes(channel.name))
-        return;
-      visibleKeys.push({ scaleKey: yScaleKey(index) });
-    });
-    const reference = useReferenceStore.getState();
-    (reference.lanes ?? []).forEach((_lane, refIdx) => {
-      const raw = reference.capture?.channels[refIdx];
-      const name = raw ? toRefName(raw.name) : null;
-      if (!name || !reference.refActiveChannels.includes(name)) return;
-      visibleKeys.push({
-        scaleKey: yScaleKey(capture.channels.length + refIdx),
-      });
-    });
+    // Issue #250: the lane enumeration (primaries in file order, then
+    // visible references) is the shared visibleLaneScaleKeys — one
+    // source of truth with the ground flags and lane decorations.
+    // Issue #251: lane bands follow the per-file lane weights (equal
+    // fractions when none are stored).
+    const laneChannels = visibleLaneChannels(capture);
+    const fractions = laneFractions(
+      laneChannels.map((lane) => lane.key),
+      laneWeights,
+    );
+    const visibleKeys = laneChannels.map((lane) => ({
+      scaleKey: lane.scaleKey,
+    }));
     if (visibleKeys.length === 0) return;
     const restoring = !stackMode && preStackRef.current.size > 0;
     if (!stackMode && !restoring) return;
@@ -1345,6 +1540,13 @@ export default function Oscilloscope({
     const axesReady = instance.axes.every(
       (axis) => (axis as unknown as { _found?: unknown })._found != null,
     );
+    let bandStart = 0;
+    const bandOf = (laneIndex: number): { start: number; fraction: number } => {
+      const fraction = fractions[laneIndex] ?? 1 / visibleKeys.length;
+      const start = bandStart;
+      bandStart += fraction;
+      return { start, fraction };
+    };
     const apply = (): void => {
       visibleKeys.forEach(({ scaleKey }, laneIndex) => {
         const scale = instance.scales[scaleKey];
@@ -1357,8 +1559,12 @@ export default function Oscilloscope({
           // Review F1: lane the SAVED pre-stack window, never the live
           // (already laned) one — visibility toggles while stacked must
           // re-partition idempotently, not multiply the span again.
+          // Issue #251: the band comes from the lane weights; the
+          // pre-stack span maps onto exactly the band's height, so a
+          // resized lane scales its trace's unit-per-pixel with it.
           const base = preStackRef.current.get(scaleKey)!;
-          const lane = stackLaneBounds(base, laneIndex, visibleKeys.length);
+          const band = bandOf(laneIndex);
+          const lane = stackLaneBoundsWeighted(base, band.start, band.fraction);
           instance.setScale(scaleKey, { min: lane.min, max: lane.max });
         } else {
           const saved = preStackRef.current.get(scaleKey);
@@ -1374,9 +1580,16 @@ export default function Oscilloscope({
       instance.redraw(false, true);
     }
     if (!stackMode) preStackRef.current.clear();
-  }, [stackMode, capture, refLanes, activeChannels, refActiveChannels]);
+  }, [
+    stackMode,
+    capture,
+    refLanes,
+    activeChannels,
+    refActiveChannels,
+    laneWeights,
+  ]);
 
-  // Fit Waveform (100%) command channel
+  // Reset View fit command channel (issue #248)
   useEffect(() => {
     if (fitRequest === lastFitRequestRef.current) return;
     lastFitRequestRef.current = fitRequest;

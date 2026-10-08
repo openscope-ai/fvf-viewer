@@ -1,9 +1,12 @@
 /**
  * Waveform toolbar (issues #12/#204): interactive channel badges that
  * toggle trace visibility on the oscilloscope canvas without rescaling
- * the axes, plus a one-click "Fit Waveform (100%)" action that resets the
- * viewport to the full capture range with optimal dynamic Y margins over
- * the visible channels. Mouse wheel zooming is disabled on the canvas
+ * the axes, plus a one-click "Reset View" action (issue #248) that
+ * returns to the pristine view: every channel's display transforms
+ * (Y-scale %, vertical offset, invert) snap back to their defaults and
+ * the viewport re-frames to the full capture range with optimal dynamic
+ * Y margins over the visible channels, with the File 2 time slip zeroed
+ * while a comparison is active. Mouse wheel zooming is disabled on the canvas
  * itself (see Oscilloscope); this toolbar is the sanctioned way to drive
  * the viewport.
  *
@@ -50,14 +53,14 @@ export interface WaveformToolbarProps {
    * channel names from the capture store.
    */
   channels?: string[];
-  /** Optional extra callback invoked when Fit Waveform is clicked. */
-  onFit?: () => void;
+  /** Optional extra callback invoked when Reset View is clicked. */
+  onResetView?: () => void;
   className?: string;
 }
 
 export default function WaveformToolbar({
   channels: channelsOverride,
-  onFit,
+  onResetView,
   className,
 }: WaveformToolbarProps) {
   const captureChannels = useCaptureStore((state) => state.capture?.channels);
@@ -129,13 +132,28 @@ export default function WaveformToolbar({
   const stackMode = useChannelDisplayStore((state) => state.stackMode);
   const setStackMode = useChannelDisplayStore((state) => state.setStackMode);
 
-  const handleFit = useCallback(() => {
-    onFit?.();
+  const resetTransforms = useChannelDisplayStore(
+    (state) => state.resetTransforms,
+  );
+
+  const handleResetView = useCallback(() => {
+    onResetView?.();
+    // Issue #248: every channel's display transforms (Y-scale %, vertical
+    // offset, invert — visible and hidden, primary and reference) snap
+    // back to defaults. Solo and the Stack/Overlay mode are view layout,
+    // not transforms — untouched.
+    resetTransforms();
+    // Zero the File 2 time slip while a comparison is active; the T₂
+    // glyph and reference lanes reposition through the existing #97
+    // reference-lane update pipeline.
+    if (useReferenceStore.getState().capture) {
+      useReferenceStore.getState().setTimeSlip(0);
+    }
     // Reset the mirrored bounds; the canvas applies the real fit bounds in
     // response to the fit request and re-syncs them through its scale hooks.
     resetBounds();
     requestFit();
-  }, [onFit, resetBounds, requestFit]);
+  }, [onResetView, resetTransforms, resetBounds, requestFit]);
 
   return (
     <div
@@ -552,12 +570,12 @@ export default function WaveformToolbar({
       <button
         type="button"
         className="waveform-fit-button"
-        aria-label="Fit Waveform (100%): reset viewport to full capture"
-        title="Fit Waveform (100%): reset viewport to full capture"
-        data-testid="fit-waveform-button"
-        onClick={handleFit}
+        aria-label="Reset View: reset display transforms, File 2 time slip, and viewport"
+        title="Reset View: reset display transforms, File 2 time slip, and viewport"
+        data-testid="reset-view-button"
+        onClick={handleResetView}
       >
-        Fit Waveform (100%)
+        Reset View
       </button>
       <button
         type="button"

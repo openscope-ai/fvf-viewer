@@ -7,6 +7,8 @@ import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useCursorStore } from "../../state/cursorStore";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { useReferenceStore } from "../../state/referenceStore";
 import { useBadgePopoverStore } from "./badgeConfig/anchoredPopover";
 
 (
@@ -26,6 +28,8 @@ describe("WaveformToolbar (browser)", () => {
     useBadgePopoverStore.getState().setOpen(null);
     useViewportStore.getState().reset();
     useCursorStore.getState().reset();
+    useChannelDisplayStore.getState().reset();
+    useReferenceStore.getState().clear();
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
@@ -39,6 +43,8 @@ describe("WaveformToolbar (browser)", () => {
   afterEach(() => {
     useBadgePopoverStore.getState().setOpen(null);
     useCursorStore.getState().reset();
+    useChannelDisplayStore.getState().reset();
+    useReferenceStore.getState().clear();
     act(() => {
       root.unmount();
     });
@@ -49,7 +55,7 @@ describe("WaveformToolbar (browser)", () => {
     window.localStorage.clear();
   });
 
-  it("renders channel badges and the Fit Waveform (100%) action", () => {
+  it("renders channel badges and the Reset View action", () => {
     act(() => {
       root.render(<WaveformToolbar channels={["A", "B", "C", "D"]} />);
     });
@@ -68,11 +74,13 @@ describe("WaveformToolbar (browser)", () => {
       expect(badge?.getAttribute("aria-pressed")).toBe("true");
     }
 
-    const fitButton = hostElement.querySelector(
-      "[data-testid='fit-waveform-button']",
+    const resetButton = hostElement.querySelector(
+      "[data-testid='reset-view-button']",
     ) as HTMLButtonElement | null;
-    expect(fitButton).not.toBeNull();
-    expect(fitButton?.textContent).toContain("Fit Waveform (100%)");
+    expect(resetButton).not.toBeNull();
+    expect(resetButton?.textContent).toContain("Reset View");
+    expect(resetButton?.getAttribute("aria-label")).toContain("Reset View");
+    expect(resetButton?.getAttribute("title")).toContain("Reset View");
   });
 
   it("AC: clicking channel badges toggles active state in viewport store", () => {
@@ -122,25 +130,42 @@ describe("WaveformToolbar (browser)", () => {
     );
   });
 
-  it("AC: clicking Fit Waveform triggers onFit callback and resets bounds", () => {
-    const onFit = vi.fn();
+  it("AC (#248): clicking Reset View triggers onResetView, clears every display transform, zeroes the File 2 slip, and resets bounds", () => {
+    const onResetView = vi.fn();
     act(() => {
-      root.render(<WaveformToolbar channels={["A", "B"]} onFit={onFit} />);
+      root.render(
+        <WaveformToolbar channels={["A", "B"]} onResetView={onResetView} />,
+      );
     });
 
+    // Dirty state: transforms on a visible, a hidden, and a reference
+    // channel, a live File 2 slip, and a zoomed viewport.
+    useViewportStore.getState().setActiveChannels(["A"]);
+    useChannelDisplayStore.getState().setYScale("A", 200);
+    useChannelDisplayStore.getState().setOffset("B", 3);
+    useChannelDisplayStore.getState().setInverted("Ref-A", true);
+    useReferenceStore.setState({
+      capture: { channels: [] } as never,
+      timeSlipSamples: 4.5,
+    });
     useViewportStore
       .getState()
       .setBounds({ xMin: -0.02, xMax: 0.02, yMin: -1, yMax: 1 });
     expect(useViewportStore.getState().fitRequest).toBe(0);
 
-    const fitButton = hostElement.querySelector(
-      "[data-testid='fit-waveform-button']",
+    const resetButton = hostElement.querySelector(
+      "[data-testid='reset-view-button']",
     ) as HTMLButtonElement;
     act(() => {
-      fitButton.click();
+      resetButton.click();
     });
 
-    expect(onFit).toHaveBeenCalledTimes(1);
+    expect(onResetView).toHaveBeenCalledTimes(1);
+
+    // Every display transform — visible, hidden, reference — is gone.
+    expect(useChannelDisplayStore.getState().keyConfigs).toEqual({});
+    // The File 2 time slip is zeroed while a comparison is active.
+    expect(useReferenceStore.getState().timeSlipSamples).toBe(0);
 
     const state = useViewportStore.getState();
     expect(state.xMin).toBeNull();
@@ -149,12 +174,32 @@ describe("WaveformToolbar (browser)", () => {
     expect(state.yMax).toBeNull();
     expect(state.fitRequest).toBe(1);
 
-    // Repeat clicks keep requesting fits (monotonic counter)
+    // Repeat clicks keep requesting fits (monotonic counter) and stay
+    // idempotent on the already-default transforms.
     act(() => {
-      fitButton.click();
+      resetButton.click();
     });
-    expect(onFit).toHaveBeenCalledTimes(2);
+    expect(onResetView).toHaveBeenCalledTimes(2);
     expect(useViewportStore.getState().fitRequest).toBe(2);
+    expect(useChannelDisplayStore.getState().keyConfigs).toEqual({});
+  });
+
+  it("AC (#248): without an active comparison Reset View leaves the slip channel alone", () => {
+    act(() => {
+      root.render(<WaveformToolbar channels={["A"]} />);
+    });
+    expect(useReferenceStore.getState().capture).toBeNull();
+
+    const resetButton = hostElement.querySelector(
+      "[data-testid='reset-view-button']",
+    ) as HTMLButtonElement;
+    act(() => {
+      resetButton.click();
+    });
+
+    // No File 2 capture -> the slip store is never touched (it would
+    // already be reset by the comparison teardown paths).
+    expect(useViewportStore.getState().fitRequest).toBe(1);
   });
 
   it("AC (#38): the theme toggle button switches between Dark OLED and Light theme", () => {

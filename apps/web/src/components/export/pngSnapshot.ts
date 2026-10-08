@@ -24,6 +24,16 @@ import {
   measureYAxisSize,
 } from "../canvas/axesConfig";
 import { drawTriggerGlyph, drawTriggerLine } from "../canvas/triggerMarker";
+import { computeGroundFlags, drawGroundFlags } from "../canvas/groundFlags";
+import {
+  drawStackLaneDecorations,
+  laneTickFilter,
+  type LaneAxisTitle,
+} from "../canvas/stackLaneDecorations";
+import {
+  displayKeyForChannel,
+  type ChannelKey,
+} from "../canvas/channelDisplay";
 import {
   createTimeAxisAdapter,
   type TimeAxisUnitKey,
@@ -67,6 +77,11 @@ export interface SnapshotCursorState {
 export interface SnapshotOptions {
   /** Device pixel ratio; defaults to the live `devicePixelRatio`. */
   pixelRatio?: number;
+  /**
+   * Issue #252: skip every background fill for a transparent-alpha
+   * export (the selected theme's ink on transparency).
+   */
+  transparent?: boolean;
   cursor?: SnapshotCursorState;
   /**
    * Floating cursor readout card at its live canvas position (issue #58).
@@ -174,8 +189,11 @@ export function composeSnapshotCanvas(
   ctx.scale(pixelRatio, pixelRatio);
 
   // 1. Background: the base canvas leaves axis margins transparent.
-  ctx.fillStyle = overlay.background;
-  ctx.fillRect(0, 0, cssWidth, cssHeight);
+  // Issue #252: `transparent` exports keep the alpha channel (no fill).
+  if (!options.transparent) {
+    ctx.fillStyle = overlay.background;
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
+  }
 
   // 2. The uPlot base render (waveform, grid, axes) at 1:1 CSS mapping.
   ctx.drawImage(uplot.ctx.canvas, 0, 0, cssWidth, cssHeight);
@@ -491,9 +509,40 @@ export interface PrintSeriesSpec {
   show: boolean;
 }
 
+/** Per-palette chrome for the offscreen render (issue #252). */
+const RENDER_CHROME = {
+  light: {
+    axisText: "#555555",
+    grid: "#C8C8C8",
+    ticks: "#C8C8C8",
+    trigger: "#888888",
+    triggerGlyphClear: "#FFFFFF",
+    separator: "#C8C8C8",
+  },
+  dark: {
+    axisText: "#888888",
+    grid: "#222222",
+    ticks: "#333333",
+    trigger: "#555555",
+    triggerGlyphClear: "#000000",
+    separator: "#222222",
+  },
+} as const;
+
+export type RenderPalette = keyof typeof RENDER_CHROME;
+
 export interface PrintComposeOptions extends SnapshotOptions {
-  /** Per-channel print strokes (contrast-adapted light palette). */
+  /** Per-channel strokes for the render (theme-resolved by the caller). */
   series: PrintSeriesSpec[];
+  /**
+   * Issue #252: render palette — "light" keeps the historical print
+   * pass verbatim; "dark" renders the dark screen palette offscreen
+   * (needed for transparent backgrounds and grid-excluded dark
+   * exports, whose pixels cannot come from the baked live raster).
+   */
+  palette?: RenderPalette;
+  /** Issue #252: omit the graticule grid (on-screen view untouched). */
+  omitGrid?: boolean;
 }
 
 /**
@@ -585,6 +634,8 @@ export async function composePrintSnapshot(
     .map((channel, origIdx) => ({ channel, origIdx }))
     .reverse();
 
+  const palette = options.palette ?? "light";
+  const chrome = RENDER_CHROME[palette];
   const host = document.createElement("div");
   let print: uPlot | null = null;
   try {
@@ -611,15 +662,15 @@ export async function composePrintSnapshot(
         axes: [
           {
             scale: "x",
-            stroke: "#555555",
+            stroke: chrome.axisText,
             grid: {
-              show: true,
-              stroke: "#C8C8C8",
+              show: !options.omitGrid,
+              stroke: chrome.grid,
               width: 1,
             },
             ticks: {
               show: true,
-              stroke: "#C8C8C8",
+              stroke: chrome.ticks,
               width: 1,
               size: AXIS_TICK_SIZE_PX,
             },
@@ -639,18 +690,26 @@ export async function composePrintSnapshot(
             return {
               scale: scaleKey,
               side: 3,
+              // Issue #250: parity with the live Stack-mode banding —
+              // ticks/labels confined to the channel's lane band.
+              filter: (self: uPlot, splits: number[]) =>
+                laneTickFilter(self, capture, scaleKey, splits),
               show: seriesSpec?.show ?? false,
-              stroke: seriesSpec?.color ?? "#555555",
+              stroke: seriesSpec?.color ?? chrome.axisText,
               grid: {
-                show: isSelected,
-                stroke: "#C8C8C8",
+                show: isSelected && !options.omitGrid,
+                stroke: chrome.grid,
                 width: 1,
+                filter: (self: uPlot, splits: number[]) =>
+                  laneTickFilter(self, capture, scaleKey, splits),
               },
               ticks: {
                 show: true,
-                stroke: "#C8C8C8",
+                stroke: chrome.ticks,
                 width: 1,
                 size: AXIS_TICK_SIZE_PX,
+                filter: (self: uPlot, splits: number[]) =>
+                  laneTickFilter(self, capture, scaleKey, splits),
               },
               font: AXIS_FONT,
               label: () => adapter.label,
@@ -688,6 +747,7 @@ export async function composePrintSnapshot(
           ],
           drawClear: [
             (u) => {
+              if (options.transparent) return;
               u.ctx.save();
               u.ctx.fillStyle = overlay.background;
               u.ctx.fillRect(0, 0, u.bbox.width, u.bbox.height);
@@ -698,14 +758,53 @@ export async function composePrintSnapshot(
             (u) => {
               // Issue #61/#77: print export parity for the t=0 trigger
               // line, in the light palette's accent tone.
-              drawTriggerLine(u, "#888888");
+              drawTriggerLine(u, chrome.trigger);
             },
           ],
           draw: [
             (u) => {
               // Issue #77: glyph + clear zone above the traces, matching
               // the live canvas layering for exact parity.
-              drawTriggerGlyph(u, "#888888", "#FFFFFF");
+              drawTriggerGlyph(u, chrome.trigger, chrome.triggerGlyphClear);
+              // Issue #250: Stack-mode lane banding with print parity —
+              // band-scoped titles/borders + separators, drawn with the
+              // print pass's contrast-adapted colors. The print render
+              // is primary-only (pre-existing scope), so its lane
+              // partitioning covers the visible primary channels.
+              const laneTitles = new Map<string, LaneAxisTitle>();
+              capture.channels.forEach((_channel, origIdx) => {
+                const adapter = printYAdapters.get(origIdx);
+                if (!adapter) return;
+                laneTitles.set(yScaleKey(origIdx), {
+                  label: adapter.label,
+                  color: options.series[origIdx]?.color ?? "#555555",
+                });
+              });
+              drawStackLaneDecorations(
+                u,
+                capture,
+                laneTitles,
+                chrome.separator,
+              );
+              // Issue #249: ground flags composite on the print render
+              // too — same shared geometry/drawing as the live draw
+              // hook, with the print pass's contrast-adapted strokes.
+              // Reference channels have no axes in the primary-only
+              // print render, so their flags are geometrically pruned.
+              const printColorFor = (key: ChannelKey): string => {
+                const origIdx = capture.channels.findIndex(
+                  (channel) => displayKeyForChannel(channel.name) === key,
+                );
+                return (
+                  (origIdx >= 0 ? options.series[origIdx]?.color : undefined) ??
+                  "#555555"
+                );
+              };
+              drawGroundFlags(
+                u,
+                computeGroundFlags(u, capture, printColorFor),
+                "#555555",
+              );
             },
           ],
         },

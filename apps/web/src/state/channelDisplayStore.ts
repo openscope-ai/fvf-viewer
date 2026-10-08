@@ -159,6 +159,13 @@ export interface ChannelDisplayStoreState {
   clearSolo: () => void;
   /** Per-key ↺: scale 100% + offset 0 + not inverted. */
   resetKey: (key: ChannelKey) => void;
+  /**
+   * Issue #248 Reset View: clears every channel's display transform
+   * (Y-scale %, vertical offset, invert) — visible or hidden, primary
+   * or reference — while leaving Solo and the Stack/Overlay mode
+   * untouched (they are view layout, not display transforms).
+   */
+  resetTransforms: () => void;
   reset: () => void;
 }
 
@@ -315,6 +322,11 @@ export function createChannelDisplayStore() {
         delete next[key];
         return { keyConfigs: next };
       }),
+
+    resetTransforms: () =>
+      commit(set, (state) =>
+        Object.keys(state.keyConfigs).length > 0 ? { keyConfigs: {} } : {},
+      ),
 
     reset: () =>
       commit(set, () => ({ keyConfigs: {}, solo: null, stackMode: false })),

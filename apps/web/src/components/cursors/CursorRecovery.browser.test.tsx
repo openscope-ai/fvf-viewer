@@ -367,7 +367,7 @@ describe("Out-of-view Cursor Recovery (Issue #15)", () => {
     ).toBeNull();
   });
 
-  it("AC10: Triggering Fit Waveform (100%) brings cursors into view and dismisses badges", () => {
+  it("AC10: Triggering Reset View brings cursors into view and dismisses badges", () => {
     act(() => {
       root.render(
         <div>

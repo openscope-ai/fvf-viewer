@@ -1,21 +1,31 @@
 /**
  * Ground reference markers + tactile vertical offset (issue #98).
  *
- * Rendering: every visible channel (primary A… and reference Ref-A…)
- * gets a colored ground flag (A▶, B▶, Ref-A▶) — a right-pointing
- * triangle at the left graticule border pinned to the channel's
- * displayed 0V baseline (the #224 display transform maps physical 0 to
- * exactly the offset value, so the marker sits at display value =
- * offset, moving live with the trace). Canvas-drawn from the draw hook
- * like the T₁/T₂ glyphs (PNG export parity), with per-channel DOM hit
- * strips in the left margin for interaction.
+ * Rendering (issue #249): every visible channel (primary A… and
+ * reference Ref-A…) gets a colored ground flag (A▶, B▶, Ref-A▶) — a
+ * right-pointing triangle rendered on that channel's OWN left y-axis
+ * column at the channel's displayed 0V baseline (the #224 display
+ * transform maps physical 0 to exactly the offset value, so the marker
+ * sits at display value = offset, moving live with the trace). The
+ * column belongs to the channel alone, so traces can never occlude the
+ * flag. Geometry + drawing live in groundFlags.ts, shared with the PNG
+ * print pass for export parity; canvas-drawn from the draw hook like
+ * the T₁/T₂ glyphs, with per-channel DOM hit strips on the axis column
+ * for interaction. A baseline pushed outside the visible band (plot
+ * height in Overlay, the lane band in Stack) clamps to the nearest band
+ * edge with a half-height flag + chevron cue and stays draggable.
  *
  * Interaction:
- * - Ctrl + vertical drag over a trace (or a ground marker strip, any
- *   modifier) slides that channel's vertical offset in the shared
- *   `channelDisplayStore` at rAF cadence — the #238 display pipeline
- *   rewrites just that lane and repaints synchronously, and the
- *   popover's offset field tracks live (bidirectional sync).
+ * - Ctrl + vertical drag over a trace — or a plain vertical drag on a
+ *   ground marker strip — slides that channel's vertical offset in the
+ *   shared `channelDisplayStore` at rAF cadence — the #238 display
+ *   pipeline rewrites just that lane and repaints synchronously, and
+ *   the popover's offset field tracks live (bidirectional sync).
+ * - A plain click on a marker strip bubbles to the container's
+ *   axis-column click-to-select (it selects that channel); the
+ *   trailing click after a real drag is swallowed so offset drags never
+ *   re-select (drag vs click disambiguation, same activation threshold
+ *   as the trace gesture).
  * - Double-clicking a ground marker resets the offset to 0.
  * - Ctrl+click on a trace without a vertical drag still relocates the
  *   active measurement cursor (the #14 semantics this plugin guards by
@@ -29,16 +39,21 @@ import uPlot from "uplot";
 import {
   displayKeyForChannel,
   effectiveOffset,
-  isRefChannelKey,
   type ChannelKey,
 } from "../channelDisplay";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 import { useReferenceStore } from "../../../state/referenceStore";
 import { refChannelName as toRefName } from "../../../state/referenceStore";
 import { useViewportStore } from "../../../state/viewportStore";
-import { effectiveTraceColor, resolveThemePalette } from "../themePalette";
+import { resolveThemePalette } from "../themePalette";
 import { useThemeStore } from "../../../state/themeStore";
 import { usePaletteStore } from "../../../state/paletteStore";
+import {
+  computeGroundFlags,
+  drawGroundFlags,
+  MARKER_HIT_HALF_PX,
+  type GroundFlag,
+} from "../groundFlags";
 import { useCursorStore } from "../../../state/cursorStore";
 import { findNearestSampleIndex } from "../../cursors/cursorPlugin";
 import { yScaleKey } from "../../../capture/channelUnits";
@@ -48,72 +63,16 @@ export interface GroundMarkerPluginOptions {
   getCapture: () => ParsedCapture | null;
 }
 
-/** Marker triangle geometry in CSS px. */
-export const MARKER_WIDTH_PX = 10;
-export const MARKER_HEIGHT_PX = 8;
-/** Hit-strip half-height around the marker (CSS px). */
-export const MARKER_HIT_HALF_PX = 10;
 /** Vertical trace-snap radius for ctrl+drag takeover (plot px). */
 export const TRACE_SNAP_PX = 48;
 /** Drag distance (px) before a press becomes a claimed offset drag. */
 const DRAG_ACTIVATION_PX = 3;
-
-interface MarkerInfo {
-  key: ChannelKey;
-  label: string;
-  color: string;
-  scaleKey: string;
-  /** CSS-px y of the displayed 0V baseline inside the plot area. */
-  yCss: number;
-}
 
 /** One visible channel's trace proximity to a plot-area point. */
 interface TraceHit {
   key: ChannelKey;
   scaleKey: string;
   distance: number;
-}
-
-function markerList(u: uPlot, capture: ParsedCapture): MarkerInfo[] {
-  const configs = useChannelDisplayStore.getState().keyConfigs;
-  const viewport = useViewportStore.getState();
-  const reference = useReferenceStore.getState();
-  const theme = useThemeStore.getState().theme;
-  const customColors = usePaletteStore.getState().customColors;
-  const out: MarkerInfo[] = [];
-
-  const push = (key: ChannelKey, label: string, scaleKey: string): void => {
-    const scale = u.scales[scaleKey];
-    if (!scale || scale.min == null || scale.max == null) return;
-    const offset = effectiveOffset(configs, key);
-    // Physical 0 transforms to exactly `offset` in display space.
-    // uPlot's 2-arg valToPos already returns CSS px (review N1).
-    const yCss = u.valToPos(offset, scaleKey);
-    if (!Number.isFinite(yCss)) return;
-    out.push({
-      key,
-      label,
-      color: effectiveTraceColor(theme, customColors, key),
-      scaleKey,
-      yCss,
-    });
-  };
-
-  capture.channels.forEach((channel, index) => {
-    if (!viewport.activeChannels.includes(channel.name)) return;
-    const key = displayKeyForChannel(channel.name);
-    if (!key) return;
-    push(key, channel.name, yScaleKey(index));
-  });
-  (reference.lanes ?? []).forEach((_lane, refIdx) => {
-    const raw = reference.capture?.channels[refIdx];
-    const name = raw ? toRefName(raw.name) : `Ref-${refIdx}`;
-    if (!reference.refActiveChannels.includes(name)) return;
-    const key = displayKeyForChannel(name);
-    if (!key) return;
-    push(key, name, yScaleKey(capture.channels.length + refIdx));
-  });
-  return out;
 }
 
 /**
@@ -304,6 +263,14 @@ export function groundMarkerPlugin(
     { el: HTMLDivElement; scaleKey: string }
   >();
 
+  /** Computes the live flags (shared with the print pass). */
+  function liveFlags(): GroundFlag[] {
+    if (!uplot) return [];
+    const capture = options.getCapture();
+    if (!capture) return [];
+    return computeGroundFlags(uplot, capture);
+  }
+
   /** Creates one interactive strip bound to a live scale key. */
   function createStrip(
     key: ChannelKey,
@@ -331,13 +298,61 @@ export function groundMarkerPlugin(
     // time, so a capture swap that moves the channel to another axis
     // (scaleKey change recreates the strip) never drags against a stale
     // axis rate.
+    //
+    // Issue #249: the strip lives on the channel's axis column, so a
+    // plain click must keep reaching the container's axis-column
+    // click-to-select (it selects this channel) while a real drag
+    // claims the offset gesture and swallows its trailing click. The
+    // press waits for DRAG_ACTIVATION_PX of movement before claiming —
+    // the same threshold the trace gesture uses.
+    let suppressNextClick = false;
     strip.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
       const meta = stripMeta.get(key);
-      if (meta) beginOffsetDrag(key, meta.scaleKey, event.clientY);
+      if (!meta) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const onArmedMove = (move: MouseEvent): void => {
+        if ((move.buttons & 1) === 0) return;
+        if (
+          Math.hypot(move.clientX - startX, move.clientY - startY) <
+          DRAG_ACTIVATION_PX
+        ) {
+          return;
+        }
+        cleanupArmed();
+        suppressNextClick = true;
+        beginOffsetDrag(key, meta.scaleKey, startY);
+        // The drag's own document listener attaches mid-dispatch and
+        // will not see THIS event (DOM dispatch semantics) — seed the
+        // pending position and schedule the frame ourselves so a
+        // single-move flick still lands (same note as the trace path).
+        pendingClientY = move.clientY;
+        if (rafId === null) {
+          rafId = requestAnimationFrame(processDragMove);
+        }
+      };
+      const cleanupArmed = (): void => {
+        document.removeEventListener("mousemove", onArmedMove, {
+          capture: true,
+        });
+        document.removeEventListener("mouseup", cleanupArmed, {
+          capture: true,
+        });
+      };
+      document.addEventListener("mousemove", onArmedMove, { capture: true });
+      document.addEventListener("mouseup", cleanupArmed, { capture: true });
+    });
+    strip.addEventListener("click", (event) => {
+      // A clean click bubbles on to the axis-column click-to-select; a
+      // click trailing a completed offset drag is swallowed.
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        event.stopPropagation();
+      }
     });
     strip.addEventListener("dblclick", (event) => {
       event.preventDefault();
@@ -367,33 +382,14 @@ export function groundMarkerPlugin(
 
   function syncStrips(): void {
     if (!uplot || !root) return;
-    const capture = options.getCapture();
-    if (!capture) return;
     const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
-    const plotLeftCss = uplot.bbox.left / pxRatio;
     const plotTopCss = uplot.bbox.top / pxRatio;
-    const markers = markerList(uplot, capture);
+    const markers = liveFlags();
     const live = new Set<ChannelKey>();
-    // Review F4: coincident baselines fully covered each other — collect
-    // the placed y-ranges and nudge later strips a few px apart so every
-    // channel's marker stays individually clickable.
-    const placed: number[][] = [];
-    const staggeredY = (y: number): number => {
-      let top = y;
-      while (
-        placed.some(
-          ([a, b]) =>
-            a !== undefined &&
-            b !== undefined &&
-            top < b + 4 &&
-            top + MARKER_HIT_HALF_PX * 2 > a - 4,
-        )
-      ) {
-        top += 6;
-      }
-      placed.push([top, top + MARKER_HIT_HALF_PX * 2]);
-      return top;
-    };
+    // Issue #249: each flag's hit strip spans exactly its channel's own
+    // axis column (canvas-root-relative CSS px), vertically clamped to
+    // the same band as the drawn flag. Columns never overlap, so the
+    // old coincident-baseline staggering is unnecessary.
     markers.forEach((marker) => {
       live.add(marker.key);
       let meta = stripMeta.get(marker.key);
@@ -406,7 +402,7 @@ export function groundMarkerPlugin(
         const el = createStrip(
           marker.key,
           marker.scaleKey,
-          isRefChannelKey(marker.key)
+          marker.isRef
             ? `Reference channel ${marker.key}`
             : `Channel ${marker.key}`,
         );
@@ -416,20 +412,16 @@ export function groundMarkerPlugin(
       }
       const strip = meta.el;
       strip.style.display = "block";
-      // Covers the whole canvas triangle (plotLeft+1 .. +11 CSS px)
-      // plus a 6 px margin grab, ending 12 px into the plot (review N2).
-      strip.style.left = `${Math.round(plotLeftCss - 6)}px`;
+      strip.style.left = `${Math.round(marker.colLeft)}px`;
       strip.style.top = `${Math.round(
-        plotTopCss + staggeredY(marker.yCss - MARKER_HIT_HALF_PX),
+        plotTopCss + marker.clampedY - MARKER_HIT_HALF_PX,
       )}px`;
-      strip.style.width = `${MARKER_WIDTH_PX + 8}px`;
+      strip.style.width = `${Math.round(marker.colRight - marker.colLeft)}px`;
       strip.style.height = `${MARKER_HIT_HALF_PX * 2}px`;
       strip.dataset.offsetUnits = String(
-        effectiveOffset(
-          useChannelDisplayStore.getState().keyConfigs,
-          marker.key,
-        ),
+        useChannelDisplayStore.getState().keyConfigs[marker.key]?.offset ?? 0,
       );
+      strip.dataset.clamped = marker.cue ?? "";
     });
     for (const [key, meta] of stripMeta) {
       if (!live.has(key)) {
@@ -565,37 +557,9 @@ export function groundMarkerPlugin(
 
   function drawMarkers(): void {
     if (!uplot) return;
-    const capture = options.getCapture();
-    if (!capture) return;
-    const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
-    const plotLeftDev = uplot.bbox.left;
-    const plotTopDev = uplot.bbox.top;
-    const ctx = uplot.ctx;
-    const markers = markerList(uplot, capture);
+    const flags = liveFlags();
     const palette = resolveThemePalette(useThemeStore.getState().theme);
-
-    ctx.save();
-    ctx.font = `${10 * pxRatio}px ui-monospace, monospace`;
-    markers.forEach((marker) => {
-      const yDev = plotTopDev + marker.yCss * pxRatio;
-      const x0 = plotLeftDev + 1 * pxRatio;
-      ctx.fillStyle = marker.color;
-      ctx.beginPath();
-      ctx.moveTo(x0, yDev - (MARKER_HEIGHT_PX / 2) * pxRatio);
-      ctx.lineTo(x0, yDev + (MARKER_HEIGHT_PX / 2) * pxRatio);
-      ctx.lineTo(x0 + MARKER_WIDTH_PX * pxRatio, yDev);
-      ctx.closePath();
-      ctx.fill();
-      // Label rides the left margin beside the triangle.
-      ctx.fillStyle = palette.axisText;
-      ctx.textBaseline = "middle";
-      ctx.textAlign = "right";
-      const label = isRefChannelKey(marker.key)
-        ? marker.key.replace("Ref-", "R")
-        : marker.key;
-      ctx.fillText(label, x0 - 3 * pxRatio, yDev);
-    });
-    ctx.restore();
+    drawGroundFlags(uplot, flags, palette.axisText);
   }
 
   return {

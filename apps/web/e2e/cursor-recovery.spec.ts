@@ -2,7 +2,7 @@
  * Cursor recovery E2E (issue #23, overview §6.4): cursors outside the zoomed
  * region present interactive directional recovery markers; activating
  * recovery returns C1 to 33% and C2 to 67% of the visible viewport so the
- * two cursors never collide, and Fit Waveform also clears the badges.
+ * two cursors never collide, and Reset View also clears the badges.
  */
 
 import {
@@ -96,13 +96,13 @@ test("toggling a cursor off dismisses its recovery badge immediately", async ({
   await expect(page.getByTestId("cursor-recovery-badge-c2")).toBeVisible();
 });
 
-test("Fit Waveform (100%) dismisses all recovery badges by restoring the full view", async ({
+test("Reset View dismisses all recovery badges by restoring the full view", async ({
   page,
 }) => {
   await dragBoxZoom(page, { x: 0.42, y: 0.4 }, { x: 0.58, y: 0.6 });
   await expect(page.getByTestId("cursor-recovery-badge-c1")).toBeVisible();
 
-  await page.getByTestId("fit-waveform-button").click();
+  await page.getByTestId("reset-view-button").click();
   await expect(page.getByTestId("cursor-recovery-badges")).toBeHidden();
   await expect(page.getByTestId("cursor-line-c1")).toBeVisible();
   await expect(page.getByTestId("cursor-line-c2")).toBeVisible();

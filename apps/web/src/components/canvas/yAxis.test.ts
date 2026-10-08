@@ -318,6 +318,7 @@ describe("YAxis SI unit selection and formatting (Issue #86)", () => {
       const ticks = adapter.values(null, [-600, -400, -200, 0, 200, 400, 600]);
       expect(ticks).toEqual(["-600", "-400", "-200", "0", "200", "400", "600"]);
       for (const tick of ticks) {
+        if (tick == null) continue;
         const digits = tick.replace("-", "");
         expect(digits.length).toBeLessThanOrEqual(3);
       }

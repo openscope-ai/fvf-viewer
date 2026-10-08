@@ -3,7 +3,7 @@
  * box-zoom and cursor dragging operate through real mouse gestures against
  * the production server, the UI stays responsive (no >100 ms main-thread
  * long task during gestures), zoom state is observable through DOM state
- * (recovery badges / cursor readouts), and Fit Waveform restores the
+ * (recovery badges / cursor readouts), and Reset View restores the
  * full-capture viewport.
  */
 
@@ -56,8 +56,8 @@ test("§6.3 box-zoom drag shows the selection overlay mid-gesture and applies th
   // The zoom applied: C1 (at the 25% sample) is now out of view.
   await expect(page.getByTestId("cursor-recovery-badge-c1")).toBeVisible();
 
-  // Fit Waveform (100%) restores the full capture view and clears recovery.
-  await page.getByTestId("fit-waveform-button").click();
+  // Reset View restores the full capture view and clears recovery.
+  await page.getByTestId("reset-view-button").click();
   await expect(page.getByTestId("cursor-recovery-badge-c1")).toBeHidden();
   await expect(page.getByTestId("cursor-line-c1")).toBeVisible();
 });
@@ -113,7 +113,7 @@ test("§6.3 gestures on a 250,000-point capture never block the main thread >100
   await dragBoxZoom(page, { x: 0.1, y: 0.3 }, { x: 0.9, y: 0.7 });
   await ctrlDragCursor(page, "c1", 200);
   await ctrlDragCursor(page, "c2", -200);
-  await page.getByTestId("fit-waveform-button").click();
+  await page.getByTestId("reset-view-button").click();
 
   const longTasks = await page.evaluate(
     () => (window as unknown as { __longTasks?: number[] }).__longTasks ?? [],
