@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { page } from "vitest/browser";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type uPlot from "uplot";
@@ -680,6 +681,50 @@ describe("PNG export options popover (issue #252)", () => {
     expect(hasColumn(withoutCursors.canvas)).toBe(false);
     // On-screen C1 is still active (export args only).
     expect(useCursorStore.getState().c1Active).toBe(true);
+  });
+
+  it("issue #262 AC1/AC5: opening popover for the very first time on viewport width >= 1024px positions fully within viewport bounds with zero overflow", async () => {
+    await page.viewport(1280, 800);
+    try {
+      host.style.width = "1024px";
+      await mountFullUi();
+
+      // Click gear for the very first time
+      await openPopover();
+      await settle(50);
+
+      const popover = document.querySelector(
+        "[data-testid='png-export-popover']",
+      ) as HTMLElement;
+      expect(popover).not.toBeNull();
+      const rect = popover.getBoundingClientRect();
+
+      // Must be positioned within viewport bounds (rect.right <= innerWidth - 12 and rect.left >= 12)
+      expect(rect.right).toBeLessThanOrEqual(window.innerWidth - 12);
+      expect(rect.left).toBeGreaterThanOrEqual(12);
+      expect(popover.className).toContain("badge-popover--anchor-r");
+
+      // Close popover
+      await act(async () => {
+        popover.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        await new Promise((r) => setTimeout(r, 30));
+      });
+
+      // Reopen: placement should recalculate cleanly and stay inside viewport bounds
+      await openPopover();
+      await settle(50);
+      const reopened = document.querySelector(
+        "[data-testid='png-export-popover']",
+      ) as HTMLElement;
+      const reopenedRect = reopened.getBoundingClientRect();
+      expect(reopenedRect.right).toBeLessThanOrEqual(window.innerWidth - 12);
+      expect(reopenedRect.left).toBeGreaterThanOrEqual(12);
+      expect(reopened.className).toContain("badge-popover--anchor-r");
+    } finally {
+      await page.viewport(414, 896);
+    }
   });
 });
 

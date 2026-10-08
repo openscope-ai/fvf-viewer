@@ -17,6 +17,8 @@ import { useReferenceStore } from "../../state/referenceStore";
 import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
+import { stackLaneBoundsWeighted } from "./channelLayout";
+import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 
 /**
  * Issue #248 acceptance: the toolbar action (previously "Fit Waveform
@@ -134,6 +136,7 @@ describe("Reset View (issue #248)", () => {
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
+    useLaneLayoutStore.setState({ fileKey: null, weights: {} });
     await useCaptureStore
       .getState()
       .parseBuffer(await fixture(fourChUrlQ), "four.fvf");
@@ -285,7 +288,7 @@ describe("Reset View (issue #248)", () => {
     expect(pixels(uplot)).toBe(committed);
   });
 
-  it("AC5: Solo, Stack/Overlay mode, cursors, visibility, theme, and custom names are untouched", async () => {
+  it("Issue #263 AC4+AC5: Reset View clears active Solo state, restores all non-soloed and hidden channels, while preserving cursors, theme, and custom names", async () => {
     await mountFullUi();
 
     act(() => {
@@ -311,19 +314,221 @@ describe("Reset View (issue #248)", () => {
 
     await clickResetView();
 
-    // Solo survives (visibility isolation intact)…
-    expect(useChannelDisplayStore.getState().solo?.key).toBe("A");
-    expect(useViewportStore.getState().activeChannels).toEqual(["A"]);
-    // …so does the Stack/Overlay mode…
+    // Issue #263 AC5: Solo is cleared (null)…
+    expect(useChannelDisplayStore.getState().solo).toBeNull();
+    // Issue #263 AC4: All capture channels are restored to active…
+    expect(useViewportStore.getState().activeChannels).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+    ]);
+    // Issue #263 AC1: Stack mode is preserved…
     expect(useChannelDisplayStore.getState().stackMode).toBe(true);
-    // …the measurement cursors (position + active state)…
+    // Issue #263 AC9: Measurement cursors remain untouched…
     expect(useCursorStore.getState().c1Active).toBe(true);
     expect(useCursorStore.getState().c1SampleIndex).toBe(
       cursorBefore.c1SampleIndex,
     );
-    // …the theme…
+    // Theme and custom channel names remain untouched.
     expect(useThemeStore.getState().theme).toBe("light");
-    // …and the custom channel names.
     expect(useChannelNamesStore.getState().names).toEqual({ A: "Custom A" });
+  });
+
+  it("Issue #263 AC1+AC3+AC10: in Stack mode, Reset View preserves Stack mode without overlay leak, equalizes dragged lane heights, and Stack -> Overlay -> Stack transitions cleanly", async () => {
+    const uplot = await mountFullUi();
+    const capture = useCaptureStore.getState().capture!;
+    const expected = computeCaptureFit(capture);
+
+    // Enter Stack mode and set custom dragged lane proportions.
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+    await settle(150);
+    expect(useChannelDisplayStore.getState().stackMode).toBe(true);
+
+    act(() => {
+      useLaneLayoutStore.getState().setWeights({ A: 2.5, B: 0.5 });
+    });
+    await settle(50);
+    expect(useLaneLayoutStore.getState().weights).toEqual(
+      expect.objectContaining({ A: 2.5, B: 0.5 }),
+    );
+
+    // Dirty horizontal zoom and dirty scale transforms.
+    act(() => {
+      useChannelDisplayStore.getState().setYScale("A", 200);
+      useChannelDisplayStore.getState().setOffset("A", 2);
+    });
+    await act(async () => {
+      uplot.batch(() => {
+        uplot.setScale("x", { min: -0.01, max: 0.01 });
+        uplot.setScale("y0", { min: -5, max: 5 });
+      });
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    await settle(50);
+
+    await clickResetView();
+
+    // AC1: Stack mode preserved.
+    expect(useChannelDisplayStore.getState().stackMode).toBe(true);
+
+    // AC3: Dragged lane proportions reset back to equal proportions (1/N = 0.25).
+    expect(useLaneLayoutStore.getState().weights).toEqual({});
+
+    // AC1: Waveforms and y-axes stay partitioned in Stack mode (zero overlay leak).
+    // Each of the 4 lanes occupies equal 1/4 band:
+    for (let i = 0; i < 4; i++) {
+      const baseFit = expected.channels[i]!;
+      const expectedLaned = stackLaneBoundsWeighted(baseFit, i * 0.25, 0.25);
+      const scale = uplot.scales[yScaleKey(i)]!;
+      expect(scale.min!).toBeCloseTo(expectedLaned.min, 4);
+      expect(scale.max!).toBeCloseTo(expectedLaned.max, 4);
+      // Confirm scale is NOT full unstacked overlay bounds (span is 4x wider than unstacked).
+      expect(scale.max! - scale.min!).toBeCloseTo(
+        (baseFit.max - baseFit.min) * 4,
+        3,
+      );
+    }
+
+    // AC10: Toggle Stack -> Overlay -> Stack transitions cleanly without scale corruption.
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(false);
+    });
+    await settle(150);
+    expect(useChannelDisplayStore.getState().stackMode).toBe(false);
+    for (let i = 0; i < 4; i++) {
+      const baseFit = expected.channels[i]!;
+      const scale = uplot.scales[yScaleKey(i)]!;
+      expect(scale.min!).toBeCloseTo(baseFit.min, 4);
+      expect(scale.max!).toBeCloseTo(baseFit.max, 4);
+    }
+
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+    await settle(150);
+    expect(useChannelDisplayStore.getState().stackMode).toBe(true);
+    for (let i = 0; i < 4; i++) {
+      const baseFit = expected.channels[i]!;
+      const expectedLaned = stackLaneBoundsWeighted(baseFit, i * 0.25, 0.25);
+      const scale = uplot.scales[yScaleKey(i)]!;
+      expect(scale.min!).toBeCloseTo(expectedLaned.min, 4);
+      expect(scale.max!).toBeCloseTo(expectedLaned.max, 4);
+    }
+  });
+
+  it("Issue #263 AC2: in Overlay mode, clicking Reset View keeps the canvas in Overlay mode", async () => {
+    const uplot = await mountFullUi();
+    const capture = useCaptureStore.getState().capture!;
+    const expected = computeCaptureFit(capture);
+
+    expect(useChannelDisplayStore.getState().stackMode).toBe(false);
+
+    // Zoom in.
+    await act(async () => {
+      uplot.batch(() => {
+        uplot.setScale("x", { min: -0.01, max: 0.01 });
+        uplot.setScale("y0", { min: -0.5, max: 0.5 });
+      });
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    await settle(40);
+
+    await clickResetView();
+
+    expect(useChannelDisplayStore.getState().stackMode).toBe(false);
+    expect(uplot.scales.x!.min!).toBeCloseTo(expected.xMin, 4);
+    expect(uplot.scales.x!.max!).toBeCloseTo(expected.xMax, 4);
+    for (let i = 0; i < 4; i++) {
+      const baseFit = expected.channels[i]!;
+      const scale = uplot.scales[yScaleKey(i)]!;
+      expect(scale.min!).toBeCloseTo(baseFit.min, 4);
+      expect(scale.max!).toBeCloseTo(baseFit.max, 4);
+    }
+  });
+
+  it("Issue #263 AC4: Reset View restores visibility for all channels in the loaded capture", async () => {
+    await mountFullUi();
+
+    // Toggle off channels B and D.
+    act(() => {
+      useViewportStore.getState().setActiveChannels(["A", "C"]);
+    });
+    await settle(50);
+    expect(useViewportStore.getState().activeChannels).toEqual(["A", "C"]);
+
+    await clickResetView();
+
+    expect(useViewportStore.getState().activeChannels).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+    ]);
+  });
+
+  it("Issue #263 AC6: if File 2 is active, Reset View re-activates all reference channels and resets time slip to 0", async () => {
+    await useReferenceStore
+      .getState()
+      .parseReferenceBuffer(await fixture(twoChMinUrlQ), "file2.fvf");
+    await mountFullUi();
+
+    act(() => {
+      useReferenceStore.getState().setTimeSlip(12.5);
+      useReferenceStore.getState().setRefActiveChannels(["Ref-A"]);
+    });
+    await settle(50);
+
+    expect(useReferenceStore.getState().timeSlipSamples).toBe(12.5);
+    expect(useReferenceStore.getState().refActiveChannels).toEqual(["Ref-A"]);
+
+    await clickResetView();
+
+    expect(useReferenceStore.getState().timeSlipSamples).toBe(0);
+    expect(useReferenceStore.getState().refActiveChannels).toEqual([
+      "Ref-A",
+      "Ref-B",
+    ]);
+  });
+
+  it("Issue #263 AC7+AC8+AC9: display transforms reset, viewport horizontal zoom resets to full extent, and cursors remain untouched", async () => {
+    const uplot = await mountFullUi();
+    const capture = useCaptureStore.getState().capture!;
+    const expected = computeCaptureFit(capture);
+
+    act(() => {
+      useCursorStore.getState().toggleCursor("C1", 200);
+      useCursorStore.getState().toggleCursor("C2", 1500);
+      useChannelDisplayStore.getState().setYScale("A", 180);
+      useChannelDisplayStore.getState().setOffset("A", 1.5);
+      useChannelDisplayStore.getState().setInverted("A", true);
+    });
+    await act(async () => {
+      uplot.setScale("x", { min: 0.001, max: 0.005 });
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    await settle(40);
+
+    const c1Index = useCursorStore.getState().c1SampleIndex;
+    const c2Index = useCursorStore.getState().c2SampleIndex;
+    expect(useCursorStore.getState().c1Active).toBe(true);
+    expect(useCursorStore.getState().c2Active).toBe(true);
+
+    await clickResetView();
+
+    // AC7: display transforms reset to defaults.
+    expect(useChannelDisplayStore.getState().keyConfigs).toEqual({});
+
+    // AC8: horizontal zoom resets to full capture extent.
+    expect(uplot.scales.x!.min!).toBeCloseTo(expected.xMin, 5);
+    expect(uplot.scales.x!.max!).toBeCloseTo(expected.xMax, 5);
+
+    // AC9: measurement cursors remain untouched.
+    expect(useCursorStore.getState().c1Active).toBe(true);
+    expect(useCursorStore.getState().c2Active).toBe(true);
+    expect(useCursorStore.getState().c1SampleIndex).toBe(c1Index);
+    expect(useCursorStore.getState().c2SampleIndex).toBe(c2Index);
   });
 });
