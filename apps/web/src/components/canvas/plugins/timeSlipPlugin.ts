@@ -37,6 +37,7 @@ import { effectiveTraceColor, resolveThemePalette } from "../themePalette";
 import { useThemeStore } from "../../../state/themeStore";
 import { usePaletteStore } from "../../../state/paletteStore";
 import { findNearestSampleIndex } from "../../cursors/cursorPlugin";
+import { invalidateSeriesPaths } from "../seriesPathCache";
 import type { ParsedCapture } from "../../../types/capture";
 
 export interface TimeSlipPluginOptions {
@@ -197,7 +198,9 @@ export function timeSlipPlugin(options: TimeSlipPluginOptions): uPlot.Plugin {
 
   /**
    * Recomputes the slipped reference lanes in place and repaints — one
-   * uPlot immediate-mode batch per update (#238 paint discipline: each
+   * uPlot immediate-mode batch per update, with each rewritten series'
+   * path cache invalidated so the geometry rebuilds (#238/#245 paint
+   * discipline: each
    * drag frame paints synchronously inside its rAF callback instead of
    * riding the deferred commit() microtask), with the same
    * pre-first-paint fallback as the Oscilloscope display effect.
@@ -222,15 +225,19 @@ export function timeSlipPlugin(options: TimeSlipPluginOptions): uPlot.Plugin {
           buffer = new Float32Array(lane.length);
           scratch.set(refIdx, buffer);
         }
-        instance.data[capture.channels.length + refIdx + 1] =
-          slippedRefDisplayLane(
-            lane,
-            reference.timeSlipSamples,
-            effectiveYScale(displayConfigs, refKey),
-            effectiveOffset(displayConfigs, refKey),
-            effectiveInverted(displayConfigs, refKey),
-            buffer,
-          );
+        const seriesIdx = capture.channels.length + refIdx + 1;
+        // Issue #245: clear the stale Path2D cache so each drag frame
+        // repaints the slipped reference geometry (uPlot only rebuilds
+        // paths whose cache is null; the lane swap alone is invisible).
+        invalidateSeriesPaths(instance, seriesIdx);
+        instance.data[seriesIdx] = slippedRefDisplayLane(
+          lane,
+          reference.timeSlipSamples,
+          effectiveYScale(displayConfigs, refKey),
+          effectiveOffset(displayConfigs, refKey),
+          effectiveInverted(displayConfigs, refKey),
+          buffer,
+        );
       });
     };
     const axesReady = instance.axes.every(
