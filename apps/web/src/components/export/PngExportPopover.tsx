@@ -24,8 +24,8 @@ import { useCaptureStore } from "../../state/captureStore";
 
 const EXPORT_POPOVER_KEY = "png-export";
 
-/** One option row's segmented control. */
-function OptionSegments<T extends string | boolean>(props: {
+/** One option row's setting chips. */
+function OptionChips<T extends string | boolean>(props: {
   label: string;
   options: Array<{ value: T; label: string; testId: string }>;
   value: T;
@@ -33,9 +33,11 @@ function OptionSegments<T extends string | boolean>(props: {
 }) {
   return (
     <div className="badge-setting-row">
-      <span className="badge-setting-domain">{props.label}</span>
+      <span className="badge-setting-domain png-export-domain">
+        {props.label}
+      </span>
       <div
-        className="png-export-segmented"
+        className="badge-setting-chips"
         role="group"
         aria-label={props.label}
       >
@@ -43,9 +45,7 @@ function OptionSegments<T extends string | boolean>(props: {
           <button
             key={String(option.value)}
             type="button"
-            className={`png-export-segment${
-              props.value === option.value ? " png-export-segment--active" : ""
-            }`}
+            className="badge-opacity-chip badge-setting-chip"
             aria-pressed={props.value === option.value}
             data-testid={option.testId}
             onClick={() => props.onSelect(option.value)}
@@ -79,90 +79,117 @@ export default function PngExportPopover(props: {
       testId="png-export-popover"
       onClose={props.onClose}
     >
-      <div className="badge-settings-section" data-testid="png-export-section">
-        <div className="badge-settings-title">PNG export</div>
-        <OptionSegments<PngExportTheme>
-          label="Theme"
-          value={settings.theme}
-          onSelect={setTheme}
-          options={[
-            { value: "dark", label: "Dark (screen)", testId: "png-theme-dark" },
-            {
-              value: "light",
-              label: "Light (print)",
-              testId: "png-theme-light",
-            },
-          ]}
-        />
-        <OptionSegments<PngExportBackground>
-          label="Background"
-          value={settings.background}
-          onSelect={setBackground}
-          options={[
-            { value: "opaque", label: "Opaque", testId: "png-bg-opaque" },
-            {
-              value: "transparent",
-              label: "Transparent",
-              testId: "png-bg-transparent",
-            },
-          ]}
-        />
-        <OptionSegments<PngExportReadoutCard>
-          label="Readout card"
-          value={settings.readoutCard}
-          onSelect={setReadoutCard}
-          options={[
-            { value: "full", label: "Full", testId: "png-card-full" },
-            {
-              value: "collapsed",
-              label: "Collapsed",
-              testId: "png-card-collapsed",
-            },
-            {
-              value: "excluded",
-              label: "Excluded",
-              testId: "png-card-excluded",
-            },
-          ]}
-        />
-        <OptionSegments<boolean>
-          label="Cursors"
-          value={settings.cursors}
-          onSelect={setCursors}
-          options={[
-            { value: true, label: "Include", testId: "png-cursors-include" },
-            { value: false, label: "Exclude", testId: "png-cursors-exclude" },
-          ]}
-        />
-        <OptionSegments<boolean>
-          label="Grid"
-          value={settings.grid}
-          onSelect={setGrid}
-          options={[
-            { value: true, label: "Include", testId: "png-grid-include" },
-            { value: false, label: "Exclude", testId: "png-grid-exclude" },
-          ]}
-        />
-        <div className="badge-setting-row">
-          <span className="badge-setting-domain">Filename</span>
-          <div className="badge-ghost-field">
-            <input
-              type="text"
-              className="badge-name-input"
-              maxLength={PNG_FILE_NAME_MAX_LENGTH}
-              placeholder={
-                captureFileName ? `${captureFileName}-snapshot` : "snapshot"
-              }
-              value={settings.fileName}
-              aria-label="Custom download filename (empty uses the derived capture name)"
-              data-testid="png-filename-field"
-              onChange={(event) => {
-                // Live commit into the same store both export paths read
-                // (the channel custom-name field mechanics); the .png
-                // extension is appended at download time.
-                setFileName(sanitizeFileNameDraft(event.target.value));
-              }}
-            />
+      <div className="badge-popover-hero">
+        <div className="badge-hero-text">
+          <h4 className="badge-static-title">PNG export</h4>
+          <p className="badge-stats" data-testid="png-export-summary">
+            Snapshot &amp; print configuration
+          </p>
+        </div>
+        <button
+          type="button"
+          className="badge-popover-close"
+          aria-label="Close"
+          data-testid="png-popover-close"
+          onClick={() => props.onClose(true)}
+        >
+          ✕
+        </button>
+      </div>
+      <div className="badge-popover-body">
+        <div
+          className="badge-settings-section"
+          data-testid="png-export-section"
+        >
+          <OptionChips<PngExportTheme>
+            label="Theme"
+            value={settings.theme}
+            onSelect={setTheme}
+            options={[
+              {
+                value: "dark",
+                label: "Dark (screen)",
+                testId: "png-theme-dark",
+              },
+              {
+                value: "light",
+                label: "Light (print)",
+                testId: "png-theme-light",
+              },
+            ]}
+          />
+          <OptionChips<PngExportBackground>
+            label="Background"
+            value={settings.background}
+            onSelect={setBackground}
+            options={[
+              { value: "opaque", label: "Opaque", testId: "png-bg-opaque" },
+              {
+                value: "transparent",
+                label: "Transparent",
+                testId: "png-bg-transparent",
+              },
+            ]}
+          />
+          <OptionChips<PngExportReadoutCard>
+            label="Readout card"
+            value={settings.readoutCard}
+            onSelect={setReadoutCard}
+            options={[
+              { value: "full", label: "Full", testId: "png-card-full" },
+              {
+                value: "collapsed",
+                label: "Collapsed",
+                testId: "png-card-collapsed",
+              },
+              {
+                value: "excluded",
+                label: "Excluded",
+                testId: "png-card-excluded",
+              },
+            ]}
+          />
+          <OptionChips<boolean>
+            label="Cursors"
+            value={settings.cursors}
+            onSelect={setCursors}
+            options={[
+              { value: true, label: "Include", testId: "png-cursors-include" },
+              { value: false, label: "Exclude", testId: "png-cursors-exclude" },
+            ]}
+          />
+          <OptionChips<boolean>
+            label="Grid"
+            value={settings.grid}
+            onSelect={setGrid}
+            options={[
+              { value: true, label: "Include", testId: "png-grid-include" },
+              { value: false, label: "Exclude", testId: "png-grid-exclude" },
+            ]}
+          />
+          <div className="badge-setting-row">
+            <span className="badge-setting-domain png-export-domain">
+              Filename
+            </span>
+            <div className="badge-ghost-field">
+              <input
+                type="text"
+                className="badge-name-input"
+                maxLength={PNG_FILE_NAME_MAX_LENGTH}
+                placeholder={
+                  captureFileName ? `${captureFileName}-snapshot` : "snapshot"
+                }
+                value={settings.fileName}
+                aria-label="Custom download filename (empty uses the derived capture name)"
+                data-testid="png-filename-field"
+                onChange={(event) => {
+                  // Live commit into the same store both export paths read
+                  // (the channel custom-name field mechanics); the .png
+                  // extension is appended at download time.
+                  setFileName(sanitizeFileNameDraft(event.target.value));
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>

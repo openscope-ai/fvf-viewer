@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.10.4] - 2026-10-08
+
+[v0.10.3...v0.10.4](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.3...v0.10.4)
+
+### Fixed
+
+- PNG export options popover layout and toolbar split-action chip styling (issue #252 polish):
+  - Enclosed all popover configuration sections inside standard `.badge-popover-body`, restoring 14px horizontal padding and fixing edge-crowding across settings rows.
+  - Added standard `.badge-popover-hero` card header with title, subtitle, and an explicit close button that returns focus to the anchor gear.
+  - Re-aligned the toolbar PNG export control to match the Material 3 split-action filter chips used by channel and cursor badges (unified 32px height, 8px corner radius, `#1a1a1a` container with inset outline, 1px divider, transparent 48px hit targets, independent `::before` state layers, and `.png-export-chip--open` brightening the gear).
+  - Aligned the clipboard copy button with matching 32px height and 8px border radius.
+  - Replaced ad-hoc segmented buttons with standard `.badge-setting-chip` filter chips (`aria-pressed`).
+  - Scoped domain label class (`.png-export-domain`, 86px width) to prevent awkward word wrapping of "Readout card".
+
 ## [0.10.3] - 2026-10-08
 
 [v0.10.2...v0.10.3](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.2...v0.10.3)
