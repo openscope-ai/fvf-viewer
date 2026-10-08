@@ -508,7 +508,7 @@ describe("Stack-view lane resizing (issue #251)", () => {
     expect(useLaneLayoutStore.getState().weights["Ref-B"]).toBeUndefined();
   }, 60_000);
 
-  it("AC9: Stack -> Overlay -> Stack restores the proportions; Reset View does not clear them", async () => {
+  it("AC9: Stack -> Overlay -> Stack restores the proportions; Reset View equalizes them (Issue #263)", async () => {
     await mountFullUi();
     await enableStack();
     await dragStrip(stripFor(1), 40);
@@ -525,7 +525,7 @@ describe("Stack-view lane resizing (issue #251)", () => {
       expect(fraction).toBeCloseTo(fractionsAfterResize[index]!, 5);
     });
 
-    // Reset View keeps the lane weights (view layout, not transforms).
+    // Issue #263: Reset View in Stack mode equalizes custom dragged lane weights.
     await act(async () => {
       (
         document.querySelector(
@@ -534,12 +534,11 @@ describe("Stack-view lane resizing (issue #251)", () => {
       ).click();
     });
     await settle(100);
-    expect(useLaneLayoutStore.getState().weights).toEqual(
-      expect.objectContaining({ A: expect.any(Number), B: expect.any(Number) }),
-    );
+    expect(useLaneLayoutStore.getState().weights).toEqual({});
     const afterReset = fractionsOf();
-    afterReset.forEach((fraction, index) => {
-      expect(fraction).toBeCloseTo(fractionsAfterResize[index]!, 5);
+    expect(afterReset).toHaveLength(4);
+    afterReset.forEach((fraction) => {
+      expect(fraction).toBeCloseTo(0.25, 5);
     });
   });
 });

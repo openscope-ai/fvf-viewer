@@ -1,6 +1,6 @@
 [package]
 name = "fvf-wasm"
-version = "0.10.4"
+version = "0.10.5"
 edition = "2024"
 description = "High-speed Rust/Wasm parsing core for Fluke ScopeMeter .fvf captures"
 publish = false

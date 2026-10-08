@@ -67,27 +67,44 @@ export function AnchoredPopover({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
 
+  // Issue #262: reset placement when closed so re-opening recalculates cleanly
+  // from measured dimensions and projected anchor geometry.
+  useEffect(() => {
+    if (!open) {
+      setPlacement(null);
+    }
+  }, [open]);
+
   // Measure once on open and resolve viewport collisions: flip above when
-  // the popover would overflow the bottom (and room exists above),
-  // right-anchor when it would overflow the right edge.
+  // the projected popover would overflow the bottom (and room exists above),
+  // right-anchor when the projected popover would overflow the right edge.
   useLayoutEffect(() => {
-    if (!open || !anchorEl) return;
-    setPlacement(null);
+    if (!open || !anchorEl) {
+      setPlacement(null);
+      return;
+    }
     const popover = popoverRef.current;
     if (!popover) return;
     const anchorRect = anchorEl.getBoundingClientRect();
     const rect = popover.getBoundingClientRect();
     const flipped =
-      rect.bottom > window.innerHeight - VIEWPORT_MARGIN_PX &&
+      anchorRect.bottom + ANCHOR_GAP_PX + rect.height >
+        window.innerHeight - VIEWPORT_MARGIN_PX &&
       anchorRect.top - ANCHOR_GAP_PX > rect.height;
-    const anchoredRight = rect.right > window.innerWidth - VIEWPORT_MARGIN_PX;
+    const anchoredRight =
+      anchorRect.left + rect.width > window.innerWidth - VIEWPORT_MARGIN_PX;
     setPlacement({
       top: flipped
         ? anchorRect.top - ANCHOR_GAP_PX - rect.height
         : anchorRect.bottom + ANCHOR_GAP_PX,
       ...(anchoredRight
-        ? { right: window.innerWidth - anchorRect.right }
-        : { left: anchorRect.left }),
+        ? {
+            right: Math.max(
+              VIEWPORT_MARGIN_PX,
+              window.innerWidth - anchorRect.right,
+            ),
+          }
+        : { left: Math.max(VIEWPORT_MARGIN_PX, anchorRect.left) }),
       flipped,
       anchoredRight,
     });

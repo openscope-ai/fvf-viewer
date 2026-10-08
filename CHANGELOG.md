@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.10.5] - 2026-10-08
+
+[v0.10.4...v0.10.5](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.4...v0.10.5)
+
+### Documentation
+
+- Update README workspace screenshot (issue #255): captured a fresh 1440x900 view of the 4-channel sample workspace showcasing recent UI additions including per-channel Y axes with ground flags, Material 3 tonal capsule badges, Stack/Overlay mode toggle, Reset View action, dual measurement cursors with live telemetry readout card, and PNG/CSV export controls.
+
+### Fixed
+
+- Reset View mode preservation, channel restoration, and lane equalization (issue #263):
+  - Made Reset View layout mode aware in `applyFitBounds`: in Stack mode, default 100% capture bounds are stored into `preStackRef` and partitioned into discrete equal lane windows (1/N) via `stackLaneBoundsWeighted`, keeping waveforms and y-axes in Stack mode with zero overlay leak. In Overlay mode, full-height bounds are applied as before.
+  - Toggling Stack → Overlay → Stack after Reset View transitions cleanly without scale corruption.
+  - Reset View restores visibility for all channels in the loaded capture, clearing active Solo mode.
+  - If a File 2 comparison is active, Reset View re-activates all reference channels and resets time slip Δt to 0.
+  - In Stack mode, custom dragged lane proportions are equalized back to equal 1/N proportions in `laneLayoutStore`.
+  - Display transforms (Y-scale %, vertical offset, invert) reset to defaults, viewport horizontal zoom resets to full extent, while measurement cursors (C1 / C2) remain untouched.
+- AnchoredPopover projected viewport collision (issue #262): calculate viewport collision from projected anchor geometry and measured element dimensions (`anchorRect.left + rect.width` and `anchorRect.bottom + ANCHOR_GAP_PX + rect.height`) instead of unpositioned static coordinates, preventing right-anchored popovers (such as the PNG export configuration popover) from rendering off-screen on first open. Stale placement state is reset when the popover closes so re-opening recalculates cleanly.
+
 ## [0.10.4] - 2026-10-08
 
 [v0.10.3...v0.10.4](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.3...v0.10.4)

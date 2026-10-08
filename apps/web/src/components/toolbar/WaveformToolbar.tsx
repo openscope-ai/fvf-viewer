@@ -21,7 +21,8 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
-import { useReferenceStore } from "../../state/referenceStore";
+import { refChannelName, useReferenceStore } from "../../state/referenceStore";
+import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import {
   CHANNEL_NAME_MAX_LENGTH,
@@ -140,20 +141,41 @@ export default function WaveformToolbar({
     onResetView?.();
     // Issue #248: every channel's display transforms (Y-scale %, vertical
     // offset, invert — visible and hidden, primary and reference) snap
-    // back to defaults. Solo and the Stack/Overlay mode are view layout,
-    // not transforms — untouched.
+    // back to defaults.
     resetTransforms();
-    // Zero the File 2 time slip while a comparison is active; the T₂
-    // glyph and reference lanes reposition through the existing #97
-    // reference-lane update pipeline.
-    if (useReferenceStore.getState().capture) {
-      useReferenceStore.getState().setTimeSlip(0);
+
+    // Issue #263: Clear active Solo state (restoring non-soloed channels).
+    useChannelDisplayStore.getState().clearSolo();
+
+    // Issue #263: Restore visibility for all channels in the loaded capture.
+    const capture = useCaptureStore.getState().capture;
+    const allChannels =
+      channelsOverride ?? capture?.channels.map((channel) => channel.name);
+    if (allChannels && allChannels.length > 0) {
+      useViewportStore.getState().setActiveChannels(allChannels);
     }
+
+    // Zero the File 2 time slip while a comparison is active and re-activate
+    // all reference channels.
+    const refStore = useReferenceStore.getState();
+    if (refStore.capture) {
+      refStore.setTimeSlip(0);
+      refStore.setRefActiveChannels(
+        refStore.capture.channels.map((c) => refChannelName(c.name)),
+      );
+    }
+
+    // Issue #263: In Stack mode, reset custom dragged lane proportions back
+    // to equal 1/N proportions in laneLayoutStore.
+    if (useChannelDisplayStore.getState().stackMode) {
+      useLaneLayoutStore.getState().equalize();
+    }
+
     // Reset the mirrored bounds; the canvas applies the real fit bounds in
     // response to the fit request and re-syncs them through its scale hooks.
     resetBounds();
     requestFit();
-  }, [onResetView, resetTransforms, resetBounds, requestFit]);
+  }, [onResetView, resetTransforms, channelsOverride, resetBounds, requestFit]);
 
   return (
     <div

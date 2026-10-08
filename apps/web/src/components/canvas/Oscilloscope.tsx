@@ -67,7 +67,7 @@ import {
 } from "./stackLaneDecorations";
 import { laneResizePlugin } from "./plugins/laneResizePlugin";
 import { laneFractions, useLaneLayoutStore } from "../../state/laneLayoutStore";
-import { stackLaneBoundsWeighted } from "./channelLayout";
+import { stackLaneBoundsWeighted, type Bounds } from "./channelLayout";
 import { slippedRefDisplayLane } from "./timeSlip";
 import { physicalDisplayLane } from "./displayLaneCache";
 import { invalidateSeriesPaths } from "./seriesPathCache";
@@ -202,28 +202,105 @@ export function resolveActiveIndex(
  * Issue #224: the physical fit bounds pass through the channel's display
  * transform first, so the fit frames the *displayed* trace (a scaled,
  * offset, or inverted channel fits exactly like an untouched one).
+ * Issue #263: Mode-aware fit bounds:
+ * - In Overlay mode (stackMode === false): Applies full-height capture fit
+ *   bounds across the canvas.
+ * - In Stack mode (stackMode === true): Calculates default 100% capture bounds,
+ *   stores them in preStackRef, and immediately partitions them into discrete
+ *   lane windows using equal fractions (1/N) via stackLaneBoundsWeighted(...).
  */
 export function applyFitBounds(
   instance: uPlot,
   capture: ParsedCapture,
   activeChannels: readonly ChannelTag[],
+  preStackMap?: Map<string, { min: number; max: number }>,
 ): void {
   const fit = computeCaptureFit(capture);
   const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
+  const stackMode = useChannelDisplayStore.getState().stackMode;
+
   instance.setScale("x", { min: fit.xMin, max: fit.xMax });
-  fit.channels.forEach((bounds, index) => {
+
+  const unstackedPrimaryBounds = fit.channels.map((bounds, index) => {
     const key = displayKeyForChannel(capture.channels[index]!.name);
-    const display = transformBounds(
+    return transformBounds(
       bounds,
       effectiveYScale(displayConfigs, key),
       effectiveOffset(displayConfigs, key),
       effectiveInverted(displayConfigs, key),
     );
-    instance.setScale(yScaleKey(index), {
-      min: display.min,
-      max: display.max,
-    });
   });
+
+  const refStore = useReferenceStore.getState();
+  const refLanes = refStore.lanes ?? [];
+  const unstackedRefBounds = refLanes.map((lane, refIdx) => {
+    const bounds = refLaneFitBounds(lane);
+    const raw = refStore.capture?.channels[refIdx];
+    const name = raw ? toRefName(raw.name) : `Ref-${refIdx}`;
+    const refKey = displayKeyForChannel(name);
+    return transformBounds(
+      bounds,
+      effectiveYScale(displayConfigs, refKey),
+      effectiveOffset(displayConfigs, refKey),
+      effectiveInverted(displayConfigs, refKey),
+    );
+  });
+
+  if (!stackMode) {
+    if (preStackMap) {
+      preStackMap.clear();
+    }
+    unstackedPrimaryBounds.forEach((display, index) => {
+      instance.setScale(yScaleKey(index), {
+        min: display.min,
+        max: display.max,
+      });
+    });
+    unstackedRefBounds.forEach((display, refIdx) => {
+      instance.setScale(yScaleKey(capture.channels.length + refIdx), {
+        min: display.min,
+        max: display.max,
+      });
+    });
+  } else {
+    // Stack mode: record default 100% unstacked bounds in preStackMap
+    if (preStackMap) {
+      unstackedPrimaryBounds.forEach((display, index) => {
+        preStackMap.set(yScaleKey(index), display);
+      });
+      unstackedRefBounds.forEach((display, refIdx) => {
+        preStackMap.set(yScaleKey(capture.channels.length + refIdx), display);
+      });
+    }
+
+    // Partition visible lanes into discrete windows using equal fractions (1/N)
+    const laneChannels = visibleLaneChannels(capture);
+    const laneCount = laneChannels.length;
+    laneChannels.forEach((lane, laneIndex) => {
+      const scaleKey = lane.scaleKey;
+      let base: Bounds;
+      if (preStackMap && preStackMap.has(scaleKey)) {
+        base = preStackMap.get(scaleKey)!;
+      } else {
+        const primaryIdx = capture.channels.findIndex(
+          (_, idx) => yScaleKey(idx) === scaleKey,
+        );
+        if (primaryIdx >= 0) {
+          base = unstackedPrimaryBounds[primaryIdx]!;
+        } else {
+          const refIdx = refLanes.findIndex(
+            (_, idx) => yScaleKey(capture.channels.length + idx) === scaleKey,
+          );
+          base =
+            refIdx >= 0 ? unstackedRefBounds[refIdx]! : { min: -1, max: 1 };
+        }
+      }
+      const fraction = 1 / Math.max(laneCount, 1);
+      const start = laneIndex * fraction;
+      const laned = stackLaneBoundsWeighted(base, start, fraction);
+      instance.setScale(scaleKey, { min: laned.min, max: laned.max });
+    });
+  }
 
   const selectedChannel = useViewportStore.getState().selectedChannel;
   const selectedIndex = selectedChannel
@@ -231,13 +308,20 @@ export function applyFitBounds(
         (c) => c.name === selectedChannel && activeChannels.includes(c.name),
       )
     : -1;
-  const selectedFit = selectedIndex >= 0 ? fit.channels[selectedIndex] : null;
+  const selectedKey = selectedIndex >= 0 ? yScaleKey(selectedIndex) : null;
+  const selectedScale = selectedKey ? instance.scales[selectedKey] : null;
 
   useViewportStore.getState().setBounds({
     xMin: fit.xMin,
     xMax: fit.xMax,
-    yMin: selectedFit?.min ?? null,
-    yMax: selectedFit?.max ?? null,
+    yMin:
+      selectedScale?.min ??
+      (selectedIndex >= 0 ? fit.channels[selectedIndex]?.min : null) ??
+      null,
+    yMax:
+      selectedScale?.max ??
+      (selectedIndex >= 0 ? fit.channels[selectedIndex]?.max : null) ??
+      null,
   });
 }
 
@@ -383,6 +467,9 @@ export default function Oscilloscope({
 
   // Per-channel Y-axis adapters: hysteresis state lives here per channel index.
   const adaptersRef = useRef(new Map<number, YAxisAdapter>());
+  const preStackRef = useRef<Map<string, { min: number; max: number }>>(
+    new Map(),
+  );
 
   // Ingesting a new capture file initializes cursors and selection defaults.
   useEffect(() => {
@@ -1132,6 +1219,7 @@ export default function Oscilloscope({
       instance,
       capture,
       useViewportStore.getState().activeChannels,
+      preStackRef.current,
     );
 
     const suppressWheel = (event: WheelEvent) => {
@@ -1511,9 +1599,6 @@ export default function Oscilloscope({
   // stack effect and re-windows the lanes from their saved pre-stack
   // bounds.
   const laneWeights = useLaneLayoutStore((s) => s.weights);
-  const preStackRef = useRef<Map<string, { min: number; max: number }>>(
-    new Map(),
-  );
   useEffect(() => {
     const instance = uplotRef.current;
     if (!instance || !capture) return;
@@ -1601,6 +1686,7 @@ export default function Oscilloscope({
       instance,
       capture,
       useViewportStore.getState().activeChannels,
+      preStackRef.current,
     );
   }, [fitRequest, capture]);
 

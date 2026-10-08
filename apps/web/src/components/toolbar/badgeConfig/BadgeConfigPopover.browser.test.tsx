@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { page } from "vitest/browser";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import WaveformToolbar from "../WaveformToolbar";
@@ -8,7 +9,7 @@ import { useChannelNamesStore } from "../../../state/channelNamesStore";
 import { useCursorStore } from "../../../state/cursorStore";
 import { usePaletteStore } from "../../../state/paletteStore";
 import { useThemeStore } from "../../../state/themeStore";
-import { useBadgePopoverStore } from "./anchoredPopover";
+import { AnchoredPopover, useBadgePopoverStore } from "./anchoredPopover";
 import {
   CURSOR_DISPLAY_STORAGE_KEY,
   useCursorDisplayStore,
@@ -836,5 +837,121 @@ describe("Badge config popover (issue #204)", () => {
     ).toEqual({
       A: { color: "#ff4444", opacity: 25 },
     });
+  });
+
+  it("issue #262 AC2/AC3: AnchoredPopover evaluates projected anchor geometry on first open for right collision and vertical flip", async () => {
+    await page.viewport(1280, 800);
+    try {
+      // Left-anchored (Channel A) does not trigger right collision or flip on desktop
+      const popoverA = await openChannelPopover("A");
+      expect(popoverA.className).not.toContain("badge-popover--anchor-r");
+      expect(popoverA.className).not.toContain("badge-popover--flip");
+      const rectA = popoverA.getBoundingClientRect();
+      expect(rectA.left).toBeGreaterThanOrEqual(12);
+
+      // Close Channel A popover
+      await act(async () => {
+        useBadgePopoverStore.getState().setOpen(null);
+        await new Promise((r) => setTimeout(r, 30));
+      });
+
+      // Test a right-anchored trigger element
+      const rightAnchor = document.createElement("button");
+      rightAnchor.style.position = "fixed";
+      rightAnchor.style.top = "50px";
+      rightAnchor.style.left = `${window.innerWidth - 80}px`;
+      rightAnchor.style.width = "40px";
+      rightAnchor.style.height = "30px";
+      document.body.appendChild(rightAnchor);
+
+      const testRootEl = document.createElement("div");
+      document.body.appendChild(testRootEl);
+      const testRoot = createRoot(testRootEl);
+
+      try {
+        await act(async () => {
+          testRoot.render(
+            <AnchoredPopover
+              openKey="test-right"
+              anchorEl={rightAnchor}
+              ariaLabel="Test Right"
+              testId="test-right-popover"
+              onClose={() => useBadgePopoverStore.getState().setOpen(null)}
+            >
+              <div style={{ width: "390px", height: "100px" }}>
+                Right Content
+              </div>
+            </AnchoredPopover>,
+          );
+        });
+
+        // Open on the very first try
+        await act(async () => {
+          useBadgePopoverStore.getState().setOpen("test-right");
+          await new Promise((r) => setTimeout(r, 40));
+        });
+
+        const rightPop = document.querySelector(
+          "[data-testid='test-right-popover']",
+        ) as HTMLElement;
+        expect(rightPop).not.toBeNull();
+        expect(rightPop.className).toContain("badge-popover--anchor-r");
+        const rightRect = rightPop.getBoundingClientRect();
+        expect(rightRect.right).toBeLessThanOrEqual(window.innerWidth - 12);
+        expect(rightRect.left).toBeGreaterThanOrEqual(12);
+
+        // Close and test bottom trigger for vertical flip
+        await act(async () => {
+          useBadgePopoverStore.getState().setOpen(null);
+          await new Promise((r) => setTimeout(r, 30));
+        });
+
+        const bottomAnchor = document.createElement("button");
+        bottomAnchor.style.position = "fixed";
+        bottomAnchor.style.top = `${window.innerHeight - 40}px`;
+        bottomAnchor.style.left = "100px";
+        bottomAnchor.style.width = "40px";
+        bottomAnchor.style.height = "30px";
+        document.body.appendChild(bottomAnchor);
+
+        try {
+          await act(async () => {
+            testRoot.render(
+              <AnchoredPopover
+                openKey="test-bottom"
+                anchorEl={bottomAnchor}
+                ariaLabel="Test Bottom"
+                testId="test-bottom-popover"
+                onClose={() => useBadgePopoverStore.getState().setOpen(null)}
+              >
+                <div style={{ width: "390px", height: "100px" }}>
+                  Bottom Content
+                </div>
+              </AnchoredPopover>,
+            );
+          });
+
+          await act(async () => {
+            useBadgePopoverStore.getState().setOpen("test-bottom");
+            await new Promise((r) => setTimeout(r, 40));
+          });
+
+          const bottomPop = document.querySelector(
+            "[data-testid='test-bottom-popover']",
+          ) as HTMLElement;
+          expect(bottomPop).not.toBeNull();
+          expect(bottomPop.className).toContain("badge-popover--flip");
+        } finally {
+          bottomAnchor.remove();
+        }
+      } finally {
+        act(() => testRoot.unmount());
+        testRootEl.remove();
+        rightAnchor.remove();
+        useBadgePopoverStore.getState().setOpen(null);
+      }
+    } finally {
+      await page.viewport(414, 896);
+    }
   });
 });
