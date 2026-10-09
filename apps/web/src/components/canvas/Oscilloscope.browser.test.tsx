@@ -22,10 +22,21 @@ import {
 } from "../../state/paletteStore";
 import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { BOX_ZOOM_MIN_DRAG_PX } from "./plugins/boxZoomPlugin";
+import { laneBandsCss, laneTickFilter } from "./stackLaneDecorations";
 import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
-import { useChannelDisplayStore } from "../../state/channelDisplayStore";
-import { useChannelNamesStore } from "../../state/channelNamesStore";
+import {
+  STACK_MODE_STORAGE_KEY,
+  useChannelDisplayStore,
+} from "../../state/channelDisplayStore";
+import {
+  captureFileKey,
+  useChannelNamesStore,
+} from "../../state/channelNamesStore";
+import {
+  LANE_WEIGHTS_STORAGE_KEY,
+  useLaneLayoutStore,
+} from "../../state/laneLayoutStore";
 import type { ParsedCapture } from "../../types/capture";
 import App from "../../App";
 
@@ -61,6 +72,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     // persisted record (e.g. stackMode) survives window.localStorage
     // .clear(), so reset the in-memory state explicitly.
     useChannelDisplayStore.getState().reset();
+    useLaneLayoutStore.getState().setFileKey(null);
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
@@ -80,6 +92,8 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     hostElement.remove();
     useCaptureStore.getState().reset();
     useViewportStore.getState().reset();
+    useChannelDisplayStore.getState().reset();
+    useLaneLayoutStore.getState().setFileKey(null);
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
@@ -1841,5 +1855,378 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     expect(redrawSpy).not.toHaveBeenCalled();
     expect(uplot.scales.x?.min).toBe(xMinBefore);
     expect(axisShow(uplot, 0)).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------
+  // Issue #269: Stack view lane-scoped 2D box zoom
+  // ---------------------------------------------------------------------
+  describe("Stack view: lane-scoped 2D box zoom (issue #269)", () => {
+    it("In Stack mode, dragging a zoom box over any lane zooms the horizontal time axis (X) synchronously across all lanes (AC1)", async () => {
+      const { capture, uplot } = await mountCapture();
+      await act(async () => {
+        useChannelDisplayStore.getState().setStackMode(true);
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      const bands = laneBandsCss(uplot, capture);
+      expect(bands.length).toBe(4);
+
+      const xMinBefore = uplot.scales.x!.min!;
+      const xMaxBefore = uplot.scales.x!.max!;
+
+      // Drag in Lane A (bands[0])
+      await dragBox(
+        uplot,
+        { x: 50, y: bands[0]!.top + 10 },
+        { x: 150, y: bands[0]!.bottom - 10 },
+      );
+
+      // AC1: Horizontal time axis (X) is zoomed synchronously
+      expect(uplot.scales.x!.min!).toBeGreaterThan(xMinBefore);
+      expect(uplot.scales.x!.max!).toBeLessThan(xMaxBefore);
+    });
+
+    it("In Stack mode, vertical zoom (Y) is applied strictly to the channel in the lane where the drag occurred, leaving other lanes untouched (AC2 + AC3)", async () => {
+      const { capture, uplot } = await mountCapture();
+      await act(async () => {
+        useChannelDisplayStore.getState().setStackMode(true);
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      const bands = laneBandsCss(uplot, capture);
+      const y0Before = { ...uplot.scales[yScaleKey(0)]! };
+      const y1Before = { ...uplot.scales[yScaleKey(1)]! };
+      const y2Before = { ...uplot.scales[yScaleKey(2)]! };
+      const y3Before = { ...uplot.scales[yScaleKey(3)]! };
+
+      // Drag inside Lane A only (bands[0])
+      const fromY = bands[0]!.top + 15;
+      const toY = bands[0]!.bottom - 15;
+      await dragBox(uplot, { x: 40, y: fromY }, { x: 180, y: toY });
+
+      // AC2: Lane A's Y scale is zoomed
+      const y0After = uplot.scales[yScaleKey(0)]!;
+      expect(y0After.min).not.toBe(y0Before.min);
+      expect(y0After.max).not.toBe(y0Before.max);
+
+      // AC3: Other lanes preserve their exact existing vertical scales
+      expect(uplot.scales[yScaleKey(1)]!.min).toBe(y1Before.min);
+      expect(uplot.scales[yScaleKey(1)]!.max).toBe(y1Before.max);
+      expect(uplot.scales[yScaleKey(2)]!.min).toBe(y2Before.min);
+      expect(uplot.scales[yScaleKey(2)]!.max).toBe(y2Before.max);
+      expect(uplot.scales[yScaleKey(3)]!.min).toBe(y3Before.min);
+      expect(uplot.scales[yScaleKey(3)]!.max).toBe(y3Before.max);
+    });
+
+    it("The zoomed channel remains strictly confined to its assigned vertical lane band (AC4)", async () => {
+      const { capture, uplot } = await mountCapture();
+      await act(async () => {
+        useChannelDisplayStore.getState().setStackMode(true);
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      // Series paths builder attaches a clip Path2D for each lane
+      for (let i = 1; i <= capture.channels.length; i++) {
+        const s = uplot.series[i]!;
+        expect(s.paths).toBeDefined();
+        const pathsResult = s.paths!(
+          uplot,
+          i,
+          0,
+          capture.timestamps.length - 1,
+        );
+        expect(pathsResult?.clip).toBeInstanceOf(Path2D);
+      }
+
+      // laneTickFilter filters splits strictly to the lane band
+      const bands = laneBandsCss(uplot, capture);
+      const lane0Band = bands[0]!;
+      // A split that maps way outside lane 0's band returns null
+      const outsideVal = uplot.posToVal(
+        lane0Band.bottom + 50,
+        lane0Band.scaleKey,
+      );
+      const insideVal = uplot.posToVal(
+        (lane0Band.top + lane0Band.bottom) / 2,
+        lane0Band.scaleKey,
+      );
+      const filtered = laneTickFilter(uplot, capture, lane0Band.scaleKey, [
+        outsideVal,
+        insideVal,
+      ]);
+      expect(filtered[0]).toBeNull();
+      expect(filtered[1]).toBe(insideVal);
+    });
+
+    it("'Reset View' resets both the horizontal zoom and any lane-specific vertical zoom back to default fit bounds (AC5)", async () => {
+      const { capture, uplot } = await mountCapture();
+      await act(async () => {
+        useChannelDisplayStore.getState().setStackMode(true);
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      const initialXMin = uplot.scales.x!.min!;
+      const initialXMax = uplot.scales.x!.max!;
+      const initialY0Min = uplot.scales[yScaleKey(0)]!.min!;
+      const initialY0Max = uplot.scales[yScaleKey(0)]!.max!;
+
+      const bands = laneBandsCss(uplot, capture);
+      // Zoom Lane A
+      await dragBox(
+        uplot,
+        { x: 50, y: bands[0]!.top + 10 },
+        { x: 150, y: bands[0]!.bottom - 10 },
+      );
+
+      expect(uplot.scales.x!.min!).not.toBe(initialXMin);
+      expect(uplot.scales[yScaleKey(0)]!.min!).not.toBe(initialY0Min);
+
+      // Trigger Reset View
+      await act(async () => {
+        useViewportStore.getState().requestFit();
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      // AC5: Both X and per-lane Y scales restore back to default fit
+      expect(uplot.scales.x!.min!).toBeCloseTo(initialXMin, 5);
+      expect(uplot.scales.x!.max!).toBeCloseTo(initialXMax, 5);
+      expect(uplot.scales[yScaleKey(0)]!.min!).toBeCloseTo(initialY0Min, 5);
+      expect(uplot.scales[yScaleKey(0)]!.max!).toBeCloseTo(initialY0Max, 5);
+    });
+
+    it("Nested box zooms across different lanes isolate scales correctly (AC1-AC3)", async () => {
+      const { capture, uplot } = await mountCapture();
+      await act(async () => {
+        useChannelDisplayStore.getState().setStackMode(true);
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      const bands = laneBandsCss(uplot, capture);
+      const y2Initial = { ...uplot.scales[yScaleKey(2)]! };
+      const y3Initial = { ...uplot.scales[yScaleKey(3)]! };
+
+      // Zoom Lane A first
+      await dragBox(
+        uplot,
+        { x: 50, y: bands[0]!.top + 10 },
+        { x: 150, y: bands[0]!.bottom - 10 },
+      );
+      const y0AfterFirstZoom = { ...uplot.scales[yScaleKey(0)]! };
+
+      // Now zoom Lane B
+      await dragBox(
+        uplot,
+        { x: 70, y: bands[1]!.top + 12 },
+        { x: 130, y: bands[1]!.bottom - 12 },
+      );
+
+      // Lane B is zoomed
+      expect(uplot.scales[yScaleKey(1)]!.min).toBeDefined();
+
+      // Lane A's Y scale is preserved from its previous zoomed state
+      expect(uplot.scales[yScaleKey(0)]!.min).toBe(y0AfterFirstZoom.min);
+      expect(uplot.scales[yScaleKey(0)]!.max).toBe(y0AfterFirstZoom.max);
+
+      // Lanes C and D remain untouched at their initial scales
+      expect(uplot.scales[yScaleKey(2)]!.min).toBe(y2Initial.min);
+      expect(uplot.scales[yScaleKey(2)]!.max).toBe(y2Initial.max);
+      expect(uplot.scales[yScaleKey(3)]!.min).toBe(y3Initial.min);
+      expect(uplot.scales[yScaleKey(3)]!.max).toBe(y3Initial.max);
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  describe("Per-file Stack/Overlay mode persistence & atomic Stack initialization (issue #271)", () => {
+    it("AC1: New, previously unseen .fvf captures open in the default Overlay mode (stackMode: false)", async () => {
+      // Prior file was in Stack mode in storage
+      window.localStorage.setItem(
+        STACK_MODE_STORAGE_KEY,
+        JSON.stringify({ "prior-file.fvf::20261009080000": true }),
+      );
+      useChannelDisplayStore
+        .getState()
+        .setFileKey("prior-file.fvf::20261009080000");
+      expect(useChannelDisplayStore.getState().stackMode).toBe(true);
+
+      // Now ingest a brand new, previously unseen capture
+      await useCaptureStore
+        .getState()
+        .parseBuffer(await fixture(fourChUrl), "fresh-unseen.fvf");
+      const capture = useCaptureStore.getState().capture!;
+
+      let mountedUplot: uPlot | null = null;
+      await act(async () => {
+        root.render(
+          <Oscilloscope
+            capture={capture}
+            onUPlotInit={(u) => {
+              mountedUplot = u;
+            }}
+          />,
+        );
+      });
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      const uplot = mountedUplot!;
+      expect(uplot).not.toBeNull();
+
+      // AC1: Opens in default Overlay mode (stackMode: false)
+      expect(useChannelDisplayStore.getState().stackMode).toBe(false);
+
+      // In Overlay mode, scales match unstacked 100% fit bounds
+      const fit = computeCaptureFit(capture);
+      expect(uplot.scales[yScaleKey(0)]!.min).toBeCloseTo(
+        fit.channels[0]!.min,
+        4,
+      );
+      expect(uplot.scales[yScaleKey(0)]!.max).toBeCloseTo(
+        fit.channels[0]!.max,
+        4,
+      );
+      expect(uplot.scales[yScaleKey(1)]!.min).toBeCloseTo(
+        fit.channels[1]!.min,
+        4,
+      );
+      expect(uplot.scales[yScaleKey(1)]!.max).toBeCloseTo(
+        fit.channels[1]!.max,
+        4,
+      );
+    });
+
+    it("AC2: Opening a capture file previously viewed and saved in Stack mode restores Stack mode and saved lane weights", async () => {
+      // Parse file to get capture identity
+      await useCaptureStore
+        .getState()
+        .parseBuffer(await fixture(fourChUrl), "saved-stack.fvf");
+      const capture = useCaptureStore.getState().capture!;
+      const fileKey = captureFileKey(
+        "saved-stack.fvf",
+        capture.metadata.timestamp14,
+      )!;
+
+      // Seed localStorage with saved Stack mode and custom lane weights
+      window.localStorage.setItem(
+        STACK_MODE_STORAGE_KEY,
+        JSON.stringify({ [fileKey]: true }),
+      );
+      window.localStorage.setItem(
+        LANE_WEIGHTS_STORAGE_KEY,
+        JSON.stringify({ [fileKey]: { A: 2.0, B: 0.5, C: 1.0, D: 0.5 } }),
+      );
+
+      let mountedUplot: uPlot | null = null;
+      await act(async () => {
+        root.render(
+          <Oscilloscope
+            capture={capture}
+            onUPlotInit={(u) => {
+              mountedUplot = u;
+            }}
+          />,
+        );
+      });
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      expect(mountedUplot).not.toBeNull();
+
+      // AC2: Stack mode is restored
+      expect(useChannelDisplayStore.getState().stackMode).toBe(true);
+
+      // AC2: Saved lane weights are restored
+      expect(useLaneLayoutStore.getState().weights).toEqual({
+        A: 2.0,
+        B: 0.5,
+        C: 1.0,
+        D: 0.5,
+      });
+    });
+
+    it("AC3 + AC4: Direct Stack mode renders lane axes and bands from frame 1", async () => {
+      await useCaptureStore
+        .getState()
+        .parseBuffer(await fixture(fourChUrl), "direct-stack.fvf");
+      const capture = useCaptureStore.getState().capture!;
+      const fileKey = captureFileKey(
+        "direct-stack.fvf",
+        capture.metadata.timestamp14,
+      )!;
+
+      // Seed localStorage so file opens directly in Stack mode
+      window.localStorage.setItem(
+        STACK_MODE_STORAGE_KEY,
+        JSON.stringify({ [fileKey]: true }),
+      );
+
+      let frame1Uplot: uPlot | null = null;
+      const frame1Scales: Record<
+        string,
+        { min?: number | null; max?: number | null }
+      > = {};
+
+      await act(async () => {
+        root.render(
+          <Oscilloscope
+            capture={capture}
+            onUPlotInit={(u) => {
+              frame1Uplot = u;
+              // Capture synchronously inside onUPlotInit (frame 1)
+              for (let i = 0; i < 4; i++) {
+                const key = yScaleKey(i);
+                frame1Scales[key] = {
+                  min: u.scales[key]?.min,
+                  max: u.scales[key]?.max,
+                };
+              }
+            }}
+          />,
+        );
+      });
+
+      expect(frame1Uplot).not.toBeNull();
+      const uplot = frame1Uplot!;
+
+      // AC3: From frame 1, scales are partitioned into discrete lane windows (virtual multiplier ~4x)
+      const fit = computeCaptureFit(capture);
+      for (let i = 0; i < 4; i++) {
+        const key = yScaleKey(i);
+        const baseSpan = fit.channels[i]!.max - fit.channels[i]!.min;
+        const frame1Span =
+          (frame1Scales[key]?.max ?? 0) - (frame1Scales[key]?.min ?? 0);
+        // In 4-lane Stack mode, span is 4x wider than unstacked fit bounds
+        expect(frame1Span).toBeCloseTo(baseSpan * 4, 1);
+      }
+
+      // AC4: Channel A does not stretch across the whole vertical canvas;
+      // laneBandsCss computes 4 distinct non-collapsed lane bands
+      const bands = laneBandsCss(uplot, capture);
+      expect(bands.length).toBe(4);
+      for (let i = 0; i < 4; i++) {
+        expect(bands[i]!.bottom).toBeGreaterThan(bands[i]!.top);
+      }
+
+      // Verify laneTickFilter keeps ticks inside each channel's band
+      for (let i = 0; i < 4; i++) {
+        const scaleKey = yScaleKey(i);
+        const band = bands[i]!;
+        const insidePos = (band.top + band.bottom) / 2;
+        const insideVal = uplot.posToVal(insidePos, scaleKey);
+        const outsideVal = uplot.posToVal(band.bottom + 50, scaleKey);
+
+        const filtered = laneTickFilter(uplot, capture, scaleKey, [
+          outsideVal,
+          insideVal,
+        ]);
+        // Outside split is filtered to null
+        expect(filtered[0]).toBeNull();
+        // Inside split is retained
+        expect(filtered[1]).toBe(insideVal);
+      }
+    });
   });
 });

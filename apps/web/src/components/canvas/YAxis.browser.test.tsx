@@ -9,11 +9,15 @@ import {
   AXIS_GAP_PX,
   AXIS_LABEL_GAP_PX,
   AXIS_SIZE_X_PX,
+  axisFont,
   measureYAxisSize,
 } from "./axesConfig";
 import { useThemeStore } from "../../state/themeStore";
 import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { useLaneLayoutStore } from "../../state/laneLayoutStore";
+import { drawStackLaneDecorations } from "./stackLaneDecorations";
 import type { ParsedCapture } from "../../types/capture";
 
 (
@@ -97,6 +101,8 @@ describe("Y-axis width and axis geometry (Issue #60)", () => {
     useThemeStore.getState().setTheme("dark");
     useCaptureStore.getState().reset();
     useViewportStore.getState().reset();
+    useChannelDisplayStore.getState().reset();
+    useLaneLayoutStore.getState().equalize();
     hostElement = document.createElement("div");
     hostElement.style.width = "800px";
     hostElement.style.height = "600px";
@@ -112,6 +118,8 @@ describe("Y-axis width and axis geometry (Issue #60)", () => {
     useThemeStore.getState().setTheme("dark");
     useCaptureStore.getState().reset();
     useViewportStore.getState().reset();
+    useChannelDisplayStore.getState().reset();
+    useLaneLayoutStore.getState().equalize();
   });
 
   function mountUPlot(capture = createTestCapture()): uPlot {
@@ -365,5 +373,230 @@ describe("Y-axis width and axis geometry (Issue #60)", () => {
     expect(computedSize).toBeGreaterThan(30);
     // Crucial: uPlot's main canvas ctx.font must remain completely unpolluted
     expect(uplot.ctx.font).toBe(highDpiFont);
+  });
+});
+
+describe("Stack mode Retina title rendering and physical lane SI unit derivation (Issue #270)", () => {
+  let hostElement: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    useThemeStore.getState().setTheme("dark");
+    useCaptureStore.getState().reset();
+    useViewportStore.getState().reset();
+    useChannelDisplayStore.getState().reset();
+    useLaneLayoutStore.getState().equalize();
+    hostElement = document.createElement("div");
+    hostElement.style.width = "800px";
+    hostElement.style.height = "600px";
+    document.body.appendChild(hostElement);
+    root = createRoot(hostElement);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    hostElement.remove();
+    useThemeStore.getState().setTheme("dark");
+    useCaptureStore.getState().reset();
+    useViewportStore.getState().reset();
+    useChannelDisplayStore.getState().reset();
+    useLaneLayoutStore.getState().equalize();
+  });
+
+  function createVoltageCapture(
+    amplitude = 120.5,
+    sampleCount = 800,
+  ): ParsedCapture {
+    const timestamps = new Float32Array(sampleCount);
+    const data = new Float32Array(sampleCount);
+    for (let i = 0; i < sampleCount; i += 1) {
+      timestamps[i] = i * 1e-3;
+      data[i] = Math.sin(i * 0.05) * amplitude;
+    }
+    return {
+      metadata: {
+        version: 1,
+        flavor: "synthetic",
+        timebaseRaw: "1 ms/Div",
+        secondsPerDiv: 1e-3,
+        timestamp14: "12300020260912",
+        samples: sampleCount,
+        deltaT: 1e-3,
+        channels: [
+          {
+            name: "A",
+            label: "Input A",
+            derived: false,
+            samples: sampleCount,
+            deltaT: 1e-3,
+            unit: "V",
+          },
+        ],
+      },
+      channels: [{ name: "A", label: "Input A", derived: false, data }],
+      derivedChannels: [],
+      timestamps,
+      warnings: [],
+    };
+  }
+
+  function createVoltageFourChannelCapture(
+    amplitudes = [120.5, 60.25, 8.4, 1.1],
+    sampleCount = 800,
+  ): ParsedCapture {
+    const timestamps = new Float32Array(sampleCount);
+    const tags = ["A", "B", "C", "D"];
+    const channels = tags.map((name, index) => {
+      const data = new Float32Array(sampleCount);
+      for (let i = 0; i < sampleCount; i += 1) {
+        timestamps[i] = i * 1e-3;
+        data[i] = Math.sin(i * 0.05 + index) * amplitudes[index]!;
+      }
+      return { name, label: `Input ${name}`, derived: false, data };
+    });
+    return {
+      metadata: {
+        version: 1,
+        flavor: "synthetic",
+        timebaseRaw: "1 ms/Div",
+        secondsPerDiv: 1e-3,
+        timestamp14: "12300020260912",
+        samples: sampleCount,
+        deltaT: 1e-3,
+        channels: tags.map((name) => ({
+          name,
+          label: `Input ${name}`,
+          derived: false,
+          samples: sampleCount,
+          deltaT: 1e-3,
+          unit: "V",
+        })),
+      },
+      channels,
+      derivedChannels: [],
+      timestamps,
+      warnings: [],
+    };
+  }
+
+  function mountUPlot(capture = createVoltageCapture()): uPlot {
+    act(() => {
+      root.render(
+        <div
+          style={{ display: "flex", flexDirection: "column", height: "600px" }}
+        >
+          <Oscilloscope capture={capture} />
+        </div>,
+      );
+    });
+    const container = hostElement.querySelector(
+      "[data-testid='oscilloscope-container']",
+    ) as HTMLElement & { __uplot?: uPlot };
+    expect(container.__uplot).toBeDefined();
+    return container.__uplot!;
+  }
+
+  it("AC1: axisFont scales font size with device pixel ratio so rotated titles render at 11 CSS px", () => {
+    expect(axisFont(1)).toBe("11px system-ui, -apple-system, sans-serif");
+    expect(axisFont(2)).toBe("22px system-ui, -apple-system, sans-serif");
+    expect(axisFont(1.5)).toBe("16.5px system-ui, -apple-system, sans-serif");
+
+    const capture = createVoltageFourChannelCapture();
+    const uplot = mountUPlot(capture);
+    act(() => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+
+    const titles = new Map([
+      ["y0", { label: "Input A (V)", color: "#FFCC00" }],
+    ]);
+    const testCanvas = document.createElement("canvas");
+    testCanvas.width = 1600;
+    testCanvas.height = 1200;
+    const ctx = testCanvas.getContext("2d")!;
+    let fontDuringDraw = "";
+    ctx.fillText = () => {
+      fontDuringDraw = ctx.font;
+    };
+    const mockU = {
+      width: 800,
+      bbox: { top: 0, height: 600, left: 100, width: 700 },
+      ctx,
+      axes: uplot.axes,
+    } as unknown as uPlot;
+
+    drawStackLaneDecorations(mockU, capture, titles);
+    expect(fontDuringDraw).toBe("22px system-ui, -apple-system, sans-serif");
+  });
+
+  it("AC2: in Stack mode, Y-axis units for signals under 1,000 V remain in [V] and do not prematurely flip to [kV]", () => {
+    const capture = createVoltageFourChannelCapture();
+    const uplot = mountUPlot(capture);
+
+    const axisA = uplot.axes.find((a) => a.scale === "y0");
+    expect(axisA?.label).toBe("A (V)");
+
+    act(() => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+
+    // In 4-lane Stack mode, virtual bounds expand to ~1060 V span, but physical signal is 120.5 V
+    // Axis label MUST remain in [V] and NOT prematurely switch to [kV]
+    expect(axisA?.label).toBe("A (V)");
+
+    const axisB = uplot.axes.find((a) => a.scale === "y1");
+    expect(axisB?.label).toBe("B (V)");
+  });
+
+  it("AC3: signals genuinely exceeding 1,000 V or falling below 1 V scale to [kV] and [mV] respectively", () => {
+    // High voltage capture: 1500 V amplitude
+    const highVoltsCapture = createVoltageCapture(1500);
+    const uHigh = mountUPlot(highVoltsCapture);
+    act(() => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+    const axisHigh = uHigh.axes.find((a) => a.scale === "y0");
+    expect(axisHigh?.label).toBe("A (kV)");
+
+    // Low voltage capture: 50 mV amplitude
+    const lowVoltsCapture = createVoltageCapture(0.05);
+    const uLow = mountUPlot(lowVoltsCapture);
+    act(() => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+    const axisLow = uLow.axes.find((a) => a.scale === "y0");
+    expect(axisLow?.label).toBe("A (mV)");
+  });
+
+  it("AC4: unit formatting and font size stay consistent between live canvas and exported PNG snapshots", async () => {
+    const { composePrintSnapshot } = await import("../export/pngSnapshot");
+    const capture = createVoltageFourChannelCapture();
+    const uplot = mountUPlot(capture);
+    act(() => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+
+    const axisA = uplot.axes.find((a) => a.scale === "y0");
+    expect(axisA?.label).toBe("A (V)");
+
+    const composed = await composePrintSnapshot(
+      uplot,
+      capture,
+      {
+        cursor1: "#6A1B9A",
+        cursor2: "#4B5563",
+        background: "#FFFFFF",
+        legend: [],
+        selected: null,
+      },
+      { series: [{ label: "A", color: "#B8860B", show: true }] },
+    );
+
+    expect(composed.cssWidth).toBe(uplot.width);
+    expect(composed.cssHeight).toBe(uplot.height);
+    expect(composed.yAxisUnit).toBe("V");
+    expect(axisA?.label).toBe("A (V)");
   });
 });

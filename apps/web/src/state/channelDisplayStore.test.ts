@@ -28,6 +28,7 @@ function stubStorage(): Map<string, string> {
 }
 
 const KEY = "fvf.channel-display";
+const STACK_KEY = "fvf.stack-mode";
 
 async function importStores() {
   const display = await import("./channelDisplayStore");
@@ -108,36 +109,78 @@ describe("channelDisplayStore (issue #224)", () => {
     });
   });
 
-  it("issue #98: stack mode toggles, persists, and resets", async () => {
+  it("issue #98 / #271: stack mode toggles in-memory and resets", async () => {
     const { display } = await importStores();
     const store = display.useChannelDisplayStore.getState();
     expect(store.stackMode).toBe(false);
     store.setStackMode(true);
     expect(display.useChannelDisplayStore.getState().stackMode).toBe(true);
-    vi.advanceTimersByTime(200);
-    const raw = JSON.parse(backing.get(KEY)!) as { stackMode?: boolean };
-    expect(raw.stackMode).toBe(true);
 
     // reset() collapses back to Overlay.
     display.useChannelDisplayStore.getState().reset();
     expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
+    expect(display.useChannelDisplayStore.getState().fileKey).toBeNull();
   });
 
-  it("hydrates a persisted stackMode", async () => {
-    backing.set(
-      KEY,
-      JSON.stringify({ keyConfigs: {}, solo: null, stackMode: true }),
-    );
+  it("issue #271: persists stack mode per capture file identity, defaulting unseen files to Overlay", async () => {
     const { display } = await importStores();
+    const store = display.useChannelDisplayStore.getState();
+
+    // Opening unseen capture A defaults to Overlay (false).
+    store.setFileKey("captureA.fvf::20261009120000");
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
+
+    // Toggling to Stack mode persists to STACK_KEY under capture A's identity.
+    display.useChannelDisplayStore.getState().setStackMode(true);
     expect(display.useChannelDisplayStore.getState().stackMode).toBe(true);
+    const raw = JSON.parse(backing.get(STACK_KEY)!) as Record<string, boolean>;
+    expect(raw["captureA.fvf::20261009120000"]).toBe(true);
+
+    // Global KEY must NOT carry stackMode (no global mode pollution).
+    vi.advanceTimersByTime(200);
+    if (backing.has(KEY)) {
+      const globalRaw = JSON.parse(backing.get(KEY)!) as Record<
+        string,
+        unknown
+      >;
+      expect(globalRaw.stackMode).toBeUndefined();
+    }
+
+    // Opening unseen capture B defaults to Overlay (false).
+    display.useChannelDisplayStore
+      .getState()
+      .setFileKey("captureB.fvf::20261009130000");
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
+
+    // Re-opening capture A restores Stack mode (true).
+    display.useChannelDisplayStore
+      .getState()
+      .setFileKey("captureA.fvf::20261009120000");
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(true);
+
+    // Toggling capture A back to Overlay removes its entry from storage.
+    display.useChannelDisplayStore.getState().setStackMode(false);
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
+    expect(backing.has(STACK_KEY)).toBe(false);
   });
 
-  it("drops a non-boolean persisted stackMode", async () => {
+  it("issue #271: drops non-boolean persisted stackMode entries and handles corrupted JSON", async () => {
     backing.set(
-      KEY,
-      JSON.stringify({ keyConfigs: {}, solo: null, stackMode: "yes" }),
+      STACK_KEY,
+      JSON.stringify({
+        "valid.fvf::1": true,
+        "invalid.fvf::2": "yes",
+        "invalidNum.fvf::3": 1,
+      }),
     );
     const { display } = await importStores();
+    display.useChannelDisplayStore.getState().setFileKey("valid.fvf::1");
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(true);
+
+    display.useChannelDisplayStore.getState().setFileKey("invalid.fvf::2");
+    expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
+
+    display.useChannelDisplayStore.getState().setFileKey("invalidNum.fvf::3");
     expect(display.useChannelDisplayStore.getState().stackMode).toBe(false);
   });
 

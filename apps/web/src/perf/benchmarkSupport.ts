@@ -23,6 +23,7 @@ import { useViewportStore } from "../state/viewportStore";
 import { useChannelNamesStore } from "../state/channelNamesStore";
 import { useThemeStore } from "../state/themeStore";
 import { usePaletteStore } from "../state/paletteStore";
+import { useChannelDisplayStore } from "../state/channelDisplayStore";
 import type { ParsedCapture } from "../types/capture";
 import { percentile } from "./perfStats";
 
@@ -215,6 +216,7 @@ export async function mountOscilloscope(
 export function resetStores(): void {
   useCaptureStore.getState().reset();
   useViewportStore.getState().reset();
+  useChannelDisplayStore.getState().reset();
   useChannelNamesStore.setState({ fileKey: null, names: {} });
   useThemeStore.getState().setTheme("dark");
   usePaletteStore.getState().resetPalette();

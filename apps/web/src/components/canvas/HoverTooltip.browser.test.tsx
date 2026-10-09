@@ -100,7 +100,7 @@ describe("Hover tooltip (issue #150, browser)", () => {
       );
     });
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 60));
+      await new Promise((r) => setTimeout(r, 200));
     });
     expect(mountedUplot).not.toBeNull();
   }

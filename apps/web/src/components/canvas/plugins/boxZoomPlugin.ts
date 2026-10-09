@@ -22,6 +22,10 @@
  */
 
 import uPlot from "uplot";
+import type { ParsedCapture } from "../../../types/capture";
+import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
+import { laneBandsCss } from "../stackLaneDecorations";
+import { stackLaneBoundsWeighted } from "../channelLayout";
 
 /** Minimum drag extent (CSS px) required on each axis before a zoom commits. */
 export const BOX_ZOOM_MIN_DRAG_PX = 8;
@@ -33,6 +37,20 @@ export interface BoxZoomPluginOptions {
    * either axis are discarded (click-safe). Default: 8.
    */
   minDragPx?: number;
+  /**
+   * Supplier for the parsed capture backing the plot. Used in Stack mode
+   * to compute lane boundaries for lane-aware box zoom.
+   */
+  getCapture?: () => ParsedCapture | null;
+  /**
+   * Callback invoked when a lane-scoped vertical zoom commits in Stack mode,
+   * passing the zoomed scale key and the unstacked base bounds so that
+   * pre-stack state remains in sync across lane resizes and unstacking.
+   */
+  onLaneZoom?: (
+    scaleKey: string,
+    baseBounds: { min: number; max: number },
+  ) => void;
 }
 
 interface BoxZoomDragState {
@@ -185,6 +203,65 @@ export function boxZoomPlugin(
     // nested zooms exact (no pixel-space state carried across zooms).
     const xMin = u.posToVal(Math.min(startX, end.x), "x");
     const xMax = u.posToVal(Math.max(startX, end.x), "x");
+
+    const isStacked = useChannelDisplayStore.getState().stackMode;
+    const capture = options.getCapture?.() ?? null;
+
+    if (isStacked && capture) {
+      const bands = laneBandsCss(u, capture);
+      const dragCenterY = (startY + end.y) / 2;
+      const targetBand =
+        bands.find((b) => startY >= b.top && startY <= b.bottom) ??
+        bands.find((b) => dragCenterY >= b.top && dragCenterY <= b.bottom) ??
+        bands[bands.length - 1];
+
+      if (targetBand) {
+        const yTop = Math.min(startY, end.y);
+        const yBottom = Math.max(startY, end.y);
+        const clampedTop = Math.max(targetBand.top, yTop);
+        const clampedBottom = Math.min(targetBand.bottom, yBottom);
+
+        let laneZoom: { min: number; max: number } | null = null;
+        if (clampedBottom - clampedTop >= minDragPx) {
+          const vTop = u.posToVal(clampedTop, targetBand.scaleKey);
+          const vBottom = u.posToVal(clampedBottom, targetBand.scaleKey);
+          const baseMin = Math.min(vTop, vBottom);
+          const baseMax = Math.max(vTop, vBottom);
+
+          if (
+            Number.isFinite(baseMin) &&
+            Number.isFinite(baseMax) &&
+            baseMax > baseMin
+          ) {
+            const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+            const plotHeight = u.bbox.height / pxRatio;
+            const bandStart = targetBand.top / plotHeight;
+            const bandFraction =
+              (targetBand.bottom - targetBand.top) / plotHeight;
+
+            const laned = stackLaneBoundsWeighted(
+              { min: baseMin, max: baseMax },
+              bandStart,
+              bandFraction,
+            );
+            laneZoom = { min: laned.min, max: laned.max };
+            options.onLaneZoom?.(targetBand.scaleKey, {
+              min: baseMin,
+              max: baseMax,
+            });
+          }
+        }
+
+        u.batch(() => {
+          u.setScale("x", { min: xMin, max: xMax });
+          if (laneZoom) {
+            u.setScale(targetBand.scaleKey, laneZoom);
+          }
+        });
+        return;
+      }
+    }
+
     // Issue #106: one Y scale per channel — the same pixel band maps into
     // every visible series' own scale, so each trace zooms vertically
     // within its own range instead of sharing one blended amplitude axis.

@@ -10,6 +10,8 @@
  * with wide decimal ticks.
  */
 
+import type uPlot from "uplot";
+
 export const AXIS_SIZE_X_PX = 30;
 /** Padding between tick marks and tick numbers (CSS px). */
 export const AXIS_GAP_PX = 6;
@@ -37,6 +39,11 @@ export const CANVAS_PADDING: [number, number, number, number] = [
 ];
 
 export const AXIS_FONT = "11px system-ui, -apple-system, sans-serif";
+
+/** Canvas font string scaled by device-pixel ratio for unscaled 2D contexts (issue #270). */
+export function axisFont(pxRatio: number = 1): string {
+  return `${11 * pxRatio}px system-ui, -apple-system, sans-serif`;
+}
 
 let measurementContext: CanvasRenderingContext2D | null = null;
 function getMeasurementContext(): CanvasRenderingContext2D | null {
@@ -151,9 +158,97 @@ export interface YAxisSpec {
 }
 
 /**
+ * Dynamic sizing for Y-axis columns in both Overlay and Stack modes (issue #268):
+ * - In Overlay mode: each visible channel has its own staggered column whose size
+ *   is measured from its tick values.
+ * - In Stack mode: all channel Y-axes horizontally align into a single column on
+ *   the left edge of the canvas. To let uPlot allocate only a single column width
+ *   (expanding the waveform plot area to the left) and align all axes to the graticule,
+ *   the last active side-3 axis allocates the unified width (the widest active axis),
+ *   while all earlier side-3 axes allocate size 0.
+ */
+export function computeYAxisSize(
+  self: uPlot | null | undefined,
+  values: (string | number | null)[] | null | undefined,
+  scaleKey: string,
+  isStacked: boolean,
+): number {
+  const measured = measureYAxisSize(values);
+  if (!isStacked || !self || !self.axes) {
+    return measured;
+  }
+  const cache = ((
+    self as unknown as { _yAxisSizeCache?: Map<string, number> }
+  )._yAxisSizeCache ??= new Map());
+  cache.set(scaleKey, measured);
+
+  // Stack mode: single column sized to the widest active lane axis.
+  const unifiedSize = Math.max(
+    Math.ceil(30 + AXIS_TICK_SIZE_PX + AXIS_GAP_PX),
+    ...cache.values(),
+  );
+
+  let lastActiveKey: string | null = null;
+  for (let i = 1; i < self.axes.length; i++) {
+    const ax = self.axes[i];
+    if (ax && ax.side === 3 && ax.show !== false) {
+      lastActiveKey = ax.scale ?? null;
+    }
+  }
+
+  const isLast = lastActiveKey === scaleKey;
+  const ax = self.axes.find((a) => a.scale === scaleKey);
+  if (ax) {
+    ax.labelSize = isLast ? AXIS_LABEL_SIZE_PX : 0;
+  }
+
+  return isLast ? unifiedSize : 0;
+}
+
+/**
+ * Aligns all active side-3 channel Y-axes into a single horizontal column
+ * adjacent to the graticule in Stack mode (issue #268).
+ */
+export function syncUnifiedStackAxes(u: uPlot): void {
+  const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+  const plotLeftCss = u.bbox.left / pxRatio;
+  const cache = (u as unknown as { _yAxisSizeCache?: Map<string, number> })
+    ._yAxisSizeCache;
+  const unifiedSize =
+    cache && cache.size > 0
+      ? Math.max(
+          Math.ceil(30 + AXIS_TICK_SIZE_PX + AXIS_GAP_PX),
+          ...cache.values(),
+        )
+      : Math.ceil(30 + AXIS_TICK_SIZE_PX + AXIS_GAP_PX);
+
+  for (let i = 1; i < u.axes.length; i++) {
+    const ax = u.axes[i] as
+      | {
+          side?: number;
+          show?: boolean;
+          _pos?: number;
+          _size?: number;
+          _lpos?: number;
+          labelSize?: number;
+        }
+      | undefined;
+    if (ax && ax.side === 3 && ax.show !== false) {
+      ax._pos = plotLeftCss;
+      ax._size = unifiedSize;
+      ax._lpos = plotLeftCss - unifiedSize;
+      ax.labelSize = AXIS_LABEL_SIZE_PX;
+    }
+  }
+}
+
+/**
  * Builds a per-channel Y axis option object with measured sizing.
  */
-export function buildYAxisOptions(spec: YAxisSpec): BuiltAxisOptions {
+export function buildYAxisOptions(
+  spec: YAxisSpec,
+  isStacked = false,
+): BuiltAxisOptions {
   return {
     scale: spec.scaleKey,
     side: 3,
@@ -176,8 +271,8 @@ export function buildYAxisOptions(spec: YAxisSpec): BuiltAxisOptions {
     labelSize: AXIS_LABEL_SIZE_PX,
     gap: AXIS_GAP_PX,
     labelGap: AXIS_LABEL_GAP_PX,
-    size: (_self: unknown, values: (string | number | null)[]) =>
-      measureYAxisSize(values),
+    size: (self: unknown, values: (string | number | null)[]) =>
+      computeYAxisSize(self as uPlot, values, spec.scaleKey, isStacked),
     values: spec.values,
   };
 }

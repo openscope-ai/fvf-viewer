@@ -87,6 +87,16 @@ export default function App() {
     );
   }, [fileName, capture, setLaneWeightsFileKey]);
 
+  // Issue #271: per-file Stack/Overlay layout mode persistence keyed by capture identity.
+  const setChannelDisplayFileKey = useChannelDisplayStore(
+    (state) => state.setFileKey,
+  );
+  useEffect(() => {
+    setChannelDisplayFileKey(
+      captureFileKey(fileName, capture?.metadata.timestamp14),
+    );
+  }, [fileName, capture, setChannelDisplayFileKey]);
+
   // Issue #96: replacing File 1 drops the File 2 comparison (its resampled
   // lanes belong to the old primary time grid) and clears solo with it.
   useEffect(() => {

@@ -61,6 +61,9 @@ import { timeSlipPlugin } from "./plugins/timeSlipPlugin";
 import { groundMarkerPlugin } from "./plugins/groundMarkerPlugin";
 import {
   drawStackLaneDecorations,
+  laneBandCss,
+  laneBandsCss,
+  laneClippedPathBuilder,
   laneTickFilter,
   visibleLaneChannels,
   type LaneAxisTitle,
@@ -79,7 +82,8 @@ import {
   AXIS_SIZE_X_PX,
   AXIS_TICK_SIZE_PX,
   CANVAS_PADDING,
-  measureYAxisSize,
+  computeYAxisSize,
+  syncUnifiedStackAxes,
 } from "./axesConfig";
 import { drawTriggerGlyph, drawTriggerLine } from "./triggerMarker";
 import { createTimeAxisAdapter } from "./timeAxis";
@@ -93,6 +97,7 @@ import {
 } from "../cursors/readoutSnapshot";
 import { useReadoutCardStore } from "../../state/readoutCardStore";
 import {
+  captureFileKey,
   channelDisplayName,
   useChannelNamesStore,
 } from "../../state/channelNamesStore";
@@ -214,13 +219,11 @@ export function applyFitBounds(
   capture: ParsedCapture,
   activeChannels: readonly ChannelTag[],
   preStackMap?: Map<string, { min: number; max: number }>,
+  adapters?: Map<number, YAxisAdapter>,
 ): void {
   const fit = computeCaptureFit(capture);
   const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
   const stackMode = useChannelDisplayStore.getState().stackMode;
-
-  instance.setScale("x", { min: fit.xMin, max: fit.xMax });
-
   const unstackedPrimaryBounds = fit.channels.map((bounds, index) => {
     const key = displayKeyForChannel(capture.channels[index]!.name);
     return transformBounds(
@@ -246,60 +249,75 @@ export function applyFitBounds(
     );
   });
 
-  if (!stackMode) {
-    if (preStackMap) {
-      preStackMap.clear();
-    }
-    unstackedPrimaryBounds.forEach((display, index) => {
-      instance.setScale(yScaleKey(index), {
-        min: display.min,
-        max: display.max,
-      });
-    });
-    unstackedRefBounds.forEach((display, refIdx) => {
-      instance.setScale(yScaleKey(capture.channels.length + refIdx), {
-        min: display.min,
-        max: display.max,
-      });
-    });
-  } else {
-    // Stack mode: record default 100% unstacked bounds in preStackMap
-    if (preStackMap) {
+  instance.batch(() => {
+    instance.setScale("x", { min: fit.xMin, max: fit.xMax });
+
+    if (!stackMode) {
+      if (preStackMap) {
+        preStackMap.clear();
+      }
       unstackedPrimaryBounds.forEach((display, index) => {
-        preStackMap.set(yScaleKey(index), display);
+        instance.setScale(yScaleKey(index), {
+          min: display.min,
+          max: display.max,
+        });
       });
       unstackedRefBounds.forEach((display, refIdx) => {
-        preStackMap.set(yScaleKey(capture.channels.length + refIdx), display);
+        instance.setScale(yScaleKey(capture.channels.length + refIdx), {
+          min: display.min,
+          max: display.max,
+        });
+      });
+    } else {
+      // Stack mode: record default 100% unstacked bounds in preStackMap
+      if (preStackMap) {
+        unstackedPrimaryBounds.forEach((display, index) => {
+          preStackMap.set(yScaleKey(index), display);
+        });
+        unstackedRefBounds.forEach((display, refIdx) => {
+          preStackMap.set(yScaleKey(capture.channels.length + refIdx), display);
+        });
+      }
+
+      // Partition visible lanes into discrete windows using stored lane weights (issue #251, #271)
+      const laneChannels = visibleLaneChannels(capture);
+      const laneCount = laneChannels.length;
+      const laneWeights = useLaneLayoutStore.getState().weights;
+      const fractions = laneFractions(
+        laneChannels.map((lane) => lane.key),
+        laneWeights,
+      );
+      let bandStart = 0;
+      laneChannels.forEach((lane, laneIndex) => {
+        const scaleKey = lane.scaleKey;
+        let base: Bounds;
+        if (preStackMap && preStackMap.has(scaleKey)) {
+          base = preStackMap.get(scaleKey)!;
+        } else {
+          const primaryIdx = capture.channels.findIndex(
+            (_, idx) => yScaleKey(idx) === scaleKey,
+          );
+          if (primaryIdx >= 0) {
+            base = unstackedPrimaryBounds[primaryIdx]!;
+          } else {
+            const refIdx = refLanes.findIndex(
+              (_, idx) => yScaleKey(capture.channels.length + idx) === scaleKey,
+            );
+            base =
+              refIdx >= 0 ? unstackedRefBounds[refIdx]! : { min: -1, max: 1 };
+          }
+        }
+        const fraction = fractions[laneIndex] ?? 1 / Math.max(laneCount, 1);
+        const start = bandStart;
+        bandStart += fraction;
+        const laned = stackLaneBoundsWeighted(base, start, fraction);
+        instance.setScale(scaleKey, { min: laned.min, max: laned.max });
       });
     }
+  });
 
-    // Partition visible lanes into discrete windows using equal fractions (1/N)
-    const laneChannels = visibleLaneChannels(capture);
-    const laneCount = laneChannels.length;
-    laneChannels.forEach((lane, laneIndex) => {
-      const scaleKey = lane.scaleKey;
-      let base: Bounds;
-      if (preStackMap && preStackMap.has(scaleKey)) {
-        base = preStackMap.get(scaleKey)!;
-      } else {
-        const primaryIdx = capture.channels.findIndex(
-          (_, idx) => yScaleKey(idx) === scaleKey,
-        );
-        if (primaryIdx >= 0) {
-          base = unstackedPrimaryBounds[primaryIdx]!;
-        } else {
-          const refIdx = refLanes.findIndex(
-            (_, idx) => yScaleKey(capture.channels.length + idx) === scaleKey,
-          );
-          base =
-            refIdx >= 0 ? unstackedRefBounds[refIdx]! : { min: -1, max: 1 };
-        }
-      }
-      const fraction = 1 / Math.max(laneCount, 1);
-      const start = laneIndex * fraction;
-      const laned = stackLaneBoundsWeighted(base, start, fraction);
-      instance.setScale(scaleKey, { min: laned.min, max: laned.max });
-    });
+  if (adapters) {
+    syncAdapters(instance, capture, adapters);
   }
 
   const selectedChannel = useViewportStore.getState().selectedChannel;
@@ -323,6 +341,29 @@ export function applyFitBounds(
       (selectedIndex >= 0 ? fit.channels[selectedIndex]?.max : null) ??
       null,
   });
+}
+
+/** Syncs Y-axis adapters with physical lane bands in Stack mode (issue #270). */
+function syncAdapters(
+  u: uPlot,
+  capture: ParsedCapture,
+  adapters: Map<number, YAxisAdapter>,
+): void {
+  const isStacked = useChannelDisplayStore.getState().stackMode;
+  for (const adapter of adapters.values()) {
+    if (isStacked) {
+      const band = laneBandCss(u, capture, adapter.scaleKey);
+      const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+      const plotHeight = u.bbox.height / pxRatio;
+      if (band && plotHeight > 0) {
+        const bandFraction = (band.bottom - band.top) / plotHeight;
+        const bandStart = band.top / plotHeight;
+        adapter.sync(u, { laneFraction: bandFraction, bandStart });
+        continue;
+      }
+    }
+    adapter.sync(u);
+  }
 }
 
 /** True when two (scale, offset, invert) display triples are equal. */
@@ -544,8 +585,30 @@ export default function Oscilloscope({
     ) {
       return;
     }
-    // Issue #98: a new plot invalidates any saved pre-stack windows.
-    preStackRef.current.clear();
+    // Issue #271: synchronize per-file store state on mount before creating uPlot options
+    const fileName = useCaptureStore.getState().fileName;
+    if (fileName) {
+      const currentFileKey = captureFileKey(
+        fileName,
+        capture.metadata.timestamp14,
+      );
+      if (
+        currentFileKey &&
+        useChannelDisplayStore.getState().fileKey !== currentFileKey
+      ) {
+        useChannelDisplayStore.getState().setFileKey(currentFileKey);
+      }
+      if (
+        currentFileKey &&
+        useLaneLayoutStore.getState().fileKey !== currentFileKey
+      ) {
+        useLaneLayoutStore.getState().setFileKey(currentFileKey);
+      }
+    }
+
+    const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
+    const stackMode = useChannelDisplayStore.getState().stackMode;
+    const laneWeights = useLaneLayoutStore.getState().weights;
 
     const initialW =
       width > 0 ? width : Math.max(container.clientWidth || 800, 100);
@@ -567,6 +630,68 @@ export default function Oscilloscope({
       axes: [{ label: undefined }],
     });
 
+    const unstackedPrimaryBounds = initialFit.channels.map((bounds, index) => {
+      const key = displayKeyForChannel(capture.channels[index]!.name);
+      return transformBounds(
+        bounds,
+        effectiveYScale(displayConfigs, key),
+        effectiveOffset(displayConfigs, key),
+        effectiveInverted(displayConfigs, key),
+      );
+    });
+
+    const mountReference = useReferenceStore.getState();
+    const unstackedRefBounds = (mountReference.lanes ?? []).map(
+      (lane, refIdx) => {
+        const bounds = refLaneFitBounds(lane);
+        const raw = mountReference.capture?.channels[refIdx];
+        const name = raw ? toRefName(raw.name) : `Ref-${refIdx}`;
+        const refKey = displayKeyForChannel(name);
+        return transformBounds(
+          bounds,
+          effectiveYScale(displayConfigs, refKey),
+          effectiveOffset(displayConfigs, refKey),
+          effectiveInverted(displayConfigs, refKey),
+        );
+      },
+    );
+
+    preStackRef.current.clear();
+    const lanedBounds = new Map<
+      string,
+      { bounds: Bounds; fraction: number; start: number }
+    >();
+    if (stackMode) {
+      unstackedPrimaryBounds.forEach((bounds, index) => {
+        preStackRef.current.set(yScaleKey(index), bounds);
+      });
+      unstackedRefBounds.forEach((bounds, refIdx) => {
+        preStackRef.current.set(
+          yScaleKey(capture.channels.length + refIdx),
+          bounds,
+        );
+      });
+
+      const laneChannels = visibleLaneChannels(capture);
+      const fractions = laneFractions(
+        laneChannels.map((lane) => lane.key),
+        laneWeights,
+      );
+      let bandStart = 0;
+      laneChannels.forEach((lane, laneIndex) => {
+        const base = preStackRef.current.get(lane.scaleKey) ?? {
+          min: -1,
+          max: 1,
+        };
+        const fraction =
+          fractions[laneIndex] ?? 1 / Math.max(laneChannels.length, 1);
+        const start = bandStart;
+        bandStart += fraction;
+        const laned = stackLaneBoundsWeighted(base, start, fraction);
+        lanedBounds.set(lane.scaleKey, { bounds: laned, fraction, start });
+      });
+    }
+
     // Create per-channel Y-axis adapters
     adaptersRef.current = new Map();
     const customNames = useChannelNamesStore.getState().names;
@@ -579,18 +704,33 @@ export default function Oscilloscope({
         unit: base,
         scaleKey: yScaleKey(origIdx),
       });
-      const fit = initialFit.channels[origIdx] ?? { min: -1, max: 1 };
-      adapter.sync({
-        scales: { [yScaleKey(origIdx)]: { min: fit.min, max: fit.max } },
-        axes: [],
-      });
+      const lanedInfo = lanedBounds.get(yScaleKey(origIdx));
+      if (stackMode && lanedInfo) {
+        adapter.sync(
+          {
+            scales: {
+              [yScaleKey(origIdx)]: {
+                min: lanedInfo.bounds.min,
+                max: lanedInfo.bounds.max,
+              },
+            },
+            axes: [],
+          },
+          { laneFraction: lanedInfo.fraction, bandStart: lanedInfo.start },
+        );
+      } else {
+        const fit = unstackedPrimaryBounds[origIdx] ?? { min: -1, max: 1 };
+        adapter.sync({
+          scales: { [yScaleKey(origIdx)]: { min: fit.min, max: fit.max } },
+          axes: [],
+        });
+      }
       adaptersRef.current.set(origIdx, adapter);
     });
 
     // Issue #249: reference channels get their own y-axis columns (the
     // ground flags render on each channel's own column) — adapters
     // mirror the primary ones, with units resolved through File 2.
-    const mountReference = useReferenceStore.getState();
     const refColumns = (mountReference.lanes ?? []).map((lane, refIdx) => {
       const raw = mountReference.capture?.channels[refIdx];
       const name = raw ? toRefName(raw.name) : `Ref-${refIdx}`;
@@ -605,11 +745,27 @@ export default function Oscilloscope({
         unit: base,
         scaleKey,
       });
-      const bounds = refLaneFitBounds(lane);
-      adapter.sync({
-        scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
-        axes: [],
-      });
+      const lanedInfo = lanedBounds.get(scaleKey);
+      if (stackMode && lanedInfo) {
+        adapter.sync(
+          {
+            scales: {
+              [scaleKey]: {
+                min: lanedInfo.bounds.min,
+                max: lanedInfo.bounds.max,
+              },
+            },
+            axes: [],
+          },
+          { laneFraction: lanedInfo.fraction, bandStart: lanedInfo.start },
+        );
+      } else {
+        const bounds = unstackedRefBounds[refIdx] ?? { min: -1, max: 1 };
+        adapter.sync({
+          scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
+          axes: [],
+        });
+      }
       adaptersRef.current.set(capture.channels.length + refIdx, adapter);
       return { name, refIdx, scaleKey };
     });
@@ -635,7 +791,12 @@ export default function Oscilloscope({
         },
       },
       plugins: [
-        boxZoomPlugin(),
+        boxZoomPlugin({
+          getCapture: () => captureRef.current,
+          onLaneZoom: (scaleKey, baseBounds) => {
+            preStackRef.current.set(scaleKey, baseBounds);
+          },
+        }),
         // Issue #98: ground markers + ctrl+vertical-drag offset —
         // registered BEFORE the cursor plugin so a ctrl+press on a
         // trace can claim the vertical gesture (and forward unclaimed
@@ -663,10 +824,14 @@ export default function Oscilloscope({
         },
         ...Object.fromEntries(
           capture.channels.map((_channel, index) => {
-            const fit = initialFit.channels[index] ?? { min: -1, max: 1 };
+            const lanedInfo = lanedBounds.get(yScaleKey(index));
+            const bounds =
+              stackMode && lanedInfo
+                ? lanedInfo.bounds
+                : (unstackedPrimaryBounds[index] ?? { min: -1, max: 1 });
             return [
               yScaleKey(index),
-              { auto: false, min: fit.min, max: fit.max },
+              { auto: false, min: bounds.min, max: bounds.max },
             ];
           }),
         ),
@@ -677,9 +842,14 @@ export default function Oscilloscope({
         // belongs to the primary channels (ref grid.show stays false).
         ...Object.fromEntries(
           (useReferenceStore.getState().lanes ?? []).map((lane, index) => {
-            const bounds = refLaneFitBounds(lane);
+            const scaleKey = yScaleKey(capture.channels.length + index);
+            const lanedInfo = lanedBounds.get(scaleKey);
+            const bounds =
+              stackMode && lanedInfo
+                ? lanedInfo.bounds
+                : (unstackedRefBounds[index] ?? { min: -1, max: 1 });
             return [
-              yScaleKey(capture.channels.length + index),
+              scaleKey,
               { auto: false, min: bounds.min, max: bounds.max },
             ];
           }),
@@ -753,7 +923,13 @@ export default function Oscilloscope({
             labelSize: AXIS_LABEL_SIZE_PX,
             gap: AXIS_GAP_PX,
             labelGap: AXIS_LABEL_GAP_PX,
-            size: (_self: uPlot, values: string[]) => measureYAxisSize(values),
+            size: (_self: uPlot, values: string[]) =>
+              computeYAxisSize(
+                _self,
+                values,
+                scaleKey,
+                useChannelDisplayStore.getState().stackMode,
+              ),
             values: (_self: unknown, splits: number[]) =>
               adaptersRef.current.get(origIdx)?.values(_self, splits) ??
               splits.map(String),
@@ -801,7 +977,13 @@ export default function Oscilloscope({
           labelSize: AXIS_LABEL_SIZE_PX,
           gap: AXIS_GAP_PX,
           labelGap: AXIS_LABEL_GAP_PX,
-          size: (_self: uPlot, values: string[]) => measureYAxisSize(values),
+          size: (_self: uPlot, values: string[]) =>
+            computeYAxisSize(
+              _self,
+              values,
+              scaleKey,
+              useChannelDisplayStore.getState().stackMode,
+            ),
           values: (_self: unknown, splits: number[]) =>
             adaptersRef.current
               .get(capture.channels.length + refIdx)
@@ -829,6 +1011,10 @@ export default function Oscilloscope({
           width: 1.5,
           points: { show: false },
           show: mountChannels.includes(channel.name),
+          paths: laneClippedPathBuilder(
+            yScaleKey(index),
+            () => captureRef.current,
+          ),
         })),
         ...(() => {
           // Issue #96: trailing reference series (Ref-A…): secondary
@@ -842,9 +1028,10 @@ export default function Oscilloscope({
           return lanes.map((lane, index) => {
             const raw = reference.capture?.channels[index];
             const name = raw ? toRefName(raw.name) : `Ref-${index}`;
+            const scaleKey = yScaleKey(capture.channels.length + index);
             return {
               label: channelDisplayName(name, undefined, customNames[name]),
-              scale: yScaleKey(capture.channels.length + index),
+              scale: scaleKey,
               stroke: effectiveTraceStroke(
                 useThemeStore.getState().theme,
                 usePaletteStore.getState().customColors,
@@ -854,6 +1041,7 @@ export default function Oscilloscope({
               width: 1.5,
               points: { show: false },
               show: active.includes(name),
+              paths: laneClippedPathBuilder(scaleKey, () => captureRef.current),
             };
           });
         })(),
@@ -866,6 +1054,9 @@ export default function Oscilloscope({
             u.ctx.fillStyle = palette.background;
             u.ctx.fillRect(0, 0, u.bbox.width, u.bbox.height);
             u.ctx.restore();
+            if (useChannelDisplayStore.getState().stackMode) {
+              syncUnifiedStackAxes(u);
+            }
           },
         ],
         drawAxes: [
@@ -878,6 +1069,8 @@ export default function Oscilloscope({
           (u) => {
             const palette = resolveThemePalette(useThemeStore.getState().theme);
             drawTriggerGlyph(u, palette.triggerAccent, palette.background);
+            // Issue #270: sync adapters with physical lane bands so titles and units reflect the lane span
+            syncAdapters(u, capture, adaptersRef.current);
             // Issue #250: Stack-mode lane banding — band-scoped axis
             // columns (title/border) + lane separators across the plot
             // width. No-op in Overlay mode.
@@ -911,9 +1104,7 @@ export default function Oscilloscope({
         setScale: [
           (u) => {
             timeAxis.sync(u);
-            for (const adapter of adaptersRef.current.values()) {
-              adapter.sync(u);
-            }
+            syncAdapters(u, capture, adaptersRef.current);
             const curSelected = useViewportStore.getState().selectedChannel;
             const selectedIdx = curSelected
               ? capture.channels.findIndex((c) => c.name === curSelected)
@@ -955,6 +1146,13 @@ export default function Oscilloscope({
     styledConfigsRef.current = {
       ...usePaletteStore.getState().keyConfigs,
     };
+    applyFitBounds(
+      instance,
+      capture,
+      useViewportStore.getState().activeChannels,
+      preStackRef.current,
+      adaptersRef.current,
+    );
     (container as HTMLElement & { __uplot?: uPlot }).__uplot = instance;
     onUPlotInit?.(instance);
 
@@ -1014,33 +1212,45 @@ export default function Oscilloscope({
 
       const active = useViewportStore.getState().activeChannels;
       const visible = live.channels.filter((c) => active.includes(c.name));
-      for (const ch of visible) {
-        const origIdx = live.channels.indexOf(ch);
-        const axis = instance.axes.find(
-          (a) => a.scale === yScaleKey(origIdx),
-        ) as
-          | {
-              show?: boolean;
-              _pos?: number;
-              _size?: number;
-              _lpos?: number;
-              label?: unknown;
-              labelSize?: number;
-            }
-          | undefined;
-        if (!axis || axis.show === false) continue;
-        if (axis._pos == null || axis._size == null) continue;
-        const labelSize =
-          axis.label != null && typeof axis.labelSize === "number"
-            ? axis.labelSize
-            : 0;
-        const colLeft =
-          (typeof axis._lpos === "number"
-            ? axis._lpos
-            : axis._pos - axis._size) - labelSize;
-        if (clickX >= colLeft && clickX < axis._pos) {
-          useViewportStore.getState().setSelectedChannel(ch.name);
+
+      if (useChannelDisplayStore.getState().stackMode) {
+        const plotTop = instance.bbox.top / instancePxRatio;
+        const clickY = event.clientY - rect.top - plotTop;
+        const bands = laneBandsCss(instance, live);
+        const hit = bands.find((b) => clickY >= b.top && clickY <= b.bottom);
+        if (hit && visible.some((c) => c.name === hit.key)) {
+          useViewportStore.getState().setSelectedChannel(hit.key as ChannelTag);
           return;
+        }
+      } else {
+        for (const ch of visible) {
+          const origIdx = live.channels.indexOf(ch);
+          const axis = instance.axes.find(
+            (a) => a.scale === yScaleKey(origIdx),
+          ) as
+            | {
+                show?: boolean;
+                _pos?: number;
+                _size?: number;
+                _lpos?: number;
+                label?: unknown;
+                labelSize?: number;
+              }
+            | undefined;
+          if (!axis || axis.show === false) continue;
+          if (axis._pos == null || axis._size == null) continue;
+          const labelSize =
+            axis.label != null && typeof axis.labelSize === "number"
+              ? axis.labelSize
+              : 0;
+          const colLeft =
+            (typeof axis._lpos === "number"
+              ? axis._lpos
+              : axis._pos - axis._size) - labelSize;
+          if (clickX >= colLeft && clickX < axis._pos) {
+            useViewportStore.getState().setSelectedChannel(ch.name);
+            return;
+          }
         }
       }
     };
@@ -1214,13 +1424,6 @@ export default function Oscilloscope({
       );
       return snapshotToBlob(printComposite.canvas);
     });
-
-    applyFitBounds(
-      instance,
-      capture,
-      useViewportStore.getState().activeChannels,
-      preStackRef.current,
-    );
 
     const suppressWheel = (event: WheelEvent) => {
       event.preventDefault();
@@ -1659,10 +1862,12 @@ export default function Oscilloscope({
         }
       });
     };
-    if (axesReady) instance.batch(apply);
-    else {
+    if (axesReady) {
+      instance.batch(apply);
+      instance.redraw(true, true);
+    } else {
       apply();
-      instance.redraw(false, true);
+      instance.redraw(true, true);
     }
     if (!stackMode) preStackRef.current.clear();
   }, [
@@ -1687,6 +1892,7 @@ export default function Oscilloscope({
       capture,
       useViewportStore.getState().activeChannels,
       preStackRef.current,
+      adaptersRef.current,
     );
   }, [fitRequest, capture]);
 
