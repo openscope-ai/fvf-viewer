@@ -28,6 +28,7 @@ import { useViewportStore, type ChannelTag } from "./viewportStore";
 import { useReferenceStore } from "./referenceStore";
 
 export const CHANNEL_DISPLAY_STORAGE_KEY = "fvf.channel-display";
+export const STACK_MODE_STORAGE_KEY = "fvf.stack-mode";
 
 /** Solo record: which channel is isolated + the visibility set to restore. */
 export interface SoloState {
@@ -39,6 +40,45 @@ function isChannelKey(value: unknown): value is ChannelKey {
   return (CHANNEL_DISPLAY_KEYS as readonly string[]).includes(value as string);
 }
 
+/** Storage shape: fileKey -> boolean (true = Stack mode; missing/false = Overlay mode). */
+export type StoredStackModes = Record<string, boolean>;
+
+function readStoredStackModes(): StoredStackModes {
+  try {
+    const raw = window.localStorage.getItem(STACK_MODE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    const cleaned: StoredStackModes = {};
+    for (const [fileKey, value] of Object.entries(
+      parsed as Record<string, unknown>,
+    )) {
+      if (typeof fileKey === "string" && typeof value === "boolean") {
+        cleaned[fileKey] = value;
+      }
+    }
+    return cleaned;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredStackModes(modes: StoredStackModes): void {
+  try {
+    if (Object.keys(modes).length === 0) {
+      window.localStorage.removeItem(STACK_MODE_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(
+        STACK_MODE_STORAGE_KEY,
+        JSON.stringify(modes),
+      );
+    }
+  } catch {
+    // Best-effort persistence (private mode, disabled storage): the
+    // in-session settings still apply.
+  }
+}
+
 /**
  * Hydrates the persisted per-key display records and solo state; invalid
  * entries drop silently (validated hydration, mirroring #204/#226).
@@ -46,14 +86,13 @@ function isChannelKey(value: unknown): value is ChannelKey {
 function readStored(): {
   keyConfigs: ChannelDisplayConfigs;
   solo: SoloState | null;
-  stackMode: boolean;
 } {
   try {
     const raw = window.localStorage.getItem(CHANNEL_DISPLAY_STORAGE_KEY);
-    if (!raw) return { keyConfigs: {}, solo: null, stackMode: false };
+    if (!raw) return { keyConfigs: {}, solo: null };
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) {
-      return { keyConfigs: {}, solo: null, stackMode: false };
+      return { keyConfigs: {}, solo: null };
     }
     const record = parsed as Record<string, unknown>;
     const keyConfigs: ChannelDisplayConfigs = {};
@@ -97,19 +136,15 @@ function readStored(): {
         solo = { key: rawSolo.key, savedActive };
       }
     }
-    return { keyConfigs, solo, stackMode: record.stackMode === true };
+    return { keyConfigs, solo };
   } catch {
-    return { keyConfigs: {}, solo: null, stackMode: false };
+    return { keyConfigs: {}, solo: null };
   }
 }
 
 function writeStored(state: ChannelDisplayStoreState): void {
   try {
-    if (
-      Object.keys(state.keyConfigs).length === 0 &&
-      !state.solo &&
-      !state.stackMode
-    ) {
+    if (Object.keys(state.keyConfigs).length === 0 && !state.solo) {
       window.localStorage.removeItem(CHANNEL_DISPLAY_STORAGE_KEY);
     } else {
       window.localStorage.setItem(
@@ -117,7 +152,6 @@ function writeStored(state: ChannelDisplayStoreState): void {
         JSON.stringify({
           keyConfigs: state.keyConfigs,
           solo: state.solo,
-          stackMode: state.stackMode,
         }),
       );
     }
@@ -128,6 +162,10 @@ function writeStored(state: ChannelDisplayStoreState): void {
 }
 
 export interface ChannelDisplayStoreState {
+  /** Capture identity of the active file (fileName::timestamp14). */
+  fileKey: string | null;
+  /** Swaps the active file (restoring its stored stack mode, or defaulting to Overlay). */
+  setFileKey: (fileKey: string | null) => void;
   /** Persisted per-channel display records — the source of truth. */
   keyConfigs: ChannelDisplayConfigs;
   /** Solo quick-knob state (null = no channel isolated). */
@@ -135,12 +173,11 @@ export interface ChannelDisplayStoreState {
   /**
    * Issue #98 Quick-Stack: Overlay (false, default) or Stack (true) —
    * the canvas partitions visible channels into equal horizontal lanes
-   * while stacked. Persisted with the display record (validated
-   * hydration); the lane windowing itself is applied by the canvas at
-   * toggle time, so pan/zoom keeps working on top of it.
+   * while stacked. Persisted per capture identity in localStorage
+   * (fvf.stack-mode, issue #271).
    */
   stackMode: boolean;
-  /** Toggles Overlay/Stack lane partitioning (issue #98). */
+  /** Toggles Overlay/Stack lane partitioning (issues #98, #271). */
   setStackMode: (stacked: boolean) => void;
   /** Sets the Y-scale percent (clamped 10–500; 100 prunes the field). */
   setYScale: (key: ChannelKey, percent: number) => void;
@@ -238,11 +275,37 @@ export function createChannelDisplayStore() {
   const initial = readStored();
 
   return create<ChannelDisplayStoreState>((set) => ({
+    fileKey: null,
     keyConfigs: initial.keyConfigs,
     solo: initial.solo,
-    stackMode: initial.stackMode,
+    stackMode: false,
 
-    setStackMode: (stacked) => commit(set, () => ({ stackMode: stacked })),
+    setFileKey: (fileKey) =>
+      set(() => {
+        if (!fileKey) {
+          return { fileKey: null, stackMode: false };
+        }
+        const stored = readStoredStackModes();
+        return {
+          fileKey,
+          stackMode: stored[fileKey] === true,
+        };
+      }),
+
+    setStackMode: (stacked) => {
+      set((state) => {
+        if (state.fileKey) {
+          const stored = readStoredStackModes();
+          if (stacked) {
+            stored[state.fileKey] = true;
+          } else {
+            delete stored[state.fileKey];
+          }
+          writeStoredStackModes(stored);
+        }
+        return { stackMode: stacked };
+      });
+    },
 
     setYScale: (key, percent) =>
       commit(set, (state) => {
@@ -328,8 +391,10 @@ export function createChannelDisplayStore() {
         Object.keys(state.keyConfigs).length > 0 ? { keyConfigs: {} } : {},
       ),
 
-    reset: () =>
-      commit(set, () => ({ keyConfigs: {}, solo: null, stackMode: false })),
+    reset: () => {
+      commit(set, () => ({ keyConfigs: {}, solo: null }));
+      set(() => ({ fileKey: null, stackMode: false }));
+    },
   }));
 }
 

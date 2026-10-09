@@ -404,4 +404,144 @@ describe("YAxis SI unit selection and formatting (Issue #86)", () => {
       expect(adapter.values(null, [-1, 0.5, 1])).toEqual(["-1", "0.5", "1"]);
     });
   });
+
+  describe("Stack-mode physical lane SI unit derivation (issue #270)", () => {
+    it("AC2: signals under 1,000 V remain in [V] despite expanded multi-lane virtual bounds", () => {
+      const adapter = createYAxisAdapter({
+        quantity: "Voltage",
+        unit: "V",
+        scaleKey: "y0",
+      });
+      const axis = { scale: "y0", label: "" };
+      // 4 lanes: a 300 V signal ([-150, 150]) gets virtual bounds [-1050, 150] (span 1200)
+      // Virtual maxAbs is 1050 (> 1000 V), but physical span in lane is 300 V (< 1000 V).
+      adapter.sync(
+        {
+          scales: { y0: { min: -1050, max: 150 } },
+          axes: [undefined, axis],
+        },
+        0.25,
+      );
+      expect(adapter.unit.key).toBe("V");
+      expect(adapter.label).toBe("Voltage (V)");
+      expect(axis.label).toBe("Voltage (V)");
+    });
+
+    it("AC2: works with bandStart and bandFraction configuration", () => {
+      const adapter = createYAxisAdapter({
+        quantity: "Input A",
+        unit: "V",
+        scaleKey: "y0",
+      });
+      const axis = { scale: "y0", label: "" };
+      // Lane 3 of 4: bandStart = 0.75, fraction = 0.25, virtual bounds [-150, 1050]
+      adapter.sync(
+        {
+          scales: { y0: { min: -150, max: 1050 } },
+          axes: [undefined, axis],
+        },
+        { bandStart: 0.75, laneFraction: 0.25 },
+      );
+      expect(adapter.unit.key).toBe("V");
+      expect(adapter.label).toBe("Input A (V)");
+    });
+
+    it("AC2: zero-centered signal with 600 V amplitude (1200 V span) remains in [V] in Stack mode", () => {
+      const adapter = createYAxisAdapter({
+        quantity: "Voltage",
+        unit: "V",
+        scaleKey: "y0",
+      });
+      const axis = { scale: "y0", label: "" };
+      // Base [-600, 600] in lane 0 of 4 -> virtual bounds [-4200, 600], physical amplitude 600 V
+      adapter.sync(
+        {
+          scales: { y0: { min: -4200, max: 600 } },
+          axes: [undefined, axis],
+        },
+        { bandStart: 0, laneFraction: 0.25 },
+      );
+      expect(adapter.unit.key).toBe("V");
+      expect(adapter.label).toBe("Voltage (V)");
+    });
+
+    it("AC3: signals genuinely exceeding 1,000 V scale to [kV] in Stack mode", () => {
+      const adapter = createYAxisAdapter({
+        quantity: "Voltage",
+        unit: "V",
+        scaleKey: "y0",
+      });
+      const axis = { scale: "y0", label: "" };
+      // 4 lanes: a 3,000 V signal gets virtual span 12,000 V (physical span 3,000 V >= 1,000 V)
+      adapter.sync(
+        {
+          scales: { y0: { min: -10500, max: 1500 } },
+          axes: [undefined, axis],
+        },
+        0.25,
+      );
+      expect(adapter.unit.key).toBe("kV");
+      expect(adapter.label).toBe("Voltage (kV)");
+      expect(axis.label).toBe("Voltage (kV)");
+    });
+
+    it("AC3: signals falling below 1 V scale to [mV] in Stack mode", () => {
+      const adapter = createYAxisAdapter({
+        quantity: "Voltage",
+        unit: "V",
+        scaleKey: "y0",
+      });
+      const axis = { scale: "y0", label: "" };
+      // 4 lanes: a 200 mV signal gets virtual bounds [-0.7, 0.1] (span 0.8 V, physical 200 mV)
+      adapter.sync(
+        {
+          scales: { y0: { min: -0.7, max: 0.1 } },
+          axes: [undefined, axis],
+        },
+        0.25,
+      );
+      expect(adapter.unit.key).toBe("mV");
+      expect(adapter.label).toBe("Voltage (mV)");
+      expect(axis.label).toBe("Voltage (mV)");
+    });
+
+    it("AC3: obeys 5% hysteresis across boundaries in Stack mode", () => {
+      const adapter = createYAxisAdapter({
+        quantity: "Voltage",
+        unit: "V",
+        scaleKey: "y0",
+      });
+      const axis = { scale: "y0", label: "" };
+
+      // Initial sync at 10 V physical span establishes V
+      adapter.sync(
+        {
+          scales: { y0: { min: -35, max: 5 } }, // virtual span 40, physical 10 V
+          axes: [undefined, axis],
+        },
+        0.25,
+      );
+      expect(adapter.unit.key).toBe("V");
+
+      // Zoom in towards 1V: physical span 0.98 V (< 1.0 but >= 0.95 with 5% margin)
+      adapter.sync(
+        {
+          scales: { y0: { min: -3.43, max: 0.49 } }, // virtual span 3.92, physical 0.98 V
+          axes: [undefined, axis],
+        },
+        0.25,
+      );
+      expect(adapter.unit.key).toBe("V"); // Hysteresis prevents premature switch
+
+      // Zoom in past 0.95: physical span 0.92 V -> switches to mV
+      adapter.sync(
+        {
+          scales: { y0: { min: -3.22, max: 0.46 } }, // virtual span 3.68, physical 0.92 V
+          axes: [undefined, axis],
+        },
+        0.25,
+      );
+      expect(adapter.unit.key).toBe("mV");
+    });
+  });
 });

@@ -14,6 +14,16 @@ export interface YAxisUnit {
   label: string;
 }
 
+export interface LaneSpanConfig {
+  /** Visible lane height as a fraction of the plot height (0..1). */
+  laneFraction?: number;
+  /** Lane top offset as a fraction of the plot height from the top (0..1). */
+  bandStart?: number;
+}
+
+export type LaneFractionInput =
+  number | LaneSpanConfig | (() => number | LaneSpanConfig | undefined);
+
 export interface YAxisConfig {
   quantity?: string;
   /**
@@ -27,6 +37,8 @@ export interface YAxisConfig {
   initialUnit?: string;
   /** uPlot scale key this adapter follows (issue #106: `y0`, `y1`, ...). */
   scaleKey?: string;
+  /** Stack-view lane fraction or resolver for physical lane SI unit derivation (issue #270). */
+  laneFraction?: LaneFractionInput;
 }
 
 /** Base symbols whose magnitudes ladder into SI-prefixed axis units. */
@@ -116,7 +128,7 @@ export interface YAxisLike {
 }
 
 export interface YAxisAdapter {
-  sync: (u: YAxisLike) => void;
+  sync: (u: YAxisLike, lane?: number | LaneSpanConfig) => void;
   values: (self: unknown, splits: number[]) => Array<string | null>;
   label: string;
   unit: YAxisUnit;
@@ -124,6 +136,29 @@ export interface YAxisAdapter {
   scaleKey: string;
   config: { quantity: string; unit: string };
   setQuantity: (quantity: string, u?: YAxisLike) => void;
+  setLaneFraction?: (fraction: LaneFractionInput | undefined) => void;
+}
+
+function resolveLane(
+  arg: number | LaneSpanConfig | undefined,
+  configured: LaneFractionInput | undefined,
+): { laneFraction?: number; bandStart?: number } {
+  const source =
+    arg !== undefined
+      ? arg
+      : typeof configured === "function"
+        ? configured()
+        : configured;
+  if (typeof source === "number") {
+    return { laneFraction: source };
+  }
+  if (source && typeof source === "object") {
+    return {
+      laneFraction: source.laneFraction,
+      bandStart: source.bandStart,
+    };
+  }
+  return {};
 }
 
 /**
@@ -133,6 +168,7 @@ export function createYAxisAdapter(config: YAxisConfig = {}): YAxisAdapter {
   let currentQuantity = config.quantity ?? "Voltage";
   const baseUnit = config.unit ?? "V";
   const scaleKey = config.scaleKey ?? "y";
+  let laneFractionConfig = config.laneFraction;
   let units = buildYAxisUnits(currentQuantity, baseUnit);
 
   const matchedInitial = config.initialUnit
@@ -177,18 +213,50 @@ export function createYAxisAdapter(config: YAxisConfig = {}): YAxisAdapter {
         setAxisLabel(u, unit.label);
       }
     },
-    sync: (u) => {
+    setLaneFraction: (fraction: LaneFractionInput | undefined) => {
+      laneFractionConfig = fraction;
+    },
+    sync: (u, laneInput) => {
       const min = u.scales[scaleKey]?.min;
       const max = u.scales[scaleKey]?.max;
       if (min == null || max == null) return;
-      const maxAbs = Math.max(Math.abs(min), Math.abs(max));
-      if (!Number.isFinite(maxAbs) || maxAbs <= 0) {
+
+      const { laneFraction, bandStart } = resolveLane(
+        laneInput,
+        laneFractionConfig,
+      );
+
+      // Issue #270: in Stack mode each channel trace occupies a fractional lane band.
+      // uPlot expands the virtual scale span by 1/laneFraction, which would artificially
+      // inflate Math.max(|min|, |max|) and prematurely switch units to [kV].
+      // Derive effective bound from the physical amplitude visible in the lane:
+      let effectiveBound: number;
+      if (
+        typeof laneFraction === "number" &&
+        Number.isFinite(laneFraction) &&
+        laneFraction > 0 &&
+        laneFraction < 1
+      ) {
+        const virtualSpan = max - min;
+        const physicalSpan = virtualSpan * laneFraction;
+        if (typeof bandStart === "number" && Number.isFinite(bandStart)) {
+          const valTop = max - bandStart * virtualSpan;
+          const valBottom = max - (bandStart + laneFraction) * virtualSpan;
+          effectiveBound = Math.max(Math.abs(valTop), Math.abs(valBottom));
+        } else {
+          effectiveBound = physicalSpan;
+        }
+      } else {
+        effectiveBound = Math.max(Math.abs(min), Math.abs(max));
+      }
+
+      if (!Number.isFinite(effectiveBound) || effectiveBound <= 0) {
         established = true;
         unit = units[1] ?? units[0]!;
         setAxisLabel(u, unit.label);
         return;
       }
-      const target = selectYUnit(maxAbs, units);
+      const target = selectYUnit(effectiveBound, units);
 
       if (!established) {
         established = true;
@@ -202,12 +270,13 @@ export function createYAxisAdapter(config: YAxisConfig = {}): YAxisAdapter {
       if (units.length > 1) {
         const i = units.indexOf(unit);
         const j = units.indexOf(target);
-        // Moving to a larger unit (j < i) requires maxAbs to exceed boundary by margin;
-        // moving to a smaller unit (j > i) requires maxAbs to fall below boundary by margin.
+        // Moving to a larger unit (j < i) requires effectiveBound to exceed boundary by margin;
+        // moving to a smaller unit (j > i) requires effectiveBound to fall below boundary by margin.
         const boundary =
           Y_UNIT_BOUNDARIES[Math.min(i, j)]! *
           (j < i ? 1 + SWITCH_MARGIN : 1 - SWITCH_MARGIN);
-        const pastBoundary = j < i ? maxAbs >= boundary : maxAbs < boundary;
+        const pastBoundary =
+          j < i ? effectiveBound >= boundary : effectiveBound < boundary;
         if (!pastBoundary) return;
       }
 

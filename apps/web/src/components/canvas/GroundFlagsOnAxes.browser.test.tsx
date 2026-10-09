@@ -123,7 +123,15 @@ describe("Ground flags on per-channel y-axis columns (issue #249)", () => {
     let mounted: uPlot | null = null;
     await act(async () => {
       root.render(
-        <div>
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
           <WaveformToolbar />
           <Oscilloscope
             onUPlotInit={(u) => {

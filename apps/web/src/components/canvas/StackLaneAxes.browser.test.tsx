@@ -15,7 +15,7 @@ import { useReferenceStore } from "../../state/referenceStore";
 import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
-import { laneBandCss } from "./stackLaneDecorations";
+import { laneBandCss, laneBandsCss } from "./stackLaneDecorations";
 import {
   composePrintSnapshot,
   composeSnapshotCanvas,
@@ -378,6 +378,10 @@ describe("Stack-view lane-scoped axis columns + separators (issue #250)", () => 
       "[data-testid='oscilloscope-container']",
     ) as HTMLElement;
     const rect = container.getBoundingClientRect();
+    const bands = laneBandsCss(uplot, capture);
+    const bandA = bands.find((b) => b.key === "A")!;
+    const pxRatio = pxRatioOf(uplot);
+    const plotTop = uplot.bbox.top / pxRatio;
     const axisA = axisOf(uplot, yScaleKey(0));
     await act(async () => {
       container.dispatchEvent(
@@ -385,7 +389,9 @@ describe("Stack-view lane-scoped axis columns + separators (issue #250)", () => 
           bubbles: true,
           cancelable: true,
           clientX: Math.round(rect.left + (axisA._pos ?? 60) - 20),
-          clientY: Math.round(rect.top + 200),
+          clientY: Math.round(
+            rect.top + plotTop + (bandA.top + bandA.bottom) / 2,
+          ),
         }),
       );
       await new Promise((r) => setTimeout(r, 30));

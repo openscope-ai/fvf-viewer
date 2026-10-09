@@ -21,12 +21,15 @@ import {
   AXIS_SIZE_X_PX,
   AXIS_TICK_SIZE_PX,
   CANVAS_PADDING,
-  measureYAxisSize,
+  computeYAxisSize,
+  syncUnifiedStackAxes,
 } from "../canvas/axesConfig";
 import { drawTriggerGlyph, drawTriggerLine } from "../canvas/triggerMarker";
 import { computeGroundFlags, drawGroundFlags } from "../canvas/groundFlags";
 import {
   drawStackLaneDecorations,
+  laneBandCss,
+  laneClippedPathBuilder,
   laneTickFilter,
   type LaneAxisTitle,
 } from "../canvas/stackLaneDecorations";
@@ -39,6 +42,7 @@ import {
   type TimeAxisUnitKey,
 } from "../canvas/timeAxis";
 import type { LineStyle } from "../../state/cursorDisplayStore";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { createYAxisAdapter, type YAxisAdapter } from "../canvas/yAxis";
 import {
   buildDisplayData,
@@ -594,6 +598,7 @@ export async function composePrintSnapshot(
     liveSelectedAxis?.scale ??
     (capture.channels.length > 0 ? yScaleKey(0) : null);
 
+  const isStacked = useChannelDisplayStore.getState().stackMode;
   const printYAdapters = new Map<number, YAxisAdapter>();
   capture.channels.forEach((channel, origIdx) => {
     const scaleKey = yScaleKey(origIdx);
@@ -622,10 +627,35 @@ export async function composePrintSnapshot(
     });
     const bounds = liveBounds[origIdx];
     if (bounds?.min != null && bounds?.max != null) {
-      adapter.sync({
-        scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
-        axes: [],
-      });
+      if (isStacked) {
+        const liveBand = laneBandCss(liveUplot, capture, scaleKey);
+        const livePxRatio =
+          liveUplot.width > 0
+            ? liveUplot.ctx.canvas.width / liveUplot.width
+            : 1;
+        const livePlotHgt = liveUplot.bbox.height / livePxRatio;
+        if (liveBand && livePlotHgt > 0) {
+          const bandFraction = (liveBand.bottom - liveBand.top) / livePlotHgt;
+          const bandStart = liveBand.top / livePlotHgt;
+          adapter.sync(
+            {
+              scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
+              axes: [],
+            },
+            { laneFraction: bandFraction, bandStart },
+          );
+        } else {
+          adapter.sync({
+            scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
+            axes: [],
+          });
+        }
+      } else {
+        adapter.sync({
+          scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
+          axes: [],
+        });
+      }
     }
     printYAdapters.set(origIdx, adapter);
   });
@@ -633,7 +663,6 @@ export async function composePrintSnapshot(
   const reversedChannels = capture.channels
     .map((channel, origIdx) => ({ channel, origIdx }))
     .reverse();
-
   const palette = options.palette ?? "light";
   const chrome = RENDER_CHROME[palette];
   const host = document.createElement("div");
@@ -717,8 +746,8 @@ export async function composePrintSnapshot(
               labelSize: AXIS_LABEL_SIZE_PX,
               gap: AXIS_GAP_PX,
               labelGap: AXIS_LABEL_GAP_PX,
-              size: (_self: uPlot, values: string[]) =>
-                measureYAxisSize(values),
+              size: (self: unknown, values: (string | number | null)[]) =>
+                computeYAxisSize(self as uPlot, values, scaleKey, isStacked),
               values: (_self: unknown, splits: number[]) =>
                 adapter.values(_self, splits),
             };
@@ -734,6 +763,7 @@ export async function composePrintSnapshot(
             width: 1.5,
             points: { show: false },
             show: entry.show,
+            paths: laneClippedPathBuilder(yScaleKey(index), () => capture),
           })),
         ],
         hooks: {
@@ -741,12 +771,27 @@ export async function composePrintSnapshot(
             (u) => {
               printTimeAxis.sync(u);
               for (const adapter of printYAdapters.values()) {
+                if (isStacked) {
+                  const band = laneBandCss(u, capture, adapter.scaleKey);
+                  const pxRatio =
+                    u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+                  const plotHeight = u.bbox.height / pxRatio;
+                  if (band && plotHeight > 0) {
+                    const bandFraction = (band.bottom - band.top) / plotHeight;
+                    const bandStart = band.top / plotHeight;
+                    adapter.sync(u, { laneFraction: bandFraction, bandStart });
+                    continue;
+                  }
+                }
                 adapter.sync(u);
               }
             },
           ],
           drawClear: [
             (u) => {
+              if (isStacked) {
+                syncUnifiedStackAxes(u);
+              }
               if (options.transparent) return;
               u.ctx.save();
               u.ctx.fillStyle = overlay.background;
@@ -771,6 +816,19 @@ export async function composePrintSnapshot(
               // print pass's contrast-adapted colors. The print render
               // is primary-only (pre-existing scope), so its lane
               // partitioning covers the visible primary channels.
+              if (isStacked) {
+                for (const adapter of printYAdapters.values()) {
+                  const band = laneBandCss(u, capture, adapter.scaleKey);
+                  const pxRatio =
+                    u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+                  const plotHeight = u.bbox.height / pxRatio;
+                  if (band && plotHeight > 0) {
+                    const bandFraction = (band.bottom - band.top) / plotHeight;
+                    const bandStart = band.top / plotHeight;
+                    adapter.sync(u, { laneFraction: bandFraction, bandStart });
+                  }
+                }
+              }
               const laneTitles = new Map<string, LaneAxisTitle>();
               capture.channels.forEach((_channel, origIdx) => {
                 const adapter = printYAdapters.get(origIdx);

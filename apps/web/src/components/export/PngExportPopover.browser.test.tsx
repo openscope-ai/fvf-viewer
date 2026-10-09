@@ -53,7 +53,15 @@ describe("PNG export options popover (issue #252)", () => {
   const mountFullUi = async (): Promise<void> => {
     await act(async () => {
       root.render(
-        <div>
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
           {/* The toolbar already embeds the split-action Export chip. */}
           <WaveformToolbar />
           <Oscilloscope />
@@ -61,6 +69,9 @@ describe("PNG export options popover (issue #252)", () => {
       );
     });
     await act(async () => {
+      await new Promise((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(r)),
+      );
       await new Promise((r) => setTimeout(r, 250));
     });
   };
@@ -537,12 +548,11 @@ describe("PNG export options popover (issue #252)", () => {
 
   it("AC7 (compositing): grid exclusion removes the graticule from the export only", async () => {
     await mountFullUi();
+    const container = document.querySelector(
+      "[data-testid='oscilloscope-container']",
+    ) as HTMLElement & { __uplot?: uPlot };
+    const uplot = container.__uplot!;
     const capture = useCaptureStore.getState().capture!;
-    const uplot = (
-      document.querySelector(
-        "[data-testid='oscilloscope-container']",
-      ) as HTMLElement & { __uplot?: uPlot }
-    ).__uplot!;
     const { composePrintSnapshot } = await import("./pngSnapshot");
     const series = capture.channels.map((channel) => ({
       label: channel.name,

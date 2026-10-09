@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.10.6] - 2026-10-09
+
+[v0.10.5...v0.10.6](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.5...v0.10.6)
+
+### Fixed
+
+- Per-file Stack/Overlay mode persistence and atomic Stack initialization (issue #271):
+  - Scoped Stack/Overlay mode persistence per file in `fvf.stack-mode` (`readStoredStackModes` / `writeStoredStackModes`) keyed by capture identity (`fileName::timestamp14`), eliminating global mode pollution so new captures open in default Overlay mode while previously saved files restore Stack mode and custom lane weights accurately.
+  - Implemented atomic Stack view initialization in `Oscilloscope` so captures opening directly into Stack mode render partitioned lane scales, lane bands, axis titles, and filtered ticks within their lane boundaries from frame 1 without flashing in unstacked Overlay mode.
+- Stack view Retina/HiDPI axis title font rendering and physical lane SI unit derivation (issue #270):
+  - Fixed blurry, small rotated Y-axis lane titles on HiDPI/Retina screens by scaling title font size by `devicePixelRatio` (`axisFont(pxRatio)`) on device-pixel canvas contexts, ensuring titles render crisply at 11 CSS px in both live view and exported PNG snapshots.
+  - Corrected SI unit derivation for Y-axes in Stack mode: derive unit scales based on visible physical amplitude in the lane (`Math.max(|valTop|, |valBottom|, physicalSpan)` with `physicalSpan = virtualSpan * laneFraction`) instead of expanded virtual scale bounds, preventing signals under 1,000 V from prematurely switching to `[kV]` while correctly scaling genuinely high/low signals to `[kV]` or `[mV]` with standard 5% hysteresis.
+  - Wrapped `applyFitBounds` scale initialization in `instance.batch` to guarantee atomic and synchronous viewport scale initialization.
+- Stack view lane-scoped 2D box zoom (issue #269):
+  - In Stack mode, dragging a 2D zoom box over any lane synchronizes the selected horizontal time window ($X$) across all lanes while scoping vertical amplitude zoom ($Y$) strictly to the hovered lane band (`laneBandsCss`), leaving all other channels' vertical scales untouched.
+  - Constrained the zoomed channel's rendered trace strictly within its assigned lane band via `laneClippedPathBuilder` (`clip`), preventing signal peaks from leaking into neighboring lanes.
+  - Recorded lane zoom into `preStackRef` so lane resizing and Overlay toggle preserve zoomed bounds, and verified 'Reset View' cleanly restores both horizontal zoom and lane-specific vertical zoom back to default fit bounds.
+- Stack view horizontal alignment of Y-axes into single column (issue #268):
+  - Unified left Y-axis column positions in Stack mode (`syncUnifiedStackAxes`) so all active channels' Y-axes align in a clean, single vertical column at the left edge of the plot.
+
 ## [0.10.5] - 2026-10-08
 
 [v0.10.4...v0.10.5](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.4...v0.10.5)

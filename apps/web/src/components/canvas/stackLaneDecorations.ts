@@ -33,7 +33,12 @@ import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { laneFractions, useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { resolveThemePalette } from "./themePalette";
-import { AXIS_FONT, AXIS_LABEL_GAP_PX } from "./axesConfig";
+import {
+  AXIS_LABEL_GAP_PX,
+  AXIS_SIZE_X_PX,
+  CANVAS_PADDING,
+  axisFont,
+} from "./axesConfig";
 import { yScaleKey } from "../../capture/channelUnits";
 import type { ParsedCapture } from "../../types/capture";
 
@@ -121,7 +126,16 @@ export interface LaneBand {
 export function laneBandsCss(u: uPlot, capture: ParsedCapture): LaneBand[] {
   const lanes = visibleLaneChannels(capture);
   const pxRatio = cssPxRatio(u);
-  const plotHeight = u.bbox.height / pxRatio;
+  const plotHeight =
+    u.bbox.height > 0
+      ? u.bbox.height / pxRatio
+      : Math.max(
+          (u.height > 0 ? u.height : 400) -
+            CANVAS_PADDING[0] -
+            CANVAS_PADDING[2] -
+            AXIS_SIZE_X_PX,
+          100,
+        );
   // Issue #251: lane weights are keyed by CHANNEL key.
   const fractions = laneFractions(
     lanes.map((lane) => lane.key),
@@ -208,6 +222,7 @@ export function drawStackLaneDecorations(
   const palette = resolveThemePalette(useThemeStore.getState().theme);
 
   ctx.save();
+  const clearedStrips = new Set<number>();
   for (const scaleKey of keys) {
     const axis = u.axes.find((a) => a.scale === scaleKey) as
       LaneAxis | undefined;
@@ -225,35 +240,42 @@ export function drawStackLaneDecorations(
     const bandTopD = plotTopD + band.top * pxRatio;
     const bandBottomD = plotTopD + band.bottom * pxRatio;
 
-    // Column border line: erase the segments outside the band (the
-    // in-band segment keeps uPlot's own stroke — no color mismatch).
-    ctx.clearRect(
-      posD - 2 * pxRatio,
-      plotTopD,
-      2 * pxRatio,
-      bandTopD - plotTopD,
-    );
-    ctx.clearRect(
-      posD - 2 * pxRatio,
-      bandBottomD,
-      2 * pxRatio,
-      plotTopD + plotHgtD - bandBottomD,
-    );
+    // Issue #268: in Overlay mode, column borders are staggered, so
+    // erase outside the band. In Stack mode with unified column, the
+    // column border is the continuous graticule left border.
+    if (!useChannelDisplayStore.getState().stackMode) {
+      ctx.clearRect(
+        posD - 2 * pxRatio,
+        plotTopD,
+        2 * pxRatio,
+        bandTopD - plotTopD,
+      );
+      ctx.clearRect(
+        posD - 2 * pxRatio,
+        bandBottomD,
+        2 * pxRatio,
+        plotTopD + plotHgtD - bandBottomD,
+      );
+    }
 
     // Rotated title: uPlot draws it once at the plot's mid-height —
-    // erase it across the full column height (the strip is strictly
-    // left of the tick-label body, so labels are untouched), then
+    // erase it across the full column height (clear each unique strip only once
+    // so subsequent lanes in the same strip are not erased), then
     // redraw it rotated at the lane's center, clipped to the band.
     const stripLeftD = (lposCss - labelSizeCss - 2) * pxRatio;
     const stripWidthD = (labelSizeCss + 2) * pxRatio;
-    ctx.clearRect(stripLeftD, plotTopD, stripWidthD, plotHgtD);
+    const stripKey = Math.round(stripLeftD);
+    if (!clearedStrips.has(stripKey)) {
+      ctx.clearRect(stripLeftD, plotTopD, stripWidthD, plotHgtD);
+      clearedStrips.add(stripKey);
+    }
     const title = titles.get(scaleKey);
     if (title) {
       ctx.save();
       ctx.beginPath();
       ctx.rect(stripLeftD, bandTopD, stripWidthD, bandBottomD - bandTopD);
       ctx.clip();
-      ctx.font = AXIS_FONT;
+      ctx.font = axisFont(pxRatio);
       ctx.fillStyle = title.color;
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
@@ -303,4 +325,65 @@ export function drawStackLaneDecorations(
     ctx.globalAlpha = 1;
   }
   ctx.restore();
+}
+
+const defaultPathBuilder = uPlot.paths.linear!();
+
+/**
+ * uPlot series path builder for Stack mode (issue #269): strictly clips the
+ * series line stroke to its assigned lane band (`[band.top, band.bottom]`).
+ * In Overlay mode (`!stackMode`), returns the unclipped default linear paths.
+ */
+export function laneClippedPathBuilder(
+  scaleKey: string,
+  getCapture: () => ParsedCapture | null,
+): uPlot.Series.PathBuilder {
+  return (u, seriesIdx, idx0, idx1) => {
+    const paths = defaultPathBuilder(u, seriesIdx, idx0, idx1);
+    if (!paths) return paths;
+    if (!useChannelDisplayStore.getState().stackMode) {
+      return paths;
+    }
+    const capture = getCapture();
+    if (!capture) return paths;
+    const band = laneBandCss(u, capture, scaleKey);
+    if (!band) return paths;
+
+    const pxRatio = cssPxRatio(u);
+    const clipTop = u.bbox.top + band.top * pxRatio;
+    const clipHeight = (band.bottom - band.top) * pxRatio;
+    const clipLeft = u.bbox.left;
+    const clipWidth = u.bbox.width;
+
+    const uPlotAny = uPlot as unknown as {
+      clipGaps?: (
+        gaps: unknown,
+        ori: number,
+        plotLft: number,
+        plotTop: number,
+        plotWid: number,
+        plotHgt: number,
+      ) => Path2D | null;
+    };
+    const clip =
+      (paths.gaps &&
+        paths.gaps.length > 0 &&
+        uPlotAny.clipGaps?.(
+          paths.gaps,
+          0,
+          clipLeft,
+          clipTop,
+          clipWidth,
+          clipHeight,
+        )) ||
+      new Path2D();
+    if (!paths.gaps || paths.gaps.length === 0 || !uPlotAny.clipGaps) {
+      clip.rect(clipLeft, clipTop, clipWidth, clipHeight);
+    }
+
+    return {
+      ...paths,
+      clip,
+    };
+  };
 }
