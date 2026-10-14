@@ -7,6 +7,7 @@
 import React, { useEffect, useRef } from "react";
 import type { CaptureError } from "../../state/captureStore";
 import { getErrorTitle, parseErrorDetails } from "./errorDetails";
+import { trackEvent } from "../../analytics/tracker";
 
 export interface ErrorModalProps {
   error: CaptureError;
@@ -17,6 +18,10 @@ export default function ErrorModal({ error, onDismiss }: ErrorModalProps) {
   const dismissButtonRef = useRef<HTMLButtonElement>(null);
   const title = getErrorTitle(error.code);
   const details = parseErrorDetails(error.details);
+
+  useEffect(() => {
+    trackEvent("parse_error", { error_type: error.code });
+  }, [error.code]);
 
   useEffect(() => {
     dismissButtonRef.current?.focus();

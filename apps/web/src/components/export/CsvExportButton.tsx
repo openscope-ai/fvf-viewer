@@ -8,6 +8,7 @@ import React, { useCallback, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { csvFileName, exportCaptureCsv } from "./csvExport";
+import { trackEvent } from "../../analytics/tracker";
 
 export default function CsvExportButton() {
   const capture = useCaptureStore((state) => state.capture);
@@ -18,6 +19,7 @@ export default function CsvExportButton() {
 
   const handleExport = useCallback(async () => {
     if (!capture || exporting) return;
+    trackEvent("export_csv");
     setExporting(true);
     try {
       const blob = await exportCaptureCsv(capture, fileName, customNames);

@@ -22,6 +22,7 @@ import { usePngExportStore } from "../../state/pngExportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { GearIcon } from "../toolbar/badgeConfig/icons";
 import PngExportPopover, { EXPORT_POPOVER_KEY } from "./PngExportPopover";
+import { trackEvent } from "../../analytics/tracker";
 
 /** Image clipboard writes require ClipboardItem + clipboard.write (secure context). */
 export function supportsImageClipboard(): boolean {
@@ -114,6 +115,7 @@ export default function PngSnapshotButton() {
       setShowBlockedModal(true);
       return;
     }
+    trackEvent("export_png", { action: "download" });
     setExporting(true);
     try {
       const blob = await exporter(settings);
@@ -143,6 +145,7 @@ export default function PngSnapshotButton() {
       setShowBlockedModal(true);
       return;
     }
+    trackEvent("export_png", { action: "clipboard_copy" });
     setExporting(true);
     try {
       // Same settings as the download path (theme/background/card/
