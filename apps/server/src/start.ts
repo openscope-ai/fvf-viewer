@@ -11,10 +11,15 @@ const version = (
   ) as { version: string }
 ).version;
 
+const umamiWebsiteId = process.env["UMAMI_WEBSITE_ID"];
+const umamiHost = process.env["UMAMI_HOST"];
+
 async function main(): Promise<void> {
   const app = await buildServer({
     version,
     staticRoot,
+    umamiWebsiteId,
+    umamiHost,
   });
 
   try {

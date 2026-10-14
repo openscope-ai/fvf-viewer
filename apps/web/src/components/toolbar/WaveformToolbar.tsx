@@ -40,6 +40,7 @@ import {
 } from "../canvas/themePalette";
 import CsvExportButton from "../export/CsvExportButton";
 import PngSnapshotButton from "../export/PngSnapshotButton";
+import { trackEvent } from "../../analytics/tracker";
 import { CURSOR_MOVEMENT_SUMMARY } from "../cursors/cursorHelp";
 import {
   AnchoredPopover,
@@ -573,7 +574,12 @@ export default function WaveformToolbar({
           aria-label="Overlay: all channels share the full graticule"
           title="Overlay: all channels share the full graticule"
           data-testid="stack-mode-overlay"
-          onClick={() => setStackMode(false)}
+          onClick={() => {
+            if (stackMode) {
+              setStackMode(false);
+              trackEvent("layout_toggled", { mode: "overlay" });
+            }
+          }}
         >
           Overlay
         </button>
@@ -584,7 +590,12 @@ export default function WaveformToolbar({
           aria-label="Stack: partition the canvas into equal horizontal lanes per visible channel"
           title="Stack: partition the canvas into equal horizontal lanes per visible channel"
           data-testid="stack-mode-stack"
-          onClick={() => setStackMode(true)}
+          onClick={() => {
+            if (!stackMode) {
+              setStackMode(true);
+              trackEvent("layout_toggled", { mode: "stack" });
+            }
+          }}
         >
           Stack
         </button>

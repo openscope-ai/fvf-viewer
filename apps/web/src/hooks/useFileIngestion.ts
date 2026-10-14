@@ -16,6 +16,7 @@
 import { useCallback, useRef } from "react";
 import { useCaptureStore } from "../state/captureStore";
 import { useReferenceStore } from "../state/referenceStore";
+import { trackEvent } from "../analytics/tracker";
 
 /** Which capture slot an ingested file targets (issue #96). */
 export type IngestRole = "primary" | "reference";
@@ -51,6 +52,9 @@ export function useFileIngestion() {
           await useReferenceStore
             .getState()
             .parseReferenceBuffer(buffer, file.name);
+          if (useReferenceStore.getState().parseState === "success") {
+            trackEvent("file_loaded", { source: "compare" });
+          }
         } catch (error) {
           console.error(
             "[useFileIngestion] failed to read or parse reference file",
@@ -69,6 +73,12 @@ export function useFileIngestion() {
           return;
         }
         await useCaptureStore.getState().parseBuffer(buffer, file.name, ticket);
+        if (
+          ticket === useCaptureStore.getState().currentTicket() &&
+          useCaptureStore.getState().parseState === "success"
+        ) {
+          trackEvent("file_loaded", { source: "upload" });
+        }
       } catch (error) {
         if (ticket === useCaptureStore.getState().currentTicket()) {
           useCaptureStore.getState().failIngestion(ticket, error, file.name);
@@ -102,6 +112,12 @@ export function useFileIngestion() {
           return;
         }
         await useCaptureStore.getState().parseBuffer(buffer, fileName, ticket);
+        if (
+          ticket === useCaptureStore.getState().currentTicket() &&
+          useCaptureStore.getState().parseState === "success"
+        ) {
+          trackEvent("file_loaded", { source: "sample_demo" });
+        }
       } catch (error) {
         if (ticket === useCaptureStore.getState().currentTicket()) {
           useCaptureStore.getState().failIngestion(ticket, error, fileName);

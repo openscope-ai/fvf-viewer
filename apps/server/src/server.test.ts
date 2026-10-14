@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildServer } from "./server";
 import type { FastifyInstance } from "fastify";
 
@@ -127,5 +127,151 @@ describe("compression", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-encoding"]).toBe("gzip");
+  });
+});
+
+describe("Umami analytics proxy and fallback (issue #277)", () => {
+  it("returns 404 for /stats/script.js when umamiWebsiteId is absent", async () => {
+    const res = await app.inject({ method: "GET", url: "/stats/script.js" });
+    expect(res.statusCode).toBe(404);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("returns 404 for /stats/api/send when umamiWebsiteId is absent", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/stats/api/send",
+      payload: { type: "event", payload: { website: "x" } },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("does not inject umami-website-id meta tag when umamiWebsiteId is absent", async () => {
+    const res = await app.inject({ method: "GET", url: "/" });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain('name="umami-website-id"');
+  });
+
+  describe("when umamiWebsiteId is configured", () => {
+    let analyticsApp: FastifyInstance;
+    const testWebsiteId = "11111111-2222-3333-4444-555555555555";
+    const testHost = "https://mock-umami.invalid";
+
+    beforeAll(async () => {
+      analyticsApp = await buildServer({
+        version: VERSION,
+        staticRoot,
+        logLevel: "silent",
+        umamiWebsiteId: testWebsiteId,
+        umamiHost: testHost,
+      });
+    });
+
+    afterAll(async () => {
+      await analyticsApp.close();
+    });
+
+    it("injects umami-website-id meta tag into index.html without violating CSP", async () => {
+      const res = await analyticsApp.inject({ method: "GET", url: "/" });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toContain(
+        `<meta name="umami-website-id" content="${testWebsiteId}">`,
+      );
+      // CSP still retains strictly 'self'
+      const csp = res.headers["content-security-policy"] ?? "";
+      expect(csp).toContain("default-src 'self'");
+      expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'");
+      expect(csp).toContain("connect-src 'self'");
+      expect(csp).not.toContain("mock-umami.invalid");
+    });
+
+    it("proxies GET /stats/script.js from Umami Cloud", async () => {
+      const mockScriptContent = "/* umami client script */";
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(mockScriptContent, {
+          status: 200,
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+
+      try {
+        const res = await analyticsApp.inject({
+          method: "GET",
+          url: "/stats/script.js",
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.headers["content-type"]).toContain("application/javascript");
+        expect(res.headers["cache-control"]).toContain("public");
+        expect(res.body).toBe(mockScriptContent);
+        expect(fetchSpy).toHaveBeenCalledWith(`${testHost}/script.js`);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("proxies POST /stats/api/send and forwards client headers", async () => {
+      let forwardedUrl = "";
+      let forwardedHeaders: Headers | undefined;
+      let forwardedBody = "";
+
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementationOnce(async (input, init) => {
+          forwardedUrl = String(input);
+          forwardedHeaders = new Headers(init?.headers);
+          forwardedBody = String(init?.body);
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        });
+
+      try {
+        const payload = {
+          type: "event",
+          payload: { website: testWebsiteId, name: "export_csv" },
+        };
+        const res = await analyticsApp.inject({
+          method: "POST",
+          url: "/stats/api/send",
+          headers: {
+            "user-agent": "Mozilla/5.0 TestBrowser",
+            "x-forwarded-for": "198.51.100.1",
+          },
+          payload,
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ ok: true });
+        expect(forwardedUrl).toBe(`${testHost}/api/send`);
+        expect(forwardedHeaders?.get("user-agent")).toBe(
+          "Mozilla/5.0 TestBrowser",
+        );
+        expect(forwardedHeaders?.get("x-forwarded-for")).toBe("198.51.100.1");
+        expect(JSON.parse(forwardedBody)).toEqual(payload);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("handles upstream failure on GET /stats/script.js gracefully", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValueOnce(new Error("Network failure"));
+
+      try {
+        const res = await analyticsApp.inject({
+          method: "GET",
+          url: "/stats/script.js",
+        });
+        expect(res.statusCode).toBe(502);
+        expect(res.json()).toEqual({ error: "upstream_unavailable" });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
   });
 });

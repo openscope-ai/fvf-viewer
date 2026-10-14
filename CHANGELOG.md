@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.11.0] - 2026-10-14
+
+[v0.10.6...v0.11.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.6...v0.11.0)
+
+### Added
+
+- Privacy-first analytics via Umami Cloud and Fastify first-party proxy (issue #277):
+  - Added Fastify reverse proxy in `@fvf/server` forwarding `GET /stats/script.js` and `POST /stats/api/send` to Umami Cloud when `UMAMI_WEBSITE_ID` is set, retaining strict `script-src 'self' 'wasm-unsafe-eval'` and `connect-src 'self'` in Helmet CSP.
+  - When `UMAMI_WEBSITE_ID` is absent (default in local dev, CI, and test), proxy routes return 404 and the client tracker safely no-ops with zero network requests and zero console errors.
+  - Implemented typed client analytics wrapper (`apps/web/src/analytics/tracker.ts`) supporting `file_loaded` (`upload`, `sample_demo`, `compare`), `export_csv`, `export_png` (`download`, `clipboard_copy`), `layout_toggled` (`stack`, `overlay`), and `parse_error` (`error_type`), strictly excluding all capture metadata (filenames, timestamps, instrument serials, channel names, or sample values).
+
 ## [0.10.6] - 2026-10-09
 
 [v0.10.5...v0.10.6](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.5...v0.10.6)
