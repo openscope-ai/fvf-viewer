@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.11.1] - 2026-10-15
+
+[v0.11.0...v0.11.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.11.0...v0.11.1)
+
+### Fixed
+
+- Fastify proxy compression truncation on `/stats/script.js` (issue #295):
+  - Fixed premature stream termination in Fastify async route handlers by returning `reply.send(...)` so `@fastify/compress` pipelines flush completely when responses exceed compression threshold.
+  - Cached upstream Umami tracker script in-memory with a 1-hour TTL to eliminate redundant upstream fetches.
+
 ## [0.11.0] - 2026-10-14
 
 [v0.10.6...v0.11.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.10.6...v0.11.0)
