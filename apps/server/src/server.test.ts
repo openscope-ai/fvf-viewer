@@ -167,6 +167,7 @@ describe("Umami analytics proxy and fallback (issue #277)", () => {
         logLevel: "silent",
         umamiWebsiteId: testWebsiteId,
         umamiHost: testHost,
+        scriptCacheTtlMs: 0,
       });
     });
 
@@ -209,6 +210,73 @@ describe("Umami analytics proxy and fallback (issue #277)", () => {
         expect(fetchSpy).toHaveBeenCalledWith(`${testHost}/script.js`);
       } finally {
         fetchSpy.mockRestore();
+      }
+    });
+
+    it("proxies GET /stats/script.js without truncation when client requests compression (issue #295)", async () => {
+      // 4,810 bytes matches real Umami script size, triggering @fastify/compress (>1,024 byte threshold)
+      const mockScriptContent = "console.log('umami-tracking');\n".repeat(160);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(mockScriptContent, {
+          status: 200,
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+
+      try {
+        const res = await analyticsApp.inject({
+          method: "GET",
+          url: "/stats/script.js",
+          headers: {
+            "accept-encoding": "gzip, deflate, br",
+          },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.headers["content-type"]).toContain("application/javascript");
+        expect(res.headers["content-encoding"]).toBeDefined();
+        // Regression check: payload must not be truncated to 0 bytes
+        expect(res.rawPayload.length).toBeGreaterThan(0);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("caches upstream script in memory when scriptCacheTtlMs is enabled (AC3)", async () => {
+      const cachingApp = await buildServer({
+        version: VERSION,
+        staticRoot,
+        logLevel: "silent",
+        umamiWebsiteId: testWebsiteId,
+        umamiHost: testHost,
+        scriptCacheTtlMs: 60_000,
+      });
+
+      const mockScript = "console.log('cached-script');";
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(mockScript, {
+          status: 200,
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+
+      try {
+        const res1 = await cachingApp.inject({
+          method: "GET",
+          url: "/stats/script.js",
+        });
+        const res2 = await cachingApp.inject({
+          method: "GET",
+          url: "/stats/script.js",
+        });
+        expect(res1.statusCode).toBe(200);
+        expect(res1.body).toBe(mockScript);
+        expect(res2.statusCode).toBe(200);
+        expect(res2.body).toBe(mockScript);
+        // Only 1 upstream fetch should have been made
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        fetchSpy.mockRestore();
+        await cachingApp.close();
       }
     });
 

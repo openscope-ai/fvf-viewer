@@ -16,6 +16,8 @@ export interface ServerOptions {
   umamiWebsiteId?: string;
   /** Umami Cloud upstream host; defaults to https://cloud.umami.is. */
   umamiHost?: string;
+  /** In-memory cache TTL for upstream script in milliseconds; defaults to 3,600,000 (1 hour). */
+  scriptCacheTtlMs?: number;
 }
 
 /**
@@ -73,17 +75,31 @@ export async function buildServer(
   );
 
   if (umamiWebsiteId) {
+    let cachedScript: { text: string; expiresAt: number } | null = null;
+    const scriptCacheTtlMs = options.scriptCacheTtlMs ?? 3_600_000; // 1 hour default
+
     app.get("/stats/script.js", async (_request, reply) => {
       try {
-        const upstreamRes = await fetch(`${umamiHost}/script.js`);
-        if (!upstreamRes.ok) {
-          reply
-            .code(upstreamRes.status)
-            .send({ error: "upstream_script_failed" });
-          return;
+        let scriptText: string;
+        const now = Date.now();
+        if (cachedScript && now < cachedScript.expiresAt) {
+          scriptText = cachedScript.text;
+        } else {
+          const upstreamRes = await fetch(`${umamiHost}/script.js`);
+          if (!upstreamRes.ok) {
+            return reply
+              .code(upstreamRes.status)
+              .send({ error: "upstream_script_failed" });
+          }
+          scriptText = await upstreamRes.text();
+          if (scriptCacheTtlMs > 0) {
+            cachedScript = {
+              text: scriptText,
+              expiresAt: now + scriptCacheTtlMs,
+            };
+          }
         }
-        const scriptText = await upstreamRes.text();
-        reply
+        return reply
           .header("content-type", "application/javascript; charset=utf-8")
           .header(
             "cache-control",
@@ -92,7 +108,7 @@ export async function buildServer(
           .send(scriptText);
       } catch (error) {
         app.log.error(error, "Failed to proxy Umami script");
-        reply.code(502).send({ error: "upstream_unavailable" });
+        return reply.code(502).send({ error: "upstream_unavailable" });
       }
     });
 
@@ -117,13 +133,13 @@ export async function buildServer(
         const responseText = await upstreamRes.text();
         const contentType =
           upstreamRes.headers.get("content-type") ?? "application/json";
-        reply
+        return reply
           .code(upstreamRes.status)
           .header("content-type", contentType)
           .send(responseText);
       } catch (error) {
         app.log.error(error, "Failed to proxy Umami send");
-        reply.code(502).send({ error: "upstream_unavailable" });
+        return reply.code(502).send({ error: "upstream_unavailable" });
       }
     });
   }
@@ -144,10 +160,9 @@ export async function buildServer(
   app.get("/", async (_request, reply) => {
     const html = renderIndexHtml();
     if (!html) {
-      reply.code(404).send({ error: "not_found" });
-      return;
+      return reply.code(404).send({ error: "not_found" });
     }
-    reply.type("text/html; charset=utf-8").send(html);
+    return reply.type("text/html; charset=utf-8").send(html);
   });
 
   await app.register(fastifyStatic, {
@@ -165,16 +180,14 @@ export async function buildServer(
       request.raw.url?.startsWith("/stats/") ||
       (request.method !== "GET" && request.method !== "HEAD")
     ) {
-      reply.code(404).send({ error: "not_found" });
-      return;
+      return reply.code(404).send({ error: "not_found" });
     }
     const html = renderIndexHtml();
     if (!html) {
-      reply.code(404).send({ error: "not_found" });
-      return;
+      return reply.code(404).send({ error: "not_found" });
     }
     // SPA fallback: deep links resolve to the client router.
-    reply.type("text/html; charset=utf-8").send(html);
+    return reply.type("text/html; charset=utf-8").send(html);
   });
 
   return app;
