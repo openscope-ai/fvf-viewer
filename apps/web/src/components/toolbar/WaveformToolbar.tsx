@@ -40,8 +40,11 @@ import {
 } from "../canvas/themePalette";
 import CsvExportButton from "../export/CsvExportButton";
 import PngSnapshotButton from "../export/PngSnapshotButton";
+import { FindNavControls } from "../navigation/FindNavControls";
+import { useMeasurementsStore } from "../../state/measurementsStore";
 import { trackEvent } from "../../analytics/tracker";
 import { CURSOR_MOVEMENT_SUMMARY } from "../cursors/cursorHelp";
+import { NAVIGATION_HELP_SUMMARY } from "../canvas/navigationHelp";
 import {
   AnchoredPopover,
   useBadgePopoverStore,
@@ -133,6 +136,10 @@ export default function WaveformToolbar({
   // Issue #98: 1-click Overlay/Stack lane partitioning.
   const stackMode = useChannelDisplayStore((state) => state.stackMode);
   const setStackMode = useChannelDisplayStore((state) => state.setStackMode);
+
+  // Issue #278: automatic amplitude measurements table toggle.
+  const measurementsOpen = useMeasurementsStore((state) => state.isOpen);
+  const toggleMeasurements = useMeasurementsStore((state) => state.toggleOpen);
 
   const resetTransforms = useChannelDisplayStore(
     (state) => state.resetTransforms,
@@ -603,13 +610,14 @@ export default function WaveformToolbar({
       <button
         type="button"
         className="waveform-fit-button"
-        aria-label="Reset View: reset display transforms, File 2 time slip, and viewport"
-        title="Reset View: reset display transforms, File 2 time slip, and viewport"
+        aria-label={`Reset View: reset display transforms, File 2 time slip, and viewport. ${NAVIGATION_HELP_SUMMARY}`}
+        title={`Reset View: reset display transforms, File 2 time slip, and viewport\nControls: ${NAVIGATION_HELP_SUMMARY}`}
         data-testid="reset-view-button"
         onClick={handleResetView}
       >
         Reset View
       </button>
+      <FindNavControls />
       <button
         type="button"
         className="waveform-theme-button"
@@ -619,6 +627,17 @@ export default function WaveformToolbar({
         onClick={toggleTheme}
       >
         {theme === "dark" ? "Light Theme" : "Dark Theme"}
+      </button>
+      <button
+        type="button"
+        className={`waveform-measurements-button${measurementsOpen ? " waveform-measurements-button--active" : ""}`}
+        aria-pressed={measurementsOpen}
+        aria-label="Toggle amplitude measurements table"
+        title="Toggle amplitude measurements table"
+        data-testid="measurements-toggle-button"
+        onClick={toggleMeasurements}
+      >
+        Measurements
       </button>
       <CsvExportButton />
       <PngSnapshotButton />

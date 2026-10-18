@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.12.0] - 2026-10-18
+
+[v0.11.1...v0.12.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.11.1...v0.12.0)
+
+### Added
+
+- Split-button export menus & composite time-aligned CSV export (issue #99):
+  - Upgraded Toolbar CSV export to an M3 split-action chip (`.csv-export-chip`, `.waveform-csv-button`, `.badge-split-divider`, `.csv-export-gear`) matching the exact geometry and design language of the Export PNG controls.
+  - Added delimiter selection (`comma` vs `semicolon`) with persistent preferences in local storage (`fvf.csv-export`).
+  - Added composite time-aligned CSV export in compare mode aligning File 1 and File 2 data lanes on File 1's time grid with horizontal time slip $\Delta t$ and provenance metadata headers (`file`, `reference_file`, `captured`, `timebase`, `trigger_alignment_dt_s`, `time_slip_samples`, `sample_rate_ratio`, `samples`, `channels`).
+- Automatic amplitude measurements (issue #278):
+  - Added a collapsible "Measurements" toolbar toggle button (`.waveform-measurements-button`) and state persistence in local storage (`fvf.measurements-open`).
+  - Added a docked amplitude measurements table (`.amplitude-measurements-panel`, `.amplitude-measurements-table`) displaying Vpp, Vmax, Vmin, Mean, and AC+DC true RMS for all visible channels in each channel's native units.
+  - Values compute purely client-side over the visible horizontal time window and update reactively on box-zoom, pan, Fit/Reset View, channel visibility toggles, and display transforms (Y-scale gain, invert, and offset).
+  - Saturated instrument samples (`NaN`) are strictly filtered out and never distort statistics.
+- Wheel zoom and drag pan navigation (issue #286):
+  - Pointer-anchored mouse wheel zoom on the waveform canvas expanding or contracting the time viewport centered at the cursor position, clamping at capture time bounds.
+  - Drag pan using middle-click drag or Shift + left-click drag to smoothly translate the horizontal time viewport without altering span, clamping at capture bounds.
+  - Added double-click on canvas shortcut to instantly reset the view to full capture fit.
+  - Surfaced canvas navigation shortcuts and guidance across the UI via canvas container accessibility properties (`role="region"`, `aria-label`, `title`) and enriched Reset View button tooltip and aria-label.
+- Find edge, peak and saturation navigation (issue #288):
+  - Added an M3 compact navigation chip (`.waveform-find-nav`, `.waveform-find-chip`, `.waveform-find-btn`, `.waveform-find-select`) to the waveform toolbar for jump-to search across rising edges, falling edges, peaks, valleys, and saturated (`NaN`) samples.
+  - Automatically centers the horizontal viewport on the found feature and synchronizes active cursor C1 to the found sample index.
+  - Dispatches non-mutating feedback notifications (`aria-live="polite"`, `.waveform-find-status`) when no further feature is found without perturbing viewport or cursor positions.
+  - Executes purely client-side over in-memory waveform data with zero network data egress (ADR 0006).
+
 ## [0.11.1] - 2026-10-15
 
 [v0.11.0...v0.11.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.11.0...v0.11.1)

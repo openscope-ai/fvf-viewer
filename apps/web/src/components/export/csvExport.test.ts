@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   alignedChannels,
+  buildCompositeCsvHeaderLines,
   buildCsvHeaderLines,
+  compositeCsvFileName,
   csvEscape,
   csvFileName,
   CSV_ROWS_PER_CHUNK,
   exportCaptureCsv,
+  exportCompositeCsv,
   formatSampleValue,
+  generateCompositeCsvChunks,
   generateCsvChunks,
 } from "./csvExport";
 import type { ParsedCapture } from "../../types/capture";
@@ -257,5 +261,168 @@ describe("CSV export core (node)", () => {
     for (const row of dataRows.slice(1)) {
       expect(row.split(",")[1]!.length).toBeGreaterThan(0);
     }
+  });
+
+  describe("Delimiter support (issue #99)", () => {
+    it("escapes semicolons when semicolon delimiter is chosen", () => {
+      expect(csvEscape("hello;world", ";")).toBe('"hello;world"');
+      expect(csvEscape("hello,world", ";")).toBe("hello,world");
+      expect(csvEscape('hello"world', ";")).toBe('"hello""world"');
+      expect(csvEscape("hello,world", ",")).toBe('"hello,world"');
+      expect(csvEscape("hello;world", ",")).toBe("hello;world");
+    });
+
+    it("generates CSV with semicolon delimiter", async () => {
+      const capture = syntheticCapture({ samples: 3 });
+      const blob = await exportCaptureCsv(capture, "test.fvf", undefined, ";");
+      const text = await blob.text();
+      const lines = text.split("\r\n").filter((l) => l.length > 0);
+      const dataRows = lines.filter((l) => !l.startsWith("#"));
+      expect(dataRows[0]).toBe("sample;time_s;Input A;Input B;Input D");
+      expect(dataRows[1]).toMatch(/^0;-?\d/);
+      expect(dataRows[1]!.split(";")).toHaveLength(5);
+    });
+  });
+
+  describe("Composite time-aligned CSV export (issue #99)", () => {
+    it("formats composite filenames with -vs- and compact timestamps", () => {
+      const fixedDate = new Date(2026, 9, 18, 14, 0, 0);
+      expect(compositeCsvFileName("run1.fvf", "run2.fvf", fixedDate)).toBe(
+        "run1-vs-run2-composite-20261018-140000.csv",
+      );
+      expect(compositeCsvFileName(null, null, fixedDate)).toBe(
+        "capture1-vs-capture2-composite-20261018-140000.csv",
+      );
+    });
+
+    it("generates composite CSV incorporating time slip Δt and provenance metadata", async () => {
+      const primary = syntheticCapture({ samples: 5, labels: ["Input A"] });
+      const reference = syntheticCapture({ samples: 5, labels: ["Input B"] });
+      // reference lane aligned on primary grid
+      const refLane = new Float32Array([1.0, 2.0, 3.0, 4.0, 5.0]);
+      const timeSlipSamples = 1; // 1 sample slip right
+
+      const blob = await exportCompositeCsv(
+        primary,
+        "primary.fvf",
+        reference,
+        "reference.fvf",
+        [refLane],
+        timeSlipSamples,
+        undefined,
+        ",",
+      );
+
+      const text = await blob.text();
+      const lines = text.split("\r\n").filter((l) => l.length > 0);
+
+      // Verify metadata comments
+      expect(lines).toContain(
+        "# FVF Viewer CSV export (composite time-aligned)",
+      );
+      expect(lines).toContain("# file: primary.fvf");
+      expect(lines).toContain("# reference_file: reference.fvf");
+      expect(lines.some((l) => l.startsWith("# trigger_alignment_dt_s:"))).toBe(
+        true,
+      );
+      expect(lines).toContain("# time_slip_samples: 1");
+      expect(lines.some((l) => l.startsWith("# sample_rate_ratio:"))).toBe(
+        true,
+      );
+
+      // Verify columns
+      const dataRows = lines.filter((l) => !l.startsWith("#"));
+      expect(dataRows[0]).toBe(
+        "sample,time_s,[File 1] Input A,[File 2] Input B",
+      );
+      expect(dataRows).toHaveLength(6); // 1 header + 5 samples
+
+      // Sample 0: slipped by 1 sample -> src = 0 - 1 = -1 (out of bounds -> empty)
+      const row0 = dataRows[1]!.split(",");
+      expect(row0[0]).toBe("0");
+      expect(row0[2]).toBe(formatSampleValue(primary.channels[0]!.data[0]!));
+      expect(row0[3]).toBe(""); // out of bounds before 0
+
+      // Sample 1: slipped src = 1 - 1 = 0 -> refLane[0] = 1.0
+      const row1 = dataRows[2]!.split(",");
+      expect(row1[0]).toBe("1");
+      expect(row1[2]).toBe(formatSampleValue(primary.channels[0]!.data[1]!));
+      expect(row1[3]).toBe("1");
+
+      // Sample 2: slipped src = 2 - 1 = 1 -> refLane[1] = 2.0
+      const row2 = dataRows[3]!.split(",");
+      expect(row2[3]).toBe("2");
+    });
+
+    it("supports semicolon delimiter in composite export", async () => {
+      const primary = syntheticCapture({ samples: 3, labels: ["Input A"] });
+      const reference = syntheticCapture({ samples: 3, labels: ["Input B"] });
+      const refLane = new Float32Array([10, 20, 30]);
+
+      const blob = await exportCompositeCsv(
+        primary,
+        "primary.fvf",
+        reference,
+        "reference.fvf",
+        [refLane],
+        0,
+        undefined,
+        ";",
+      );
+
+      const text = await blob.text();
+      const lines = text.split("\r\n").filter((l) => l.length > 0);
+      const dataRows = lines.filter((l) => !l.startsWith("#"));
+      expect(dataRows[0]).toBe(
+        "sample;time_s;[File 1] Input A;[File 2] Input B",
+      );
+      const row0 = dataRows[1]!.split(";");
+      expect(row0[0]).toBe("0");
+      expect(row0[3]).toBe("10");
+    });
+
+    it("builds composite header lines with custom delimiter and metadata", () => {
+      const primary = syntheticCapture({ samples: 2, labels: ["Input A"] });
+      const reference = syntheticCapture({ samples: 2, labels: ["Input B"] });
+      const pCols = alignedChannels(primary);
+      const rCols = alignedChannels(reference);
+      const headers = buildCompositeCsvHeaderLines(
+        primary,
+        "p.fvf",
+        reference,
+        "r.fvf",
+        0,
+        pCols,
+        rCols,
+        ";",
+      );
+      expect(headers).toContain(
+        "# FVF Viewer CSV export (composite time-aligned)",
+      );
+      expect(headers.some((l) => l.startsWith("# file: p.fvf"))).toBe(true);
+      expect(headers.some((l) => l.startsWith("# reference_file: r.fvf"))).toBe(
+        true,
+      );
+    });
+
+    it("generates chunks via generateCompositeCsvChunks with chunk boundary", async () => {
+      const primary = syntheticCapture({ samples: 4, labels: ["Input A"] });
+      const reference = syntheticCapture({ samples: 4, labels: ["Input B"] });
+      const chunks: string[] = [];
+      for await (const chunk of generateCompositeCsvChunks(
+        primary,
+        "p.fvf",
+        reference,
+        "r.fvf",
+        [new Float32Array([1, 2, 3, 4])],
+        0,
+        undefined,
+        2,
+        ",",
+      )) {
+        chunks.push(chunk);
+      }
+      expect(chunks.length).toBeGreaterThan(1);
+    });
   });
 });

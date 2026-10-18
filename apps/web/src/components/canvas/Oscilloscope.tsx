@@ -57,6 +57,8 @@ import {
   transformDisplayLane,
 } from "./channelDisplay";
 import { boxZoomPlugin } from "./plugins/boxZoomPlugin";
+import { panZoomPlugin } from "./plugins/panZoomPlugin";
+import { NAVIGATION_HELP_SUMMARY } from "./navigationHelp";
 import { timeSlipPlugin } from "./plugins/timeSlipPlugin";
 import { groundMarkerPlugin } from "./plugins/groundMarkerPlugin";
 import {
@@ -797,6 +799,13 @@ export default function Oscilloscope({
             preStackRef.current.set(scaleKey, baseBounds);
           },
         }),
+        // Issue #286: pointer-anchored wheel zoom and drag pan
+        panZoomPlugin({
+          getCapture: () => captureRef.current,
+          onLaneZoom: (scaleKey, baseBounds) => {
+            preStackRef.current.set(scaleKey, baseBounds);
+          },
+        }),
         // Issue #98: ground markers + ctrl+vertical-drag offset —
         // registered BEFORE the cursor plugin so a ctrl+press on a
         // trace can claim the vertical gesture (and forward unclaimed
@@ -1425,14 +1434,14 @@ export default function Oscilloscope({
       return snapshotToBlob(printComposite.canvas);
     });
 
-    const suppressWheel = (event: WheelEvent) => {
+    const onWheel = (event: WheelEvent) => {
+      // Prevent browser viewport scrolling while cursor is over the oscilloscope
       event.preventDefault();
-      event.stopPropagation();
     };
-    container.addEventListener("wheel", suppressWheel, { passive: false });
+    container.addEventListener("wheel", onWheel, { passive: false });
 
     return () => {
-      container.removeEventListener("wheel", suppressWheel);
+      container.removeEventListener("wheel", onWheel);
       container.removeEventListener("click", onContainerClick);
       over.removeEventListener("mousedown", onPointerDown);
       over.removeEventListener("mouseup", onPointerUp);
@@ -1923,6 +1932,9 @@ export default function Oscilloscope({
         className={`oscilloscope-container ${className ?? ""}`.trim()}
         data-testid="oscilloscope-container"
         data-theme={theme}
+        role="region"
+        aria-label={`Oscilloscope waveform canvas. ${NAVIGATION_HELP_SUMMARY}`}
+        title={NAVIGATION_HELP_SUMMARY}
         style={{
           backgroundColor: resolveThemePalette(theme).background,
         }}

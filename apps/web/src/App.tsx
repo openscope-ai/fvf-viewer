@@ -3,6 +3,7 @@ import init, { engine_version } from "@fvf/fvf-wasm";
 import Oscilloscope from "./components/canvas/Oscilloscope";
 import WaveformToolbar from "./components/toolbar/WaveformToolbar";
 import MetadataBanner from "./components/banner/MetadataBanner";
+import MeasurementsTable from "./components/measurements/MeasurementsTable";
 import FileIngestion from "./components/ingestion/FileIngestion";
 import ErrorModal from "./components/modals/ErrorModal";
 import DesktopRoadblock from "./components/guards/DesktopRoadblock";
@@ -140,6 +141,7 @@ export default function App() {
               />
               <WaveformToolbar />
               <Oscilloscope capture={capture} />
+              <MeasurementsTable capture={capture} />
             </>
           ) : null}
         </FileIngestion>

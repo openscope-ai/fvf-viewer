@@ -563,40 +563,49 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     expect(fit.channels[2]!.max).toBeCloseTo(30 * 1.05, 5);
   });
 
-  it("AC: wheel events over the canvas never mutate axis scales", async () => {
+  it("AC (Issue #286): wheel events over the canvas zoom the time axis anchored at the pointer position", async () => {
     const { uplot } = await mountCapture();
 
     const xMinBefore = uplot.scales.x!.min!;
     const xMaxBefore = uplot.scales.x!.max!;
-    const yBefore = yScaleSnapshot(uplot);
+    const spanBefore = xMaxBefore - xMinBefore;
 
     const canvas = hostElement.querySelector(
       ".oscilloscope-container canvas",
     ) as HTMLCanvasElement;
     expect(canvas).not.toBeNull();
 
-    // Wheel events with positive/negative deltas over the canvas
-    let prevented = 0;
-    for (const deltaY of [-120, 120, -1, 1]) {
-      const event = new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        deltaY,
-      });
-      canvas.dispatchEvent(event);
-      if (event.defaultPrevented) prevented++;
-    }
+    // Wheel zoom in (negative deltaY)
+    const zoomInEvent = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -120,
+    });
+    canvas.dispatchEvent(zoomInEvent);
+    expect(zoomInEvent.defaultPrevented).toBe(true);
+
     await act(async () => {
       await new Promise((r) => setTimeout(r, 60));
     });
 
-    // Every wheel event was explicitly cancelled (wheel zoom disabled)
-    expect(prevented).toBe(4);
+    const spanZoomedIn = uplot.scales.x!.max! - uplot.scales.x!.min!;
+    expect(spanZoomedIn).toBeLessThan(spanBefore);
 
-    // X and every Y scale min/max are unchanged
-    expect(uplot.scales.x!.min!).toBe(xMinBefore);
-    expect(uplot.scales.x!.max!).toBe(xMaxBefore);
-    expectYScalesUnchanged(uplot, yBefore);
+    // Wheel zoom out (positive deltaY)
+    const zoomOutEvent = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 120,
+    });
+    canvas.dispatchEvent(zoomOutEvent);
+    expect(zoomOutEvent.defaultPrevented).toBe(true);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const spanZoomedOut = uplot.scales.x!.max! - uplot.scales.x!.min!;
+    expect(spanZoomedOut).toBeGreaterThan(spanZoomedIn);
   });
 
   // ---------------------------------------------------------------------

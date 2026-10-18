@@ -50,3 +50,22 @@ export function csvFileName(
   const stem = fileName.replace(/\.fvf$/i, "");
   return `${stem}-${timestamp}.csv`;
 }
+
+/**
+ * Returns the timestamped filename for a composite synchronized CSV export (issue #99).
+ * - `${stem1}-vs-${stem2}-composite-${timestamp}.csv`
+ */
+export function compositeCsvFileName(
+  primaryFileName: string | null,
+  referenceFileName: string | null,
+  date: Date = new Date(),
+): string {
+  const timestamp = formatCompactTimestamp(date);
+  const stem1 = primaryFileName
+    ? primaryFileName.replace(/\.fvf$/i, "")
+    : "capture1";
+  const stem2 = referenceFileName
+    ? referenceFileName.replace(/\.fvf$/i, "")
+    : "capture2";
+  return `${stem1}-vs-${stem2}-composite-${timestamp}.csv`;
+}

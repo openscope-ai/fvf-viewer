@@ -149,7 +149,8 @@ export function boxZoomPlugin(
       drag !== null ||
       uplot === null ||
       event.ctrlKey ||
-      event.metaKey
+      event.metaKey ||
+      event.shiftKey
     )
       return;
     const start = toPlotPos(event);
