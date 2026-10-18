@@ -806,6 +806,42 @@ body,
   outline-offset: 2px;
 }
 
+/* Amplitude measurements toggle button (issue #278) */
+.waveform-measurements-button {
+  background: #181818;
+  color: #bbbbbb;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.waveform-measurements-button:hover {
+  background: #222222;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+.waveform-measurements-button--active {
+  background: rgba(0, 191, 255, 0.12);
+  border-color: #00bfff;
+  color: #00bfff;
+}
+
+.waveform-measurements-button--active:hover {
+  background: rgba(0, 191, 255, 0.2);
+  border-color: #00bfff;
+  color: #00bfff;
+}
+
+.waveform-measurements-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
 /* ==========================================================================
    Issue #204 badge configuration popover ("Rich Header" L3): anchored,
    portal-based, viewport-colliding dialog. Hero carries identity (color
@@ -2062,36 +2098,7 @@ body,
   user-select: all;
 }
 
-/* CSV export (issue #17) */
-.waveform-csv-button {
-  background: #181818;
-  color: #bbbbbb;
-  border: 1px solid #2e2e2e;
-  border-radius: 4px;
-  padding: 4px 12px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.waveform-csv-button:hover:not(:disabled) {
-  background: #222222;
-  border-color: #555555;
-  color: #ffffff;
-}
-
-.waveform-csv-button:focus-visible {
-  outline: 2px solid #00bfff;
-  outline-offset: 2px;
-}
-
-.waveform-csv-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* PNG snapshot export button is styled as part of the .png-export-chip split capsule below (issue #252) */
+/* CSV export button is styled as part of the .csv-export-chip split capsule below (issue #99) */
 
 /* Site-wide legal footer (issue #19, overview §4.3; the roadblock no longer
    renders a compact variant — issue #179 keeps the disclaimer off the narrow
@@ -2134,17 +2141,19 @@ body,
   line-height: 1.45;
 }
 
-/* Inverted print PNG export toggle (issue #39) */
-.png-export-controls {
+/* Export controls (PNG: issue #39, #252; CSV: issue #99) */
+.png-export-controls,
+.csv-export-controls {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-/* Issue #252: M3 split-action Export chip (main zone exports immediately,
+/* Issues #252 & #99: M3 split-action Export chips (main zone exports immediately,
  * trailing gear opens options popover) in the identical chrome language
  * as the channel/cursor badge capsules. */
-.png-export-chip {
+.png-export-chip,
+.csv-export-chip {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -2162,7 +2171,9 @@ body,
 }
 
 .waveform-png-button,
-.png-export-gear {
+.png-export-gear,
+.waveform-csv-button,
+.csv-export-gear {
   font: inherit;
   border: 0;
   background: transparent;
@@ -2176,7 +2187,9 @@ body,
 }
 
 .waveform-png-button::before,
-.png-export-gear::before {
+.png-export-gear::before,
+.waveform-csv-button::before,
+.csv-export-gear::before {
   content: "";
   position: absolute;
   inset: 8px 0;
@@ -2188,16 +2201,21 @@ body,
 }
 
 .waveform-png-button:hover:not(:disabled)::before,
-.png-export-gear:hover:not(:disabled)::before {
+.png-export-gear:hover:not(:disabled)::before,
+.waveform-csv-button:hover:not(:disabled)::before,
+.csv-export-gear:hover:not(:disabled)::before {
   opacity: 0.08;
 }
 
 .waveform-png-button:active:not(:disabled)::before,
-.png-export-gear:active:not(:disabled)::before {
+.png-export-gear:active:not(:disabled)::before,
+.waveform-csv-button:active:not(:disabled)::before,
+.csv-export-gear:active:not(:disabled)::before {
   opacity: 0.12;
 }
 
-.waveform-png-button {
+.waveform-png-button,
+.waveform-csv-button {
   justify-content: center;
   padding: 0 12px;
   color: #bbbbbb;
@@ -2205,23 +2223,29 @@ body,
   transition: color 0.15s ease;
 }
 
-.waveform-png-button:hover:not(:disabled) {
+.waveform-png-button:hover:not(:disabled),
+.waveform-csv-button:hover:not(:disabled) {
   color: #ffffff;
 }
 
 .waveform-png-button:focus-visible,
-.png-export-gear:focus-visible {
+.png-export-gear:focus-visible,
+.waveform-csv-button:focus-visible,
+.csv-export-gear:focus-visible {
   outline: 2px solid #00bfff;
   outline-offset: 2px;
 }
 
 .waveform-png-button:disabled,
-.png-export-gear:disabled {
+.png-export-gear:disabled,
+.waveform-csv-button:disabled,
+.csv-export-gear:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.png-export-chip .badge-split-divider {
+.png-export-chip .badge-split-divider,
+.csv-export-chip .badge-split-divider {
   flex: none;
   align-self: center;
   width: 1px;
@@ -2229,7 +2253,8 @@ body,
   background: rgba(255, 255, 255, 0.12);
 }
 
-.png-export-gear {
+.png-export-gear,
+.csv-export-gear {
   width: 40px;
   padding: 0 8px 0 6px;
   justify-content: center;
@@ -2237,17 +2262,20 @@ body,
   transition: color 0.15s ease;
 }
 
-.png-export-gear:hover:not(:disabled) {
+.png-export-gear:hover:not(:disabled),
+.csv-export-gear:hover:not(:disabled) {
   color: #ffffff;
 }
 
-.png-export-chip--open .png-export-gear {
+.png-export-chip--open .png-export-gear,
+.csv-export-chip--open .csv-export-gear {
   color: #ffffff;
 }
 
-/* Domain label width override for PNG export popover so multi-word
-   labels ("Readout card", "Background") fit on one line without wrapping */
-.png-export-domain {
+/* Domain label width override for export popovers so multi-word
+   labels fit on one line without wrapping */
+.png-export-domain,
+.csv-export-domain {
   width: 86px;
 }
 
@@ -2426,4 +2454,260 @@ body,
 .waveform-stack-option:focus-visible {
   outline: 1px solid #00bfff;
   outline-offset: -1px;
+}
+
+/* ==========================================================================
+   Issue #278: Automatic amplitude measurements panel (docked live stats)
+   ========================================================================== */
+.amplitude-measurements-panel {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  background: #181818;
+  border-top: 1px solid #2e2e2e;
+  padding: 8px 16px 12px;
+  user-select: text;
+}
+
+.amplitude-measurements-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.amplitude-measurements-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.amplitude-measurements-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #dddddd;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.amplitude-measurements-subtitle {
+  font-size: 0.72rem;
+  color: #777777;
+}
+
+.amplitude-measurements-close {
+  background: transparent;
+  border: 0;
+  color: #888888;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.amplitude-measurements-close:hover {
+  color: #ffffff;
+  background: #2a2a2a;
+}
+
+.amplitude-measurements-close:focus-visible {
+  outline: 2px solid #00bfff;
+}
+
+.amplitude-measurements-table-wrapper {
+  overflow-x: auto;
+}
+
+.amplitude-measurements-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.amplitude-measurements-table th,
+.amplitude-measurements-table td {
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+.amplitude-measurements-table thead th {
+  color: #888888;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #2e2e2e;
+  text-align: right;
+}
+
+.amplitude-measurements-table thead th.col-channel {
+  text-align: left;
+}
+
+.amplitude-measurements-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.amplitude-measurements-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.amplitude-measurements-table tbody th.col-channel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #cccccc;
+  text-align: left;
+}
+
+.amplitude-measurements-table tbody td {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  color: #e0e0e0;
+  text-align: right;
+}
+
+.amplitude-measurements-table .channel-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.amplitude-measurements-table .amplitude-measurements-empty {
+  text-align: center;
+  color: #777777;
+  font-style: italic;
+  padding: 12px;
+}
+
+/* Find edge, peak, and saturation navigation (Issue #288) */
+.waveform-find-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waveform-find-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #777777;
+}
+
+.waveform-find-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  user-select: none;
+  background: #1a1a1a;
+  box-shadow: inset 0 0 0 1px #2b2b2b;
+  transition:
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.waveform-find-btn {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #bbbbbb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.waveform-find-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.waveform-find-btn:hover:not(:disabled)::before {
+  opacity: 0.08;
+}
+
+.waveform-find-btn:active:not(:disabled)::before {
+  opacity: 0.12;
+}
+
+.waveform-find-btn:hover:not(:disabled) {
+  color: #ffffff;
+}
+
+.waveform-find-btn:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 2px;
+}
+
+.waveform-find-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.waveform-find-btn--prev {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.waveform-find-btn--next {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.waveform-find-select {
+  font: inherit;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #dddddd;
+  padding: 0 8px;
+  height: 32px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.waveform-find-select option {
+  background: #1a1a1a;
+  color: #ffffff;
+}
+
+.waveform-find-select:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: -1px;
+}
+
+.waveform-find-select:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.waveform-find-status {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #00bfff;
+  white-space: nowrap;
 }
