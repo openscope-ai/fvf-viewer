@@ -51,6 +51,8 @@ export interface BoxZoomPluginOptions {
     scaleKey: string,
     baseBounds: { min: number; max: number },
   ) => void;
+  /** Callback invoked when a box-zoom commits its scale changes. */
+  onZoomCommit?: (u: uPlot) => void;
 }
 
 interface BoxZoomDragState {
@@ -259,6 +261,7 @@ export function boxZoomPlugin(
             u.setScale(targetBand.scaleKey, laneZoom);
           }
         });
+        options.onZoomCommit?.(u);
         return;
       }
     }
@@ -296,6 +299,7 @@ export function boxZoomPlugin(
         u.setScale(zoom.key, { min: zoom.min, max: zoom.max });
       }
     });
+    options.onZoomCommit?.(u);
   }
 
   return {

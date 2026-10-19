@@ -532,7 +532,7 @@ body,
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px 12px;
   padding: 8px 20px;
   background: #0c0c0c;
   border-bottom: 1px solid #1f1f1f;
@@ -780,6 +780,63 @@ body,
 .waveform-fit-button:focus-visible {
   outline: 2px solid #00bfff;
   outline-offset: 2px;
+}
+
+/* Viewport zoom/pan history group (issue #287) */
+.waveform-history-group {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  border: 1px solid #2e2e2e;
+  background: #181818;
+  overflow: hidden;
+}
+
+.waveform-history-group .waveform-fit-button {
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid #2e2e2e;
+  background: transparent;
+  padding: 4px 10px;
+}
+
+.waveform-history-group .waveform-fit-button:hover {
+  background: #222222;
+  border-color: #2e2e2e;
+}
+
+.waveform-history-button {
+  background: transparent;
+  color: #bbbbbb;
+  border: none;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.waveform-history-button:not(:last-child) {
+  border-right: 1px solid #2e2e2e;
+}
+
+.waveform-history-button:hover:not(:disabled) {
+  background: #222222;
+  color: #00bfff;
+}
+
+.waveform-history-button:disabled {
+  color: #444444;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.waveform-history-button:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: -1px;
 }
 
 /* Viewport theme toggle (issue #38) */

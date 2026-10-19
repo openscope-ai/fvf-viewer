@@ -19,8 +19,9 @@
  * retired; its curated colors live on inside the popover.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
+import { useZoomHistoryStore } from "../../state/zoomHistoryStore";
 import { refChannelName, useReferenceStore } from "../../state/referenceStore";
 import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
@@ -140,6 +141,26 @@ export default function WaveformToolbar({
   // Issue #278: automatic amplitude measurements table toggle.
   const measurementsOpen = useMeasurementsStore((state) => state.isOpen);
   const toggleMeasurements = useMeasurementsStore((state) => state.toggleOpen);
+
+  // Issue #287: viewport zoom/pan history back/forward
+  const canGoBack = useZoomHistoryStore((state) => state.canGoBack);
+  const canGoForward = useZoomHistoryStore((state) => state.canGoForward);
+  const goBack = useZoomHistoryStore((state) => state.goBack);
+  const goForward = useZoomHistoryStore((state) => state.goForward);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey && event.key === "ArrowLeft") {
+        event.preventDefault();
+        useZoomHistoryStore.getState().goBack();
+      } else if (event.altKey && event.key === "ArrowRight") {
+        event.preventDefault();
+        useZoomHistoryStore.getState().goForward();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const resetTransforms = useChannelDisplayStore(
     (state) => state.resetTransforms,
@@ -607,16 +628,45 @@ export default function WaveformToolbar({
           Stack
         </button>
       </div>
-      <button
-        type="button"
-        className="waveform-fit-button"
-        aria-label={`Reset View: reset display transforms, File 2 time slip, and viewport. ${NAVIGATION_HELP_SUMMARY}`}
-        title={`Reset View: reset display transforms, File 2 time slip, and viewport\nControls: ${NAVIGATION_HELP_SUMMARY}`}
-        data-testid="reset-view-button"
-        onClick={handleResetView}
+      <div
+        className="waveform-history-group"
+        role="group"
+        aria-label="Viewport zoom history and reset"
+        data-testid="waveform-history-group"
       >
-        Reset View
-      </button>
+        <button
+          type="button"
+          className="waveform-fit-button"
+          aria-label={`Reset View: reset display transforms, File 2 time slip, and viewport. ${NAVIGATION_HELP_SUMMARY}`}
+          title={`Reset View: reset display transforms, File 2 time slip, and viewport\nControls: ${NAVIGATION_HELP_SUMMARY}`}
+          data-testid="reset-view-button"
+          onClick={handleResetView}
+        >
+          Reset View
+        </button>
+        <button
+          type="button"
+          className="waveform-history-button"
+          aria-label="Zoom history back (Alt+Left)"
+          title="Zoom history back (Alt+Left)"
+          data-testid="zoom-history-back"
+          disabled={!canGoBack}
+          onClick={goBack}
+        >
+          ◀
+        </button>
+        <button
+          type="button"
+          className="waveform-history-button"
+          aria-label="Zoom history forward (Alt+Right)"
+          title="Zoom history forward (Alt+Right)"
+          data-testid="zoom-history-forward"
+          disabled={!canGoForward}
+          onClick={goForward}
+        >
+          ▶
+        </button>
+      </div>
       <FindNavControls />
       <button
         type="button"

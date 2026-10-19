@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.12.1] - 2026-10-19
+
+[v0.12.0...v0.12.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.0...v0.12.1)
+
+### Added
+
+- Viewport zoom/pan navigation history (issue #287):
+  - Stack-based client-side history (`useZoomHistoryStore`) recording viewport bounds on box-zoom commit, drag-pan, wheel-zoom settling, and Reset View.
+  - Added Back (◀ Back) and Forward (Forward ▶) buttons in a compact `.waveform-history-group` beside Reset View in the toolbar.
+  - Keyboard shortcuts `Alt+Left` (Back) and `Alt+Right` (Forward) for rapid viewport history navigation without leaving the canvas.
+  - Forward history truncates on any new navigation action, matching browser navigation semantics.
+  - History is bounded to 50 states to prevent memory leaks and automatically resets whenever a new capture file is ingested.
+  - Operates purely client-side with zero data egress (ADR 0006).
+
+### Fixed
+
+- CSV export popover layout parity with PNG export popover (issue #310):
+  - Structured `CsvExportPopover` to match `PngExportPopover` card layout using shared hero band (`.badge-popover-hero`, title "CSV export", subtitle "Delimiter & dataset configuration", `✕` close button), 14px horizontal padding body (`.badge-popover-body`), and settings section (`.badge-settings-section`).
+  - Extracted duplicated `OptionChips` component into a shared module used across both PNG and CSV export popovers.
+  - Removed unused CSS classes (`badge-popover-content`, `csv-export-content`) and inline minWidth style override.
+  - Added dedicated test IDs (`csv-export-summary`, `csv-popover-close`, `csv-export-section`) and verified close button dismisses popover and returns focus to the gear trigger.
+
 ## [0.12.0] - 2026-10-18
 
 [v0.11.1...v0.12.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.11.1...v0.12.0)
