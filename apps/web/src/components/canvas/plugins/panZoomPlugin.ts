@@ -29,6 +29,10 @@ export interface PanZoomPluginOptions {
     scaleKey: string,
     baseBounds: { min: number; max: number },
   ) => void;
+  /** Callback when drag-pan completes on mouseup. */
+  onPanEnd?: (u: uPlot) => void;
+  /** Callback when wheel zoom settles (debounced 350ms). */
+  onWheelSettle?: (u: uPlot) => void;
 }
 
 interface PanDragState {
@@ -36,12 +40,14 @@ interface PanDragState {
   initialXMin: number;
   initialXMax: number;
   plotWidth: number;
+  didPan: boolean;
 }
 
 export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
   let uplot: uPlot | null = null;
   let plotArea: HTMLElement | null = null;
   let panDrag: PanDragState | null = null;
+  let wheelTimer: number | null = null;
 
   function detachPanListeners(): void {
     document.removeEventListener("mousemove", onDocumentMouseMove);
@@ -56,8 +62,12 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
 
   function onBlur(): void {
     if (panDrag !== null) {
+      const didPan = panDrag.didPan;
       panDrag = null;
       detachPanListeners();
+      if (didPan && uplot !== null) {
+        options.onPanEnd?.(uplot);
+      }
     }
   }
 
@@ -67,7 +77,9 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
       const { initialXMin, initialXMax } = panDrag;
       panDrag = null;
       detachPanListeners();
-      uplot.setScale("x", { min: initialXMin, max: initialXMax });
+      uplot.batch(() => {
+        uplot!.setScale("x", { min: initialXMin, max: initialXMax });
+      });
     }
   }
 
@@ -97,6 +109,7 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
       initialXMin: curMin,
       initialXMax: curMax,
       plotWidth: rect.width || uplot.width || 800,
+      didPan: false,
     };
 
     plotArea.style.cursor = "grabbing";
@@ -115,8 +128,12 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
     const isMiddleHeld = (event.buttons & 4) !== 0;
     const isLeftHeld = (event.buttons & 1) !== 0;
     if (!isMiddleHeld && !isLeftHeld) {
+      const didPan = panDrag.didPan;
       panDrag = null;
       detachPanListeners();
+      if (didPan && uplot !== null) {
+        options.onPanEnd?.(uplot);
+      }
       return;
     }
 
@@ -134,6 +151,9 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
     }
 
     const deltaPx = event.clientX - panDrag.startClientX;
+    if (Math.abs(deltaPx) >= 2) {
+      panDrag.didPan = true;
+    }
     const deltaT = -(deltaPx * span) / panDrag.plotWidth;
 
     let nextMin = panDrag.initialXMin + deltaT;
@@ -148,13 +168,19 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
       nextMin = captureMax - span;
     }
 
-    uplot.setScale("x", { min: nextMin, max: nextMax });
+    uplot.batch(() => {
+      uplot!.setScale("x", { min: nextMin, max: nextMax });
+    });
   }
 
   function onDocumentMouseUp(): void {
     if (panDrag === null) return;
+    const didPan = panDrag.didPan;
     panDrag = null;
     detachPanListeners();
+    if (didPan && uplot !== null) {
+      options.onPanEnd?.(uplot);
+    }
   }
 
   function onWheel(event: WheelEvent): void {
@@ -187,11 +213,20 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
     // Alt + wheel: vertical amplitude zoom around pointer y
     if (event.altKey) {
       zoomAmplitudeAtPointer(event, capture, clientY);
-      return;
+    } else {
+      // Default wheel: horizontal time zoom around pointer x
+      zoomTimeAtPointer(event, capture, clientX);
     }
 
-    // Default wheel: horizontal time zoom around pointer x
-    zoomTimeAtPointer(event, capture, clientX);
+    if (wheelTimer !== null) {
+      window.clearTimeout(wheelTimer);
+    }
+    wheelTimer = window.setTimeout(() => {
+      wheelTimer = null;
+      if (uplot !== null) {
+        options.onWheelSettle?.(uplot);
+      }
+    }, 350);
   }
 
   function zoomTimeAtPointer(
@@ -229,7 +264,9 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
       nextSpan = minSpan;
     }
     if (nextSpan >= fullSpan) {
-      uplot.setScale("x", { min: captureMin, max: captureMax });
+      uplot.batch(() => {
+        uplot!.setScale("x", { min: captureMin, max: captureMax });
+      });
       return;
     }
 
@@ -249,7 +286,9 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
       nextMin = Math.max(captureMin, nextMin - shift);
     }
 
-    uplot.setScale("x", { min: nextMin, max: nextMax });
+    uplot.batch(() => {
+      uplot!.setScale("x", { min: nextMin, max: nextMax });
+    });
   }
 
   function zoomAmplitudeAtPointer(
@@ -297,7 +336,12 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
         min: nextMin,
         max: nextMax,
       });
-      uplot.setScale(targetBand.scaleKey, { min: laned.min, max: laned.max });
+      uplot.batch(() => {
+        uplot!.setScale(targetBand.scaleKey, {
+          min: laned.min,
+          max: laned.max,
+        });
+      });
       return;
     }
 
@@ -350,6 +394,10 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
         plotArea.addEventListener("dblclick", onDoubleClick);
       },
       destroy(u) {
+        if (wheelTimer !== null) {
+          window.clearTimeout(wheelTimer);
+          wheelTimer = null;
+        }
         if (panDrag !== null) {
           panDrag = null;
           detachPanListeners();

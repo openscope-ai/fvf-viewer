@@ -21,42 +21,9 @@ import {
 } from "../../state/pngExportStore";
 import { AnchoredPopover } from "../toolbar/badgeConfig/anchoredPopover";
 import { useCaptureStore } from "../../state/captureStore";
+import { OptionChips } from "./OptionChips";
 
 const EXPORT_POPOVER_KEY = "png-export";
-
-/** One option row's setting chips. */
-function OptionChips<T extends string | boolean>(props: {
-  label: string;
-  options: Array<{ value: T; label: string; testId: string }>;
-  value: T;
-  onSelect: (value: T) => void;
-}) {
-  return (
-    <div className="badge-setting-row">
-      <span className="badge-setting-domain png-export-domain">
-        {props.label}
-      </span>
-      <div
-        className="badge-setting-chips"
-        role="group"
-        aria-label={props.label}
-      >
-        {props.options.map((option) => (
-          <button
-            key={String(option.value)}
-            type="button"
-            className="badge-opacity-chip badge-setting-chip"
-            aria-pressed={props.value === option.value}
-            data-testid={option.testId}
-            onClick={() => props.onSelect(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function PngExportPopover(props: {
   anchorEl: HTMLElement | null;

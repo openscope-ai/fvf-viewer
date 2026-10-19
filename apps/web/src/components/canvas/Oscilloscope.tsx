@@ -30,6 +30,11 @@ import { useResizeObserver } from "../../hooks/useResizeObserver";
 import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
 import type { ChannelTag } from "../../state/viewportStore";
+import {
+  applyViewportSnapshot,
+  createViewportSnapshot,
+  useZoomHistoryStore,
+} from "../../state/zoomHistoryStore";
 import type { ViewportTheme } from "./themePalette";
 import type { ParsedCapture } from "../../types/capture";
 import {
@@ -514,8 +519,9 @@ export default function Oscilloscope({
     new Map(),
   );
 
-  // Ingesting a new capture file initializes cursors and selection defaults.
+  // Ingesting a new capture file initializes cursors, selection defaults, and resets zoom history (Issue #287).
   useEffect(() => {
+    useZoomHistoryStore.getState().reset();
     if (capture) {
       // Issue #224: capture ingestion/replacement clears solo state
       // (restoring the pre-solo visibility set).
@@ -798,12 +804,30 @@ export default function Oscilloscope({
           onLaneZoom: (scaleKey, baseBounds) => {
             preStackRef.current.set(scaleKey, baseBounds);
           },
+          onZoomCommit: (u) => {
+            const snapshot = createViewportSnapshot(u, preStackRef.current);
+            if (snapshot) {
+              useZoomHistoryStore.getState().push(snapshot);
+            }
+          },
         }),
         // Issue #286: pointer-anchored wheel zoom and drag pan
         panZoomPlugin({
           getCapture: () => captureRef.current,
           onLaneZoom: (scaleKey, baseBounds) => {
             preStackRef.current.set(scaleKey, baseBounds);
+          },
+          onPanEnd: (u) => {
+            const snapshot = createViewportSnapshot(u, preStackRef.current);
+            if (snapshot) {
+              useZoomHistoryStore.getState().push(snapshot);
+            }
+          },
+          onWheelSettle: (u) => {
+            const snapshot = createViewportSnapshot(u, preStackRef.current);
+            if (snapshot) {
+              useZoomHistoryStore.getState().push(snapshot);
+            }
           },
         }),
         // Issue #98: ground markers + ctrl+vertical-drag offset —
@@ -1162,6 +1186,13 @@ export default function Oscilloscope({
       preStackRef.current,
       adaptersRef.current,
     );
+    const initialSnapshot = createViewportSnapshot(
+      instance,
+      preStackRef.current,
+    );
+    if (initialSnapshot) {
+      useZoomHistoryStore.getState().push(initialSnapshot);
+    }
     (container as HTMLElement & { __uplot?: uPlot }).__uplot = instance;
     onUPlotInit?.(instance);
 
@@ -1903,7 +1934,31 @@ export default function Oscilloscope({
       preStackRef.current,
       adaptersRef.current,
     );
+
+    const snapshot = createViewportSnapshot(instance, preStackRef.current);
+    if (snapshot) {
+      useZoomHistoryStore.getState().push(snapshot);
+    }
   }, [fitRequest, capture]);
+
+  // Restore viewport snapshot from history navigation (issue #287)
+  const restoreRequest = useZoomHistoryStore((state) => state.restoreRequest);
+  const lastRestoreRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!restoreRequest || restoreRequest.token === lastRestoreRef.current) {
+      return;
+    }
+    lastRestoreRef.current = restoreRequest.token;
+    const instance = uplotRef.current;
+    if (!instance) {
+      useZoomHistoryStore.getState().setIsNavigating(false);
+      return;
+    }
+
+    applyViewportSnapshot(instance, restoreRequest.target, preStackRef.current);
+    useZoomHistoryStore.getState().setIsNavigating(false);
+  }, [restoreRequest]);
 
   if (!capture || capture.channels.length === 0) {
     return (
