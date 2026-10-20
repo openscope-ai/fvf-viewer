@@ -41,7 +41,6 @@ import {
 } from "../canvas/themePalette";
 import CsvExportButton from "../export/CsvExportButton";
 import PngSnapshotButton from "../export/PngSnapshotButton";
-import { FindNavControls } from "../navigation/FindNavControls";
 import { useMeasurementsStore } from "../../state/measurementsStore";
 import { trackEvent } from "../../analytics/tracker";
 import { CURSOR_MOVEMENT_SUMMARY } from "../cursors/cursorHelp";
@@ -667,7 +666,6 @@ export default function WaveformToolbar({
           ▶
         </button>
       </div>
-      <FindNavControls />
       <button
         type="button"
         className="waveform-theme-button"

@@ -47,6 +47,7 @@ describe("cursorDisplayStore (issue #226)", () => {
     expect(s.frequencyUnit).toBe("auto");
     expect(s.voltageUnit).toBe("auto");
     expect(s.lineStyles).toEqual({ C1: "solid", C2: "solid" });
+    expect(s.findFeatures).toEqual({ C1: "rising", C2: "rising" });
     expect(backing.has(KEY)).toBe(false);
   });
 
@@ -63,6 +64,7 @@ describe("cursorDisplayStore (issue #226)", () => {
       lineStyles: { C1: "solid", C2: "dotted" },
       bindings: { C1: "all", C2: "all" },
       deltaLocked: false,
+      findFeatures: { C1: "rising", C2: "rising" },
     });
 
     vi.resetModules();
@@ -84,6 +86,41 @@ describe("cursorDisplayStore (issue #226)", () => {
     expect(s.lineStyles).toEqual({ C1: "solid", C2: "dotted" });
     expect(s.bindings).toEqual({ C1: "all", C2: "all" });
     expect(s.deltaLocked).toBe(false);
+    expect(s.findFeatures).toEqual({ C1: "rising", C2: "rising" });
+  });
+
+  it("findFeatures persist and hydrate independently per cursor (issue #314)", async () => {
+    const { useCursorDisplayStore } = await importStore();
+    useCursorDisplayStore.getState().setFindFeature("C1", "peak");
+    useCursorDisplayStore.getState().setFindFeature("C2", "saturation");
+    expect(useCursorDisplayStore.getState().findFeatures).toEqual({
+      C1: "peak",
+      C2: "saturation",
+    });
+    expect(JSON.parse(backing.get(KEY)!)).toMatchObject({
+      findFeatures: { C1: "peak", C2: "saturation" },
+    });
+
+    vi.resetModules();
+    backing = stubStorage();
+    backing.set(
+      KEY,
+      JSON.stringify({
+        findFeatures: { C1: "falling", C2: "valley" },
+      }),
+    );
+    const fresh = await importStore();
+    expect(fresh.useCursorDisplayStore.getState().findFeatures).toEqual({
+      C1: "falling",
+      C2: "valley",
+    });
+
+    fresh.useCursorDisplayStore.getState().reset();
+    expect(fresh.useCursorDisplayStore.getState().findFeatures).toEqual({
+      C1: "rising",
+      C2: "rising",
+    });
+    expect(backing.has(KEY)).toBe(false);
   });
 
   it("line styles are independent per cursor", async () => {
