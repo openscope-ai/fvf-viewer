@@ -5,7 +5,18 @@
  * per-cursor C1/C2 line style. Rendered in the cursor popover body only.
  */
 
+import { useEffect, useState } from "react";
+import type uPlot from "uplot";
 import { useCaptureStore } from "../../../state/captureStore";
+import { useViewportStore } from "../../../state/viewportStore";
+import { useCursorStore } from "../../../state/cursorStore";
+import { useChannelNamesStore } from "../../../state/channelNamesStore";
+import {
+  useZoomHistoryStore,
+  createViewportSnapshot,
+} from "../../../state/zoomHistoryStore";
+import { findNearestSampleIndex } from "../../cursors/cursorPlugin";
+import { getLookahead, type FeatureType } from "../../navigation/featureSearch";
 import {
   useCursorDisplayStore,
   type CursorBinding,
@@ -208,6 +219,290 @@ export function LockedDeltaSection() {
           {deltaLocked ? "Locked" : "Unlocked"}
         </button>
       </div>
+    </div>
+  );
+}
+
+const FEATURE_OPTIONS: readonly {
+  value: FeatureType;
+  label: string;
+  key: string;
+}[] = [
+  { value: "rising", label: "Rising", key: "rising" },
+  { value: "falling", label: "Falling", key: "falling" },
+  { value: "peak", label: "Peak", key: "peak" },
+  { value: "valley", label: "Valley", key: "valley" },
+  { value: "saturation", label: "Saturation", key: "saturation" },
+];
+
+const FEATURE_NAMES: Record<FeatureType, string> = {
+  rising: "rising edge",
+  falling: "falling edge",
+  peak: "peak",
+  valley: "valley",
+  saturation: "saturated sample",
+};
+
+/**
+ * Feature jump navigation section (issue #314): channel-bound stepper
+ * jumping C1/C2 to the next or previous rising edge, falling edge, peak,
+ * valley, or saturated sample with zero layout shift and screen-reader announcements.
+ */
+export function CursorFeatureJumpSection({
+  cursorId,
+}: {
+  cursorId: "C1" | "C2";
+}) {
+  const capture = useCaptureStore((s) => s.capture);
+  const binding = useCursorDisplayStore((s) => s.bindings[cursorId]);
+  const feature = useCursorDisplayStore((s) => s.findFeatures[cursorId]);
+  const setFindFeature = useCursorDisplayStore((s) => s.setFindFeature);
+  const activeChannels = useViewportStore((s) => s.activeChannels);
+  const xMin = useViewportStore((s) => s.xMin);
+  const xMax = useViewportStore((s) => s.xMax);
+  const customNames = useChannelNamesStore((s) => s.names);
+
+  const c1Active = useCursorStore((s) => s.c1Active);
+  const c2Active = useCursorStore((s) => s.c2Active);
+  const c1SampleIndex = useCursorStore((s) => s.c1SampleIndex);
+  const c2SampleIndex = useCursorStore((s) => s.c2SampleIndex);
+  const jumpCursorToSample = useCursorStore((s) => s.jumpCursorToSample);
+
+  const [jumpAnnouncement, setJumpAnnouncement] = useState<string | null>(null);
+
+  const isChannelHidden =
+    binding !== "all" && !activeChannels.includes(binding);
+
+  useEffect(() => {
+    setJumpAnnouncement(null);
+  }, [binding, feature, cursorId, isChannelHidden]);
+
+  // Conditional visibility: only render if binding !== "all" and bound channel exists in capture
+  if (binding === "all" || !capture) {
+    return null;
+  }
+
+  const boundChannel = capture.channels.find(
+    (c) => !c.derived && c.name === binding,
+  );
+  if (!boundChannel) {
+    return null;
+  }
+
+  const channelDisplayLabel = customNames[binding] ?? binding;
+
+  const isTargetActive = cursorId === "C1" ? c1Active : c2Active;
+  const targetSampleIndex = cursorId === "C1" ? c1SampleIndex : c2SampleIndex;
+  const timestamps = capture.timestamps;
+  const totalSamples = timestamps.length;
+  const t0 = timestamps[0] ?? 0;
+  const tEnd = timestamps[totalSamples - 1] ?? 0;
+  const curMin = xMin ?? t0;
+  const curMax = xMax ?? tEnd;
+
+  let startIndex: number;
+  if (isTargetActive) {
+    startIndex = targetSampleIndex;
+  } else if (totalSamples > 0) {
+    const centerTime = (curMin + curMax) / 2;
+    startIndex = findNearestSampleIndex(timestamps, centerTime);
+  } else {
+    startIndex = 0;
+  }
+
+  const { prevResult, nextResult } = getLookahead(
+    timestamps,
+    boundChannel.data,
+    capture,
+    binding,
+    feature,
+    startIndex,
+    !isChannelHidden,
+  );
+
+  const handleJump = (direction: "prev" | "next") => {
+    const target = direction === "prev" ? prevResult : nextResult;
+    if (!target || totalSamples <= 0) return;
+
+    const container = document.querySelector(
+      "[data-testid='oscilloscope-container'], .oscilloscope-container",
+    ) as
+      | (HTMLElement & {
+          __uplot?: uPlot;
+          __preStack?: Map<string, { min: number; max: number }>;
+        })
+      | null;
+
+    const uplotInstance = container?.__uplot;
+    const liveXMin = uplotInstance?.scales?.x?.min ?? curMin;
+    const liveXMax = uplotInstance?.scales?.x?.max ?? curMax;
+    const fullSpan = tEnd - t0;
+    const curSpan = liveXMax - liveXMin;
+
+    if (curSpan < fullSpan) {
+      let newMin = target.timestamp - curSpan / 2;
+      let newMax = target.timestamp + curSpan / 2;
+      if (newMin < t0) {
+        newMin = t0;
+        newMax = Math.min(tEnd, t0 + curSpan);
+      } else if (newMax > tEnd) {
+        newMax = tEnd;
+        newMin = Math.max(t0, tEnd - curSpan);
+      }
+
+      if (uplotInstance) {
+        uplotInstance.batch(() => {
+          uplotInstance.setScale("x", { min: newMin, max: newMax });
+        });
+      }
+      useViewportStore.getState().setBounds({ xMin: newMin, xMax: newMax });
+
+      if (uplotInstance && container) {
+        const snapshot = createViewportSnapshot(
+          uplotInstance,
+          container.__preStack,
+        );
+        if (snapshot) {
+          useZoomHistoryStore.getState().push(snapshot);
+        }
+      }
+    }
+
+    jumpCursorToSample(cursorId, target.index, totalSamples);
+
+    // Check lookahead after landing at target index
+    const lookaheadAfter = getLookahead(
+      timestamps,
+      boundChannel.data,
+      capture,
+      binding,
+      feature,
+      target.index,
+      !isChannelHidden,
+    );
+    const boundaryReached =
+      direction === "next"
+        ? lookaheadAfter.nextResult === null
+        : lookaheadAfter.prevResult === null;
+
+    if (boundaryReached) {
+      setJumpAnnouncement(
+        `Moved ${cursorId} to sample ${target.index} (no further ${FEATURE_NAMES[feature]} in this direction)`,
+      );
+    } else {
+      setJumpAnnouncement(`Moved ${cursorId} to sample ${target.index}`);
+    }
+  };
+
+  let srStatusText: string;
+  if (jumpAnnouncement) {
+    srStatusText = jumpAnnouncement;
+  } else if (isChannelHidden) {
+    srStatusText = `Channel ${channelDisplayLabel} is hidden`;
+  } else if (prevResult === null && nextResult === null) {
+    srStatusText = `No ${FEATURE_NAMES[feature]} found on channel ${channelDisplayLabel}`;
+  } else if (prevResult === null) {
+    srStatusText = `No earlier ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`;
+  } else if (nextResult === null) {
+    srStatusText = `No further ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`;
+  } else {
+    srStatusText = `${FEATURE_NAMES[feature]} available in both directions`;
+  }
+
+  const srId = `cursor-find-status-sr-${cursorId}`;
+
+  return (
+    <div
+      className="badge-settings-section"
+      data-testid="cursor-feature-jump-section"
+    >
+      <span className="badge-microlabel">
+        Jump to feature · Channel {channelDisplayLabel}
+      </span>
+      <div className="badge-setting-row">
+        <span className="badge-setting-domain">Feature</span>
+        {FEATURE_OPTIONS.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            className="badge-opacity-chip badge-setting-chip"
+            data-testid={`setting-feature-${option.key}`}
+            aria-pressed={feature === option.value}
+            aria-label={`Feature ${cursorId}: ${option.label}`}
+            onClick={() => {
+              setFindFeature(cursorId, option.value);
+              setJumpAnnouncement(null);
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div
+        className="badge-setting-row"
+        role="group"
+        aria-label={`Jump stepper · ${cursorId}`}
+        aria-describedby={srId}
+      >
+        <span className="badge-setting-domain">Jump</span>
+        <button
+          type="button"
+          className="badge-opacity-chip badge-setting-chip"
+          data-testid="cursor-find-prev-btn"
+          aria-label={
+            isChannelHidden
+              ? `Channel ${channelDisplayLabel} is hidden`
+              : prevResult === null
+                ? `No earlier ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`
+                : `Find previous ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`
+          }
+          title={
+            isChannelHidden
+              ? `Channel ${channelDisplayLabel} is hidden`
+              : prevResult === null
+                ? `No earlier ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`
+                : `Find previous ${FEATURE_NAMES[feature]}`
+          }
+          aria-describedby={srId}
+          disabled={isChannelHidden || prevResult === null}
+          onClick={() => handleJump("prev")}
+        >
+          ◀ Prev
+        </button>
+        <button
+          type="button"
+          className="badge-opacity-chip badge-setting-chip"
+          data-testid="cursor-find-next-btn"
+          aria-label={
+            isChannelHidden
+              ? `Channel ${channelDisplayLabel} is hidden`
+              : nextResult === null
+                ? `No further ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`
+                : `Find next ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`
+          }
+          title={
+            isChannelHidden
+              ? `Channel ${channelDisplayLabel} is hidden`
+              : nextResult === null
+                ? `No further ${FEATURE_NAMES[feature]} on channel ${channelDisplayLabel}`
+                : `Find next ${FEATURE_NAMES[feature]}`
+          }
+          aria-describedby={srId}
+          disabled={isChannelHidden || nextResult === null}
+          onClick={() => handleJump("next")}
+        >
+          Next ▶
+        </button>
+      </div>
+      <span
+        id={srId}
+        data-testid="cursor-find-status-sr"
+        role="status"
+        aria-live="polite"
+        className="sr-only"
+      >
+        {srStatusText}
+      </span>
     </div>
   );
 }

@@ -155,3 +155,62 @@ describe("cursorStore locked delta-t (issue #225)", () => {
     expect(Number.isInteger(positions().c2)).toBe(true);
   });
 });
+
+describe("cursorStore jumpCursorToSample (issue #314)", () => {
+  beforeEach(() => {
+    useCursorStore.getState().reset();
+    useCursorDisplayStore.getState().reset();
+  });
+
+  it("atomically activates, selects, and positions an inactive cursor at the target index", () => {
+    const store = useCursorStore.getState();
+    expect(store.c1Active).toBe(false);
+    expect(store.selectedCursor).toBeNull();
+
+    store.jumpCursorToSample("C1", 42, 1000);
+    const state = useCursorStore.getState();
+    expect(state.c1Active).toBe(true);
+    expect(state.selectedCursor).toBe("C1");
+    expect(state.c1SampleIndex).toBe(42);
+    expect(state.c2Active).toBe(false);
+  });
+
+  it("positions target cursor at sample 0 without clobbering to 25%/75% default", () => {
+    const store = useCursorStore.getState();
+    store.jumpCursorToSample("C1", 0, 1000);
+    const state = useCursorStore.getState();
+    expect(state.c1Active).toBe(true);
+    expect(state.c1SampleIndex).toBe(0); // must remain 0, not default 249
+  });
+
+  it("moves only the target cursor and bypasses locked delta-t pair sliding and clamping", () => {
+    useCursorStore.setState({
+      c1Active: true,
+      c2Active: true,
+      selectedCursor: "C1",
+      c1SampleIndex: 100,
+      c2SampleIndex: 400,
+    });
+    useCursorDisplayStore.getState().setDeltaLocked(true);
+
+    // Jump C1 to index 500: C2 must stay at 400, not slide to 800
+    useCursorStore.getState().jumpCursorToSample("C1", 500, 1000);
+    expect(useCursorStore.getState().c1SampleIndex).toBe(500);
+    expect(useCursorStore.getState().c2SampleIndex).toBe(400);
+
+    // Jump C2 to index 5: C1 must stay at 500, not clamp short or slide
+    useCursorStore.getState().jumpCursorToSample("C2", 5, 1000);
+    expect(useCursorStore.getState().c1SampleIndex).toBe(500);
+    expect(useCursorStore.getState().c2SampleIndex).toBe(5);
+  });
+
+  it("returns unchanged state when totalSamples <= 0", () => {
+    useCursorStore.setState({
+      c1Active: false,
+      c1SampleIndex: 10,
+    });
+    useCursorStore.getState().jumpCursorToSample("C1", 50, 0);
+    expect(useCursorStore.getState().c1Active).toBe(false);
+    expect(useCursorStore.getState().c1SampleIndex).toBe(10);
+  });
+});

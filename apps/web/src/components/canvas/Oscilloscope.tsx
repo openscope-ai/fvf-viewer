@@ -1193,7 +1193,12 @@ export default function Oscilloscope({
     if (initialSnapshot) {
       useZoomHistoryStore.getState().push(initialSnapshot);
     }
-    (container as HTMLElement & { __uplot?: uPlot }).__uplot = instance;
+    const extendedContainer = container as HTMLElement & {
+      __uplot?: uPlot;
+      __preStack?: Map<string, { min: number; max: number }>;
+    };
+    extendedContainer.__uplot = instance;
+    extendedContainer.__preStack = preStackRef.current;
     onUPlotInit?.(instance);
 
     // Trace clicks on the plot overlay
@@ -1479,7 +1484,12 @@ export default function Oscilloscope({
       useSnapshotStore.getState().registerExporter(null);
       instance.destroy();
       uplotRef.current = null;
-      delete (container as HTMLElement & { __uplot?: uPlot }).__uplot;
+      const extendedContainer = container as HTMLElement & {
+        __uplot?: uPlot;
+        __preStack?: Map<string, { min: number; max: number }>;
+      };
+      delete extendedContainer.__uplot;
+      delete extendedContainer.__preStack;
     };
   }, [capture, alignedData, onUPlotInit]);
 

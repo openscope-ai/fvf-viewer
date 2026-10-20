@@ -40,6 +40,17 @@ export interface CursorStoreState {
     c2Index: number,
     totalSamples: number,
   ) => void;
+  /**
+   * Dedicated atomic action for feature jump navigation (issue #314):
+   * activates and selects the target cursor and positions it at index
+   * in a single update, bypassing deltaLocked pair-sliding and sample-0
+   * default substitution.
+   */
+  jumpCursorToSample: (
+    id: CursorId,
+    index: number,
+    totalSamples: number,
+  ) => void;
   initForCapture: (totalSamples: number) => void;
   reset: () => void;
 }
@@ -199,6 +210,18 @@ export const useCursorStore = create<CursorStoreState>((set) => ({
       return {
         c1SampleIndex: clampIndex(c1Index, totalSamples),
         c2SampleIndex: clampIndex(c2Index, totalSamples),
+      };
+    }),
+
+  jumpCursorToSample: (id, index, totalSamples) =>
+    set((state) => {
+      if (totalSamples <= 0) return state;
+      const activeKey = id === "C1" ? "c1Active" : "c2Active";
+      const sampleKey = id === "C1" ? "c1SampleIndex" : "c2SampleIndex";
+      return {
+        [activeKey]: true,
+        selectedCursor: id,
+        [sampleKey]: clampIndex(index, totalSamples),
       };
     }),
 

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.12.2] - 2026-10-20
+
+[v0.12.1...v0.12.2](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.1...v0.12.2)
+
+### Changed
+
+- Refactored feature jump navigation from WaveformToolbar line 2 into channel-bound cursor popovers (issue #314):
+  - Removed top-level `FindNavControls` and `.waveform-find-*` toolbar styles to preserve line 2 toolbar real estate.
+  - Added `CursorFeatureJumpSection` inside `CursorSettings.tsx` (`BadgeConfigPopover`), visible only when the cursor is bound to a specific physical channel present in the capture.
+  - Configured M3 feature selection chips (`rising`, `falling`, `peak`, `valley`, `saturation`) per cursor (C1, C2) with session persistence in `cursorDisplayStore`.
+  - Added single-pass linear-time $O(N)$ extremum scanning with per-channel bounds and lookahead caching (`featureSearch.ts`).
+  - Added atomic `jumpCursorToSample` in `cursorStore` ensuring jumping never slides partner cursors even when Locked $\Delta t$ is enabled, and auto-activates inactive cursors directly at target samples.
+  - Centered zoomed-in viewports smoothly on jumped samples with viewport undo snapshot recording while preserving Stack-mode lane bounds.
+
 ## [0.12.1] - 2026-10-19
 
 [v0.12.0...v0.12.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.0...v0.12.1)

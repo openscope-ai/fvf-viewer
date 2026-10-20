@@ -1,9 +1,10 @@
 /**
- * Feature search algorithms for oscilloscope waveform navigation (Issue #288).
+ * Feature search algorithms for oscilloscope waveform navigation (Issue #288, #314).
  * Pure client-side mathematical analysis of sampled waveform vectors:
  * - Rising / Falling edge transitions with hysteresis thresholding
- * - Local peaks and valleys
+ * - Local peaks and valleys with deterministic O(N) neighbor tracking across NaNs
  * - Saturated / overload samples (NaN / infinite values)
+ * - Memoized amplitude bounds and directional lookahead
  */
 
 export type FeatureType =
@@ -13,6 +14,80 @@ export interface FeatureSearchResult {
   index: number;
   timestamp: number;
   value: number;
+}
+
+export interface LookaheadResult {
+  prevResult: FeatureSearchResult | null;
+  nextResult: FeatureSearchResult | null;
+}
+
+export interface ChannelBounds {
+  vMin: number;
+  vMax: number;
+}
+
+const boundsCache = new WeakMap<object, ChannelBounds | null>();
+const finiteIndicesCache = new WeakMap<object, Int32Array>();
+let lookaheadCache = new WeakMap<object, Map<string, LookaheadResult>>();
+const fallbackLookaheadCache = new Map<string, LookaheadResult>();
+const MAX_LOOKAHEAD_CACHE_PER_CAPTURE = 200;
+
+export function clearFeatureSearchCache(): void {
+  lookaheadCache = new WeakMap<object, Map<string, LookaheadResult>>();
+  fallbackLookaheadCache.clear();
+}
+
+/**
+ * Precomputes or retrieves memoized global min/max over finite samples for threshold/hysteresis.
+ */
+export function getChannelBounds(
+  samples: ArrayLike<number>,
+): ChannelBounds | null {
+  const isObj = typeof samples === "object" && samples !== null;
+  if (isObj && boundsCache.has(samples)) {
+    return boundsCache.get(samples)!;
+  }
+
+  const len = samples.length;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (let i = 0; i < len; i++) {
+    const v = samples[i]!;
+    if (Number.isFinite(v)) {
+      if (v < vMin) vMin = v;
+      if (v > vMax) vMax = v;
+    }
+  }
+
+  const result: ChannelBounds | null =
+    !Number.isFinite(vMin) || !Number.isFinite(vMax) || vMax <= vMin
+      ? null
+      : { vMin, vMax };
+
+  if (isObj) {
+    boundsCache.set(samples, result);
+  }
+  return result;
+}
+
+function getFiniteIndices(samples: ArrayLike<number>): Int32Array {
+  const isObj = typeof samples === "object" && samples !== null;
+  if (isObj && finiteIndicesCache.has(samples)) {
+    return finiteIndicesCache.get(samples)!;
+  }
+
+  const len = samples.length;
+  const temp: number[] = [];
+  for (let idx = 0; idx < len; idx++) {
+    if (Number.isFinite(samples[idx]!)) {
+      temp.push(idx);
+    }
+  }
+  const result = new Int32Array(temp);
+  if (isObj) {
+    finiteIndicesCache.set(samples, result);
+  }
+  return result;
 }
 
 /**
@@ -42,21 +117,12 @@ export function findFeature(
     return findSaturation(timestamps, samples, clampedStart, direction);
   }
 
-  // Calculate global min/max over finite samples for threshold/hysteresis
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (let i = 0; i < len; i++) {
-    const v = samples[i]!;
-    if (Number.isFinite(v)) {
-      if (v < vMin) vMin = v;
-      if (v > vMax) vMax = v;
-    }
-  }
-
-  if (!Number.isFinite(vMin) || !Number.isFinite(vMax) || vMax <= vMin) {
+  const bounds = getChannelBounds(samples);
+  if (!bounds) {
     // All samples are NaN or completely flat signal
     return null;
   }
+  const { vMin, vMax } = bounds;
 
   if (featureType === "rising" || featureType === "falling") {
     return findEdge(
@@ -83,6 +149,92 @@ export function findFeature(
   }
 
   return null;
+}
+
+/**
+ * Lookahead helper memoizing both directions (prevResult and nextResult) for
+ * button boundary disabling and instant click navigation without redundant passes.
+ */
+export function getLookahead(
+  timestamps: ArrayLike<number> | undefined,
+  samples: ArrayLike<number> | undefined,
+  captureKey: unknown,
+  channelName: string,
+  featureType: FeatureType,
+  startIndex: number,
+  channelVisible: boolean,
+): LookaheadResult {
+  if (
+    !channelVisible ||
+    !timestamps ||
+    !samples ||
+    timestamps.length === 0 ||
+    samples.length === 0
+  ) {
+    return { prevResult: null, nextResult: null };
+  }
+
+  const isObjectKey = typeof captureKey === "object" && captureKey !== null;
+  const rootKey: object | null = isObjectKey
+    ? (captureKey as object)
+    : typeof samples === "object" && samples !== null
+      ? (samples as object)
+      : null;
+
+  const subKey = `${channelName}:${featureType}:${startIndex}:${channelVisible}`;
+
+  if (rootKey) {
+    const captureMap = lookaheadCache.get(rootKey);
+    if (captureMap && captureMap.has(subKey)) {
+      return captureMap.get(subKey)!;
+    }
+  } else {
+    const fallbackKey = `${String(captureKey)}:${subKey}`;
+    if (fallbackLookaheadCache.has(fallbackKey)) {
+      return fallbackLookaheadCache.get(fallbackKey)!;
+    }
+  }
+
+  const prevResult = findFeature(
+    timestamps,
+    samples,
+    startIndex,
+    "prev",
+    featureType,
+  );
+  const nextResult = findFeature(
+    timestamps,
+    samples,
+    startIndex,
+    "next",
+    featureType,
+  );
+  const result: LookaheadResult = { prevResult, nextResult };
+
+  if (rootKey) {
+    let captureMap = lookaheadCache.get(rootKey);
+    if (!captureMap) {
+      captureMap = new Map<string, LookaheadResult>();
+      lookaheadCache.set(rootKey, captureMap);
+    }
+    if (captureMap.size >= MAX_LOOKAHEAD_CACHE_PER_CAPTURE) {
+      const firstKey = captureMap.keys().next().value;
+      if (firstKey !== undefined) {
+        captureMap.delete(firstKey);
+      }
+    }
+    captureMap.set(subKey, result);
+  } else {
+    const fallbackKey = `${String(captureKey)}:${subKey}`;
+    if (fallbackLookaheadCache.size >= MAX_LOOKAHEAD_CACHE_PER_CAPTURE) {
+      const firstKey = fallbackLookaheadCache.keys().next().value;
+      if (firstKey !== undefined) {
+        fallbackLookaheadCache.delete(firstKey);
+      }
+    }
+    fallbackLookaheadCache.set(fallbackKey, result);
+  }
+  return result;
 }
 
 function findSaturation(
@@ -128,8 +280,6 @@ function findEdge(
   const isForward = direction === "next";
 
   if (isForward) {
-    // Looking forward from start + 1 to len - 1
-    // Find the state of the last valid sample at or before start
     let prevVal: number | null = null;
     for (let k = start; k >= 0; k--) {
       const v = samples[k]!;
@@ -145,12 +295,10 @@ function findEdge(
 
       if (prevVal !== null) {
         if (edgeType === "rising") {
-          // Transition from below vMid to >= vMid
           if (prevVal < vMid && val >= vMid && val >= lowThresh) {
             return { index: i, timestamp: timestamps[i]!, value: val };
           }
         } else {
-          // Falling: transition from above vMid to <= vMid
           if (prevVal > vMid && val <= vMid && val <= highThresh) {
             return { index: i, timestamp: timestamps[i]!, value: val };
           }
@@ -159,7 +307,6 @@ function findEdge(
       prevVal = val;
     }
   } else {
-    // Looking backward from start - 1 down to 0
     let nextVal: number | null = null;
     let nextIdx: number | null = null;
     for (let k = start; k < len; k++) {
@@ -177,10 +324,7 @@ function findEdge(
 
       if (nextVal !== null && nextIdx !== null) {
         if (edgeType === "rising") {
-          // In reverse traversal, moving backwards to an earlier rising edge:
-          // A rising edge at nextIdx has val (at i) < vMid and nextVal (at nextIdx) >= vMid.
           if (val < vMid && nextVal >= vMid) {
-            // Only accept if nextIdx is strictly before start
             if (nextIdx < start) {
               return {
                 index: nextIdx,
@@ -190,7 +334,6 @@ function findEdge(
             }
           }
         } else {
-          // Falling edge: val > vMid and nextVal <= vMid
           if (val > vMid && nextVal <= vMid) {
             if (nextIdx < start) {
               return {
@@ -210,6 +353,12 @@ function findEdge(
   return null;
 }
 
+/**
+ * Semantic-preserving O(N) extremum search eliminating O(N^2) inner neighbor loops across NaNs.
+ * - Plateau rule: val >= prev && val > next for peaks; val <= prev && val < next for valleys.
+ * - Nearest finite neighbor lookup across arbitrary NaN runs in O(1) via tracked finite samples.
+ * - Prominence threshold: val >= vMin + span * 0.2 for peaks; val <= vMax - span * 0.2 for valleys.
+ */
 function findExtremum(
   timestamps: ArrayLike<number>,
   samples: ArrayLike<number>,
@@ -220,44 +369,58 @@ function findExtremum(
   vMax: number,
 ): FeatureSearchResult | null {
   const len = samples.length;
+  if (len < 3) return null;
   const span = vMax - vMin;
-  const step = direction === "next" ? 1 : -1;
 
-  let i = start + step;
-  while (i > 0 && i < len - 1) {
-    const val = samples[i]!;
-    if (Number.isFinite(val)) {
-      // Find previous finite sample
-      let prev = NaN;
-      for (let p = i - 1; p >= 0; p--) {
-        if (Number.isFinite(samples[p]!)) {
-          prev = samples[p]!;
-          break;
-        }
-      }
-      // Find next finite sample
-      let next = NaN;
-      for (let n = i + 1; n < len; n++) {
-        if (Number.isFinite(samples[n]!)) {
-          next = samples[n]!;
-          break;
-        }
-      }
+  const finiteIndices = getFiniteIndices(samples);
+  const M = finiteIndices.length;
+  if (M < 3) return null;
 
-      if (Number.isFinite(prev) && Number.isFinite(next)) {
-        if (type === "peak") {
-          if (val >= prev && val > next && val >= vMin + span * 0.2) {
-            return { index: i, timestamp: timestamps[i]!, value: val };
-          }
-        } else {
-          // valley
-          if (val <= prev && val < next && val <= vMax - span * 0.2) {
-            return { index: i, timestamp: timestamps[i]!, value: val };
-          }
+  if (direction === "next") {
+    // Find first j where finiteIndices[j] > start
+    let j = 0;
+    while (j < M && finiteIndices[j]! <= start) j++;
+    for (; j < M - 1; j++) {
+      if (j < 1) continue;
+      const i = finiteIndices[j]!;
+      if (i <= 0) continue;
+      if (i >= len - 1) break;
+      const val = samples[i]!;
+      const prev = samples[finiteIndices[j - 1]!]!;
+      const next = samples[finiteIndices[j + 1]!]!;
+      if (type === "peak") {
+        if (val >= prev && val > next && val >= vMin + span * 0.2) {
+          return { index: i, timestamp: timestamps[i]!, value: val };
+        }
+      } else {
+        if (val <= prev && val < next && val <= vMax - span * 0.2) {
+          return { index: i, timestamp: timestamps[i]!, value: val };
         }
       }
     }
-    i += step;
+  } else {
+    // direction === "prev"
+    // Find last j where finiteIndices[j] < start
+    let j = M - 1;
+    while (j >= 0 && finiteIndices[j]! >= start) j--;
+    for (; j >= 1; j--) {
+      if (j > M - 2) continue;
+      const i = finiteIndices[j]!;
+      if (i >= len - 1) continue;
+      if (i <= 0) break;
+      const val = samples[i]!;
+      const prev = samples[finiteIndices[j - 1]!]!;
+      const next = samples[finiteIndices[j + 1]!]!;
+      if (type === "peak") {
+        if (val >= prev && val > next && val >= vMin + span * 0.2) {
+          return { index: i, timestamp: timestamps[i]!, value: val };
+        }
+      } else {
+        if (val <= prev && val < next && val <= vMax - span * 0.2) {
+          return { index: i, timestamp: timestamps[i]!, value: val };
+        }
+      }
+    }
   }
 
   return null;

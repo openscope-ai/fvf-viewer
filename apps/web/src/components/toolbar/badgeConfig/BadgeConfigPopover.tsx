@@ -22,6 +22,7 @@ import { QuickKnobs } from "./QuickKnobs";
 import { ColorDetail } from "./ColorDetail";
 import {
   ChannelBindingSection,
+  CursorFeatureJumpSection,
   LineStyleSection,
   LockedDeltaSection,
   MeasurementUnitsSection,
@@ -82,6 +83,7 @@ export function BadgeConfigPopover({
           <>
             <MeasurementUnitsSection />
             <ChannelBindingSection cursorId={target.paletteKey} />
+            <CursorFeatureJumpSection cursorId={target.paletteKey} />
             <LockedDeltaSection />
             <LineStyleSection cursorId={target.paletteKey} />
             <p

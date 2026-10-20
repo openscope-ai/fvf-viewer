@@ -795,6 +795,7 @@ describe("Draggable cursor readout card (Issue #58)", () => {
       lineStyles: { C1: "solid", C2: "solid" },
       bindings: { C1: "all", C2: "all" },
       deltaLocked: false,
+      findFeatures: { C1: "rising", C2: "rising" },
     });
   });
 

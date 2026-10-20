@@ -31,6 +31,10 @@ export type VoltageUnit = "auto" | "V" | "mV" | "dBV";
 /** Cursor line rendering styles (issue #226), independent per cursor. */
 export type LineStyle = "solid" | "dashed" | "dotted";
 
+/** Feature search type for cursor jump navigation (issue #314). */
+export type FeatureType =
+  "rising" | "falling" | "peak" | "valley" | "saturation";
+
 /**
  * Channel source binding (issue #225): "all" (the default — the HUD card
  * shows every visible channel) or a physical channel tag. Reference
@@ -44,6 +48,13 @@ const TIME_UNITS: readonly TimeUnit[] = ["auto", "s", "ms", "µs", "ns"];
 const FREQUENCY_UNITS: readonly FrequencyUnit[] = ["auto", "Hz", "kHz", "MHz"];
 const VOLTAGE_UNITS: readonly VoltageUnit[] = ["auto", "V", "mV", "dBV"];
 const LINE_STYLES: readonly LineStyle[] = ["solid", "dashed", "dotted"];
+const FEATURE_TYPES: readonly FeatureType[] = [
+  "rising",
+  "falling",
+  "peak",
+  "valley",
+  "saturation",
+];
 const BINDINGS: readonly CursorBinding[] = ["all", "A", "B", "C", "D"];
 
 function oneOf<T extends string>(
@@ -62,6 +73,7 @@ interface PersistedCursorDisplay {
   lineStyles: { C1: LineStyle; C2: LineStyle };
   bindings: { C1: CursorBinding; C2: CursorBinding };
   deltaLocked: boolean;
+  findFeatures: { C1: FeatureType; C2: FeatureType };
 }
 
 const DEFAULTS: PersistedCursorDisplay = {
@@ -71,6 +83,7 @@ const DEFAULTS: PersistedCursorDisplay = {
   lineStyles: { C1: "solid", C2: "solid" },
   bindings: { C1: "all", C2: "all" },
   deltaLocked: false,
+  findFeatures: { C1: "rising", C2: "rising" },
 };
 
 /** Fresh copy of the defaults with no shared mutable references. */
@@ -79,6 +92,7 @@ function defaultsCopy(): PersistedCursorDisplay {
     ...DEFAULTS,
     lineStyles: { ...DEFAULTS.lineStyles },
     bindings: { ...DEFAULTS.bindings },
+    findFeatures: { ...DEFAULTS.findFeatures },
   };
 }
 
@@ -112,6 +126,14 @@ function readStored(): PersistedCursorDisplay {
     if (typeof record.deltaLocked === "boolean") {
       clean.deltaLocked = record.deltaLocked;
     }
+    if (
+      typeof record.findFeatures === "object" &&
+      record.findFeatures !== null
+    ) {
+      const ff = record.findFeatures as Record<string, unknown>;
+      if (oneOf(FEATURE_TYPES, ff.C1)) clean.findFeatures.C1 = ff.C1;
+      if (oneOf(FEATURE_TYPES, ff.C2)) clean.findFeatures.C2 = ff.C2;
+    }
     return clean;
   } catch {
     return defaultsCopy();
@@ -128,7 +150,9 @@ function persist(state: CursorDisplayStoreState): void {
       state.lineStyles.C2 === "solid" &&
       state.bindings.C1 === "all" &&
       state.bindings.C2 === "all" &&
-      state.deltaLocked === false;
+      state.deltaLocked === false &&
+      state.findFeatures.C1 === "rising" &&
+      state.findFeatures.C2 === "rising";
     if (isDefault) {
       window.localStorage.removeItem(CURSOR_DISPLAY_STORAGE_KEY);
     } else {
@@ -141,6 +165,7 @@ function persist(state: CursorDisplayStoreState): void {
           lineStyles: state.lineStyles,
           bindings: state.bindings,
           deltaLocked: state.deltaLocked,
+          findFeatures: state.findFeatures,
         }),
       );
     }
@@ -159,12 +184,15 @@ export interface CursorDisplayStoreState {
   bindings: { C1: CursorBinding; C2: CursorBinding };
   /** Issue #225: pair-level locked-Δt tracking (one shared setting). */
   deltaLocked: boolean;
+  /** Issue #314: per-cursor selected feature type for feature jump. */
+  findFeatures: { C1: FeatureType; C2: FeatureType };
   setTimeUnit: (unit: TimeUnit) => void;
   setFrequencyUnit: (unit: FrequencyUnit) => void;
   setVoltageUnit: (unit: VoltageUnit) => void;
   setLineStyle: (id: CursorId, style: LineStyle) => void;
   setBinding: (id: CursorId, binding: CursorBinding) => void;
   setDeltaLocked: (locked: boolean) => void;
+  setFindFeature: (id: CursorId, feature: FeatureType) => void;
   reset: () => void;
 }
 
@@ -178,6 +206,7 @@ export function createCursorDisplayStore() {
           ...partial,
           lineStyles: { ...state.lineStyles, ...partial.lineStyles },
           bindings: { ...state.bindings, ...partial.bindings },
+          findFeatures: { ...state.findFeatures, ...partial.findFeatures },
         };
         persist(next);
         return next;
@@ -190,6 +219,7 @@ export function createCursorDisplayStore() {
       lineStyles: initial.lineStyles,
       bindings: initial.bindings,
       deltaLocked: initial.deltaLocked,
+      findFeatures: initial.findFeatures,
 
       setTimeUnit: (unit) => apply({ timeUnit: unit }),
       setFrequencyUnit: (unit) => apply({ frequencyUnit: unit }),
@@ -215,6 +245,15 @@ export function createCursorDisplayStore() {
         }),
 
       setDeltaLocked: (locked) => apply({ deltaLocked: locked }),
+      setFindFeature: (id, feature) =>
+        set((state) => {
+          const next: CursorDisplayStoreState = {
+            ...state,
+            findFeatures: { ...state.findFeatures, [id]: feature },
+          };
+          persist(next);
+          return next;
+        }),
       reset: () => apply(defaultsCopy()),
     };
   });
