@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>
+      Supported ScopeMeter Models & .fvf Channel Configurations — FVF Viewer
+    </title>
+    <meta
+      name="description"
+      content="Explore supported ScopeMeter test instrument models, 1-channel to 4-channel configurations, and binary waveform envelopes compatible with FVF Viewer."
+    />
+    <link
+      rel="canonical"
+      href="https://fvf-viewer.com/supported-scopemeter-models/"
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "FVF Viewer",
+        "url": "https://fvf-viewer.com/",
+        "applicationCategory": "EngineeringApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires a modern desktop or tablet web browser (Chrome, Firefox, Safari, Edge) supporting WebAssembly and a viewport width of at least 1024 pixels.",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "sameAs": ["https://github.com/openscope-ai/fvf-viewer"],
+        "description": "Free, fast, private in-browser viewer for ScopeMeter .fvf waveform capture files. Inspect channels, zoom, pan, measure with dual cursors, and export data without uploading."
+      }
+    </script>
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src:
+          url("/fonts/Geist-latin.woff2") format("woff2"),
+          url("/fonts/Geist-latin-ext.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        background: #000000;
+        color: #e8e8e8;
+        font-family:
+          "Geist",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: #00bfff;
+        text-decoration: none;
+        transition: color 0.15s ease;
+      }
+
+      a:hover {
+        color: #66d9ff;
+        text-decoration: underline;
+      }
+
+      .static-page-wrapper {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+
+      /* Header */
+      .static-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        background: #000000;
+        border-bottom: 1px solid #1a1a1a;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+      }
+
+      .brand-lockup-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none !important;
+      }
+
+      .brand-lockup-logo {
+        display: block;
+        width: 32px;
+        height: 32px;
+        border-radius: 7px;
+      }
+
+      .brand-text {
+        font-family: "Geist", system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 1.1rem;
+        letter-spacing: 0;
+        color: #e8e8e8;
+        user-select: none;
+      }
+
+      .brand-dot {
+        color: #fcc603;
+      }
+
+      .static-nav {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .nav-link {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #9a9a9a;
+        text-decoration: none;
+        padding: 6px 4px;
+        border-bottom: 2px solid transparent;
+        transition:
+          color 0.15s ease,
+          border-color 0.15s ease;
+      }
+
+      .nav-link:hover {
+        color: #ffffff;
+        text-decoration: none;
+      }
+
+      .nav-link--active {
+        color: #fcc603;
+        border-bottom-color: #fcc603;
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .github-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #9a9a9a;
+        padding: 6px;
+        border-radius: 6px;
+        transition: color 0.15s ease;
+      }
+
+      .github-link:hover {
+        color: #ffffff;
+      }
+
+      .github-link svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+      }
+
+      .header-cta-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #fcc603;
+        color: #000000;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding: 6px 14px;
+        border-radius: 6px;
+        text-decoration: none !important;
+        transition:
+          background-color 0.15s ease,
+          transform 0.05s ease;
+      }
+
+      .header-cta-btn:hover {
+        background: #e5b400;
+        color: #000000;
+      }
+
+      /* Main container */
+      .static-main {
+        flex: 1;
+        width: 100%;
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+
+      .hero-badge {
+        display: inline-block;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        background: #1a1a1a;
+        border: 1px solid #2e2e2e;
+        color: #00bfff;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        font-size: 2.25rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.25;
+        margin: 0 0 16px;
+        color: #ffffff;
+      }
+
+      .lead {
+        font-size: 1.15rem;
+        color: #b0b0b0;
+        line-height: 1.6;
+        margin-bottom: 36px;
+      }
+
+      h2 {
+        font-size: 1.45rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #ffffff;
+        margin: 40px 0 16px;
+        border-bottom: 1px solid #1f1f1f;
+        padding-bottom: 8px;
+      }
+
+      h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #e8e8e8;
+        margin: 24px 0 12px;
+      }
+
+      p {
+        margin: 0 0 16px;
+        color: #c4c4c4;
+      }
+
+      ul,
+      ol {
+        margin: 0 0 20px;
+        padding-left: 24px;
+        color: #c4c4c4;
+      }
+
+      li {
+        margin-bottom: 8px;
+      }
+
+      .step-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+        margin: 24px 0 36px;
+      }
+
+      .step-card {
+        background: #0d0d0d;
+        border: 1px solid #242424;
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      .step-number {
+        display: inline-block;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #fcc603;
+        background: #1f1a00;
+        border: 1px solid #4a3d00;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-bottom: 12px;
+      }
+
+      .step-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #ffffff;
+        margin: 0 0 8px;
+      }
+
+      .step-desc {
+        font-size: 0.9rem;
+        color: #9a9a9a;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      .callout {
+        background: #0c1520;
+        border: 1px solid #163654;
+        border-left: 4px solid #00bfff;
+        border-radius: 6px;
+        padding: 20px;
+        margin: 28px 0;
+      }
+
+      .callout-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #66d9ff;
+        margin: 0 0 8px;
+      }
+
+      .callout p {
+        margin: 0;
+        font-size: 0.93rem;
+        color: #b8d4ea;
+        line-height: 1.55;
+      }
+
+      .cta-section {
+        background: linear-gradient(180deg, #121212 0%, #0d0d0d 100%);
+        border: 1px solid #292929;
+        border-radius: 10px;
+        padding: 32px 28px;
+        text-align: center;
+        margin: 48px 0 20px;
+      }
+
+      .cta-section h3 {
+        font-size: 1.35rem;
+        color: #ffffff;
+        margin: 0 0 10px;
+      }
+
+      .cta-section p {
+        color: #9a9a9a;
+        max-width: 560px;
+        margin: 0 auto 24px;
+        font-size: 0.95rem;
+      }
+
+      .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #fcc603;
+        color: #000000;
+        font-weight: 600;
+        font-size: 0.98rem;
+        padding: 10px 24px;
+        border-radius: 7px;
+        text-decoration: none !important;
+        transition:
+          background-color 0.15s ease,
+          transform 0.05s ease;
+      }
+
+      .btn-primary:hover {
+        background: #e5b400;
+        color: #000000;
+      }
+
+      .btn-primary:active {
+        transform: scale(0.98);
+      }
+
+      /* Footer */
+      .site-footer {
+        flex: none;
+        background: #0d0d0d;
+        border-top: 1px solid #242424;
+        padding: 16px 20px;
+        text-align: center;
+      }
+
+      .site-footer-disclaimer {
+        margin: 0 0 8px;
+        color: #8a8a8a;
+        font-size: 0.72rem;
+        line-height: 1.45;
+      }
+
+      .site-footer-copy {
+        margin: 0;
+        color: #666666;
+        font-size: 0.72rem;
+      }
+
+      @media (max-width: 640px) {
+        .static-nav {
+          display: none;
+        }
+
+        h1 {
+          font-size: 1.75rem;
+        }
+
+        .static-main {
+          padding: 24px 16px 48px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="static-page-wrapper">
+      <header class="static-header">
+        <a href="/" class="brand-lockup-link" aria-label="fvf • viewer — home">
+          <img
+            class="brand-lockup-logo"
+            src="/logo.svg"
+            alt=""
+            width="32"
+            height="32"
+            aria-hidden="true"
+          />
+          <span class="brand-text">
+            fvf <span class="brand-dot">•</span> viewer
+          </span>
+        </a>
+        <nav class="static-nav" aria-label="Guides and technical reference">
+          <a href="/open-fvf-file/" class="nav-link">Open FVF File</a>
+          <a
+            href="/supported-scopemeter-models/"
+            class="nav-link nav-link--active"
+            >Supported Models</a
+          >
+          <a href="/fvf-file-format/" class="nav-link">File Format</a>
+          <a href="/faq/" class="nav-link">FAQ</a>
+        </nav>
+        <div class="header-actions">
+          <a
+            href="https://github.com/openscope-ai/fvf-viewer"
+            class="github-link"
+            aria-label="GitHub repository"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+              ></path>
+            </svg>
+          </a>
+          <a href="/" class="header-cta-btn">Open the viewer</a>
+        </div>
+      </header>
+      <main class="static-main">
+        <article>
+          <span class="hero-badge">Compatibility • Instrument Envelope</span>
+          <h1>Supported ScopeMeter Models &amp; Waveform Envelopes</h1>
+          <p class="lead">
+            FVF Viewer is engineered to parse and visualize binary
+            <strong>.fvf</strong> (FVF) waveform captures across portable
+            ScopeMeter test instruments. Check your instrument family, channel
+            layout, and capture envelope below before opening your files.
+          </p>
+
+          <h2>Supported ScopeMeter Instrument Families</h2>
+          <p>
+            FVF Viewer is
+            <strong>format- and envelope-driven rather than model-gated</strong
+            >. The parser validates files by checking the binary signature
+            (<code>FV.FVF</code>), record layout, and physical envelope
+            parameters rather than enforcing a restrictive model-code whitelist.
+            Captures from all major ScopeMeter instrument families conforming to
+            the format are supported:
+          </p>
+
+          <div class="step-grid">
+            <div class="step-card">
+              <span class="step-number">2-Channel & 4-Channel</span>
+              <div class="step-title">ScopeMeter 190 Series</div>
+              <p class="step-desc">
+                High-performance industrial oscilloscopes (2-channel and
+                4-channel models). Supports up to 4 simultaneous analog
+                channels, deep sample records, and fast horizontal sweeps.
+              </p>
+            </div>
+            <div class="step-card">
+              <span class="step-number">Industrial 2-Channel</span>
+              <div class="step-title">ScopeMeter 120B Series</div>
+              <p class="step-desc">
+                Compact industrial test tools. Supports dual-channel
+                electromechanical captures, power harmonics, and automated bus
+                health recordings.
+              </p>
+            </div>
+            <div class="step-card">
+              <span class="step-number">Motor Drive Analysis</span>
+              <div class="step-title">ScopeMeter MDA-500 Series</div>
+              <p class="step-desc">
+                Motor drive analyzers. Supports 4-channel drive inverter, motor
+                input, and DC bus voltage and current transient waveform files.
+              </p>
+            </div>
+            <div class="step-card">
+              <span class="step-number">Portable Oscilloscopes</span>
+              <div class="step-title">ScopeMeter Classic Series</div>
+              <p class="step-desc">
+                Field oscilloscopes and test tools producing binary
+                <code>.fvf</code> captures with 1 to 4 analog channels.
+              </p>
+            </div>
+          </div>
+
+          <h2>Supported Channel Configurations</h2>
+          <p>
+            ScopeMeter acquisitions record varied channel combinations depending
+            on instrument hardware and test mode:
+          </p>
+          <ul>
+            <li>
+              <strong>Single-Channel (1 Channel):</strong> Single input
+              acquisitions (e.g., Channel A / <code>Input A</code> or German
+              <code>Eingang A</code>) with maximum sample record depth.
+            </li>
+            <li>
+              <strong>Dual-Channel (2 Channels):</strong> Dual simultaneous
+              inputs (e.g., Channels A and B) for differential timing, phase, or
+              comparative analysis.
+            </li>
+            <li>
+              <strong>Three-Channel (3 Channels):</strong> Non-sequential
+              physical channel subsets (e.g., Channels A, B, and D) recorded
+              when intermediate channels are disabled.
+            </li>
+            <li>
+              <strong>Four-Channel (4 Channels):</strong> Full quad-channel
+              captures (Channels A, B, C, and D) from 4-channel ScopeMeter and
+              MDA instruments.
+            </li>
+            <li>
+              <strong>Derived Math Channels:</strong> Best-effort recovery and
+              display for mathematical operator traces (e.g.,
+              <code>Math A-B</code> or German <code>Mathematik A-B</code>).
+            </li>
+          </ul>
+
+          <h2>Technical Parser Envelope</h2>
+          <p>
+            FVF Viewer's Rust/WebAssembly engine decodes waveform files within
+            the following verified technical parameters:
+          </p>
+          <ul>
+            <li>
+              <strong>Sample Count Range:</strong> Supports captures containing
+              from <strong>500 samples</strong> (shortened envelope) up to
+              <strong>250,000 samples</strong> (deep memory envelope) per
+              channel.
+            </li>
+            <li>
+              <strong>Horizontal Timebase:</strong> Validates timebase steps
+              from <strong>1.0 ns/div</strong> up to
+              <strong>120.0 s/div</strong> (2 min/div roll mode).
+            </li>
+            <li>
+              <strong>Localized Decimal Formats:</strong> Automatically
+              normalizes both standard period decimals (e.g.,
+              <code>1.333 us/Div</code>) and European comma decimals (e.g.,
+              <code>1,333 us/Div</code>, <code>666,7 ns/Div</code>).
+            </li>
+            <li>
+              <strong>Channel Prefix Locales:</strong> Supports standard English
+              (<code>Input A</code>–<code>D</code>), German (<code
+                >Eingang A</code
+              >–<code>D</code>), and bracketed (<code>[A-D]</code>) channel
+              tags.
+            </li>
+            <li>
+              <strong>Timestamp Reconstruction:</strong> Precision 64-bit
+              floating point timestamp generation (<code
+                >t_i = t_left + i · delta_t</code
+              >) ensuring accurate time-axis alignment without drifting.
+            </li>
+            <li>
+              <strong>Physical Channel Decoding:</strong> Decodes raw integer
+              samples scaled by per-channel vertical calibration factors (<code
+                >raw &times; scale</code
+              >) with bounds-checked memory access and NaN-preserving rail
+              saturation detection.
+            </li>
+            <li>
+              <strong>Derived Channel Decoding:</strong> Recovers math operator
+              payloads using fixed-point integer sample decoding, accommodating
+              non-standard parameter block offsets.
+            </li>
+          </ul>
+
+          <div class="callout">
+            <div class="callout-title">
+              Have a ScopeMeter .fvf capture to inspect?
+            </div>
+            <p>
+              You do not need to choose your model or configure channels
+              beforehand. FVF Viewer automatically reads instrument descriptors,
+              detects channel counts, and calibrates time and voltage axes on
+              load.
+            </p>
+          </div>
+
+          <div class="cta-section">
+            <h3>Ready to view your waveform data?</h3>
+            <p>
+              Launch the viewer in your browser and drop your .fvf file to start
+              analyzing.
+            </p>
+            <a href="/" class="btn-primary">Open the viewer</a>
+          </div>
+        </article>
+      </main>
+      <footer class="site-footer">
+        <p class="site-footer-disclaimer">
+          fvf • viewer is not affiliated with, endorsed by, or sponsored by
+          Fluke Corporation. Fluke and ScopeMeter are registered trademarks of
+          Fluke Corporation.
+        </p>
+        <p class="site-footer-copy">
+          © 2026 FVF Viewer Contributors. Open source under the MIT License.
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

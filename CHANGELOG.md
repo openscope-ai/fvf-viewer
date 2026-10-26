@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.12.3] - 2026-10-26
+
+[v0.12.2...v0.12.3](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.2...v0.12.3)
+
+### Added
+
+- Public repository discoverability and metadata configuration (Ref #304):
+  - Configured public repository (`openscope-ai/fvf-viewer`) homepage to `https://fvf-viewer.com`.
+  - Audited topics to strictly use allowed discovery vocabulary (`fvf`, `scopemeter`, `waveform-viewer`, `oscilloscope`, `webassembly`, `rust`, `wasm`, `react`, `playwright`), removing the legacy `fluke` topic.
+  - Configured and verified 1200x630 dark-mode social preview image (`apps/web/public/share-image.png`) in repository settings.
+  - Documented post-publish persistence and verified settings audit in issue tracker follow-up comments (#304).
+- Discovery plumbing: robots.txt, sitemap.xml, llms.txt, and WebApplication structured data (Ref #303):
+  - Added `/robots.txt` welcoming general search engines and explicitly allowing major AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, Applebot-Extended) with a reference to the sitemap.
+  - Added `/sitemap.xml` enumerating the homepage and all static guide pages (`/open-fvf-file/`, `/supported-scopemeter-models/`, `/fvf-file-format/`, `/faq/`) with canonical URLs.
+  - Embedded valid schema.org `WebApplication` / `SoftwareApplication` JSON-LD across the homepage and all static pages describing the application, MIT license, free availability, browser requirements (>= 1024px), and GitHub repository link.
+  - Added `/llms.txt` delivering a concise, factual summary of FVF Viewer capabilities, 100% in-browser zero-upload privacy architecture, and documentation links using allowed targeting vocabulary.
+- Static FAQ page with embedded FAQPage structured data at `/faq/` (Ref #302):
+  - Added standalone static FAQ page answering questions on 100% in-browser zero-upload privacy, desktop and tablet viewport requirements (>= 1024px), lossless CSV and high-resolution PNG exports, typed error and warning validation, and the bundled 100k sample capture.
+  - Embedded valid `FAQPage` JSON-LD schema matching the visible question and answer text for search and AI indexability.
+  - Linked page to the viewer at `/`, integrated into shared static-page header navigation and homepage `<noscript>` links.
+- Static technical reference page for the .fvf file format at `/fvf-file-format/` (Ref #301):
+  - Added standalone static page providing a detailed specification of the binary .fvf capture format, including the 8-byte `FV.FVF\x1a\x00` signature, format version word, and root variant pointer.
+  - Documented sector table architecture, contiguous parameter/payload/trailer record chains, physical channel decoding (`raw * scale` with NaN saturation rails), derived channel fixed-point conversion, timebase grammar, and typed error/warning taxonomy.
+  - Linked page to the viewer at `/` and the GitHub repository, integrated into shared static-page navigation and homepage `<noscript>` links.
+- Static page for supported ScopeMeter models at `/supported-scopemeter-models/` (Ref #300):
+  - Added standalone static page detailing supported ScopeMeter instrument families (190 Series, 120B Series, MDA-500 Series, and legacy models) and 1- to 4-channel configurations.
+  - Documented verified parser technical envelope parameters (500 to 250,000 samples, 1.0 ns/div to 120.0 s/div timebases, comma/period decimals, Q16.16 fixed-point decoding) with links to the viewer at `/`.
+  - Linked page from shared static navigation header and updated `<noscript>` guide list on the homepage.
+- Homepage discoverability metadata, share image, and noscript pointer (Ref #299):
+  - Updated served `/` `index.html` with keyword-bearing title, meta description, and canonical link targeting .fvf / FVF / ScopeMeter vocabulary without Fluke targeting terms.
+  - Added Open Graph and Twitter Card tags referencing a 1200x630 share image served directly at `/share-image.png`.
+  - Added dark-mode `<noscript>` fallback notice linking to `/open-fvf-file/` without affecting the React root or client-side runtime behavior.
+- Static-page foundation alongside the SPA and first guide page at `/open-fvf-file/` (Ref #298):
+  - Added standalone static page generator and layout with dark-mode theme, brand lockup, guide navigation, and nominative fair-use disclaimer.
+  - Implemented `/open-fvf-file/` explaining .fvf files, ScopeMeter captures, step-by-step viewer usage, and 100% client-side privacy with "Open the viewer" call to action.
+  - Enhanced production Fastify server to serve static HTML pages ahead of the SPA fallback and redirect missing trailing slashes with 308.
+
 ## [0.12.2] - 2026-10-20
 
 [v0.12.1...v0.12.2](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.1...v0.12.2)

@@ -1,0 +1,30 @@
+# robots.txt for https://fvf-viewer.com
+# Allow search engines and major AI agents to discover and index public pages
+
+User-agent: *
+Allow: /
+
+# Explicitly welcome major AI search and retrieval crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+# Sitemap reference
+Sitemap: https://fvf-viewer.com/sitemap.xml

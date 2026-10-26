@@ -1,0 +1,496 @@
+import { SITE_DISCLAIMER } from "../components/footer/disclaimer";
+import { staticPages } from "./registry";
+import type { StaticPageMeta } from "./types";
+
+export { SITE_DISCLAIMER };
+
+export const webApplicationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "FVF Viewer",
+  url: "https://fvf-viewer.com/",
+  applicationCategory: "EngineeringApplication",
+  operatingSystem: "Any",
+  browserRequirements:
+    "Requires a modern desktop or tablet web browser (Chrome, Firefox, Safari, Edge) supporting WebAssembly and a viewport width of at least 1024 pixels.",
+  license: "https://opensource.org/licenses/MIT",
+  isAccessibleForFree: true,
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  sameAs: ["https://github.com/openscope-ai/fvf-viewer"],
+  description:
+    "Free, fast, private in-browser viewer for ScopeMeter .fvf waveform capture files. Inspect channels, zoom, pan, measure with dual cursors, and export data without uploading.",
+};
+
+export interface StaticLayoutOptions {
+  meta: StaticPageMeta;
+  contentHtml: string;
+}
+
+export function renderStaticLayout({
+  meta,
+  contentHtml,
+}: StaticLayoutOptions): string {
+  const webAppJsonLdBlock = `\n    <script type="application/ld+json">\n${JSON.stringify(webApplicationJsonLd, null, 2)}\n    </script>`;
+
+  const pageJsonLdBlock = meta.jsonLd
+    ? `\n    <script type="application/ld+json">\n${JSON.stringify(meta.jsonLd, null, 2)}\n    </script>`
+    : "";
+
+  const navLinksHtml = staticPages
+    .filter((p) => Boolean(p.meta.navLabel))
+    .map(
+      (p) =>
+        `<a href="/${p.meta.slug}/" class="nav-link ${meta.slug === p.meta.slug ? "nav-link--active" : ""}">${p.meta.navLabel}</a>`,
+    )
+    .join("\n          ");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>${meta.title}</title>
+    <meta name="description" content="${meta.description}" />
+    <link rel="canonical" href="${meta.canonical}" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />${webAppJsonLdBlock}${pageJsonLdBlock}
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src:
+          url("/fonts/Geist-latin.woff2") format("woff2"),
+          url("/fonts/Geist-latin-ext.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        background: #000000;
+        color: #e8e8e8;
+        font-family:
+          "Geist",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: #00bfff;
+        text-decoration: none;
+        transition: color 0.15s ease;
+      }
+
+      a:hover {
+        color: #66d9ff;
+        text-decoration: underline;
+      }
+
+      .static-page-wrapper {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+
+      /* Header */
+      .static-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        background: #000000;
+        border-bottom: 1px solid #1a1a1a;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+      }
+
+      .brand-lockup-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none !important;
+      }
+
+      .brand-lockup-logo {
+        display: block;
+        width: 32px;
+        height: 32px;
+        border-radius: 7px;
+      }
+
+      .brand-text {
+        font-family: "Geist", system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 1.1rem;
+        letter-spacing: 0;
+        color: #e8e8e8;
+        user-select: none;
+      }
+
+      .brand-dot {
+        color: #fcc603;
+      }
+
+      .static-nav {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .nav-link {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #9a9a9a;
+        text-decoration: none;
+        padding: 6px 4px;
+        border-bottom: 2px solid transparent;
+        transition:
+          color 0.15s ease,
+          border-color 0.15s ease;
+      }
+
+      .nav-link:hover {
+        color: #ffffff;
+        text-decoration: none;
+      }
+
+      .nav-link--active {
+        color: #fcc603;
+        border-bottom-color: #fcc603;
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .github-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #9a9a9a;
+        padding: 6px;
+        border-radius: 6px;
+        transition: color 0.15s ease;
+      }
+
+      .github-link:hover {
+        color: #ffffff;
+      }
+
+      .github-link svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+      }
+
+      .header-cta-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #fcc603;
+        color: #000000;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding: 6px 14px;
+        border-radius: 6px;
+        text-decoration: none !important;
+        transition:
+          background-color 0.15s ease,
+          transform 0.05s ease;
+      }
+
+      .header-cta-btn:hover {
+        background: #e5b400;
+        color: #000000;
+      }
+
+      /* Main container */
+      .static-main {
+        flex: 1;
+        width: 100%;
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+
+      .hero-badge {
+        display: inline-block;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        background: #1a1a1a;
+        border: 1px solid #2e2e2e;
+        color: #00bfff;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        font-size: 2.25rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.25;
+        margin: 0 0 16px;
+        color: #ffffff;
+      }
+
+      .lead {
+        font-size: 1.15rem;
+        color: #b0b0b0;
+        line-height: 1.6;
+        margin-bottom: 36px;
+      }
+
+      h2 {
+        font-size: 1.45rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #ffffff;
+        margin: 40px 0 16px;
+        border-bottom: 1px solid #1f1f1f;
+        padding-bottom: 8px;
+      }
+
+      h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #e8e8e8;
+        margin: 24px 0 12px;
+      }
+
+      p {
+        margin: 0 0 16px;
+        color: #c4c4c4;
+      }
+
+      ul,
+      ol {
+        margin: 0 0 20px;
+        padding-left: 24px;
+        color: #c4c4c4;
+      }
+
+      li {
+        margin-bottom: 8px;
+      }
+
+      .step-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+        margin: 24px 0 36px;
+      }
+
+      .step-card {
+        background: #0d0d0d;
+        border: 1px solid #242424;
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      .step-number {
+        display: inline-block;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #fcc603;
+        background: #1f1a00;
+        border: 1px solid #4a3d00;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-bottom: 12px;
+      }
+
+      .step-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #ffffff;
+        margin: 0 0 8px;
+      }
+
+      .step-desc {
+        font-size: 0.9rem;
+        color: #9a9a9a;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      .callout {
+        background: #0c1520;
+        border: 1px solid #163654;
+        border-left: 4px solid #00bfff;
+        border-radius: 6px;
+        padding: 20px;
+        margin: 28px 0;
+      }
+
+      .callout-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #66d9ff;
+        margin: 0 0 8px;
+      }
+
+      .callout p {
+        margin: 0;
+        font-size: 0.93rem;
+        color: #b8d4ea;
+        line-height: 1.55;
+      }
+
+      .cta-section {
+        background: linear-gradient(180deg, #121212 0%, #0d0d0d 100%);
+        border: 1px solid #292929;
+        border-radius: 10px;
+        padding: 32px 28px;
+        text-align: center;
+        margin: 48px 0 20px;
+      }
+
+      .cta-section h3 {
+        font-size: 1.35rem;
+        color: #ffffff;
+        margin: 0 0 10px;
+      }
+
+      .cta-section p {
+        color: #9a9a9a;
+        max-width: 560px;
+        margin: 0 auto 24px;
+        font-size: 0.95rem;
+      }
+
+      .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #fcc603;
+        color: #000000;
+        font-weight: 600;
+        font-size: 0.98rem;
+        padding: 10px 24px;
+        border-radius: 7px;
+        text-decoration: none !important;
+        transition:
+          background-color 0.15s ease,
+          transform 0.05s ease;
+      }
+
+      .btn-primary:hover {
+        background: #e5b400;
+        color: #000000;
+      }
+
+      .btn-primary:active {
+        transform: scale(0.98);
+      }
+
+      /* Footer */
+      .site-footer {
+        flex: none;
+        background: #0d0d0d;
+        border-top: 1px solid #242424;
+        padding: 16px 20px;
+        text-align: center;
+      }
+
+      .site-footer-disclaimer {
+        margin: 0 0 8px;
+        color: #8a8a8a;
+        font-size: 0.72rem;
+        line-height: 1.45;
+      }
+
+      .site-footer-copy {
+        margin: 0;
+        color: #666666;
+        font-size: 0.72rem;
+      }
+
+      @media (max-width: 640px) {
+        .static-nav {
+          display: none;
+        }
+
+        h1 {
+          font-size: 1.75rem;
+        }
+
+        .static-main {
+          padding: 24px 16px 48px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="static-page-wrapper">
+      <header class="static-header">
+        <a href="/" class="brand-lockup-link" aria-label="fvf • viewer — home">
+          <img
+            class="brand-lockup-logo"
+            src="/logo.svg"
+            alt=""
+            width="32"
+            height="32"
+            aria-hidden="true"
+          />
+          <span class="brand-text">
+            fvf <span class="brand-dot">•</span> viewer
+          </span>
+        </a>
+        <nav class="static-nav" aria-label="Guides and technical reference">
+          ${navLinksHtml}
+        </nav>
+        <div class="header-actions">
+          <a
+            href="https://github.com/openscope-ai/fvf-viewer"
+            class="github-link"
+            aria-label="GitHub repository"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+              ></path>
+            </svg>
+          </a>
+          <a href="/" class="header-cta-btn">Open the viewer</a>
+        </div>
+      </header>
+      <main class="static-main">
+        ${contentHtml}
+      </main>
+      <footer class="site-footer">
+        <p class="site-footer-disclaimer">${SITE_DISCLAIMER}</p>
+        <p class="site-footer-copy">© 2026 FVF Viewer Contributors. Open source under the MIT License.</p>
+      </footer>
+    </div>
+  </body>
+</html>`;
+}

@@ -1,0 +1,28 @@
+# FVF Viewer
+
+> Free, fast, private in-browser viewer for ScopeMeter .fvf waveform capture files.
+
+FVF Viewer (https://fvf-viewer.com/) is an open-source, client-side engineering tool for opening, inspecting, analyzing, and exporting ScopeMeter .fvf waveform capture files directly in modern web browsers.
+
+## Core Capabilities
+- In-browser decoding: High-performance Rust WebAssembly engine decodes binary .fvf captures locally in memory.
+- Multi-channel canvas: Interactive 60 FPS oscilloscope display powered by uPlot supporting simultaneous analog channels and envelope views.
+- Waveform analysis: Hardware-style box zoom, pan history, and dual measurement cursors with live delta-time (Δt), frequency (1/Δt), and voltage readouts.
+- Lossless data export: Export raw waveform records to lossless CSV files (comma or semicolon delimited) and high-resolution PNG snapshots (standard dark or inverted print theme).
+- Built-in sample capture: One-click bundled 100,000-sample 2-channel waveform capture for instant testing without local files.
+
+## Privacy & Security Architecture
+- 100% Client-Side Execution: All file reading and WebAssembly parsing occurs in the client browser inside an isolated Web Worker via FileReader.
+- Zero Server Transmission: Waveform files are never uploaded, transmitted over any network, or stored on remote servers. Works completely offline after initial page load.
+
+## Requirements
+- Desktop or tablet browser (Chrome, Firefox, Safari, Edge) supporting WebAssembly.
+- Viewport width of at least 1024 pixels for multi-channel waveform analysis.
+
+## Key Links & Documentation
+- [Viewer](https://fvf-viewer.com/): Interactive waveform viewer application.
+- [How to Open a .fvf File](https://fvf-viewer.com/open-fvf-file/): Guide on opening ScopeMeter .fvf captures in your browser.
+- [Supported ScopeMeter Models](https://fvf-viewer.com/supported-scopemeter-models/): Technical reference on supported ScopeMeter families and channel configurations.
+- [The .fvf File Format](https://fvf-viewer.com/fvf-file-format/): Binary file format specification, record layout grammar, timebases, and error taxonomy.
+- [Frequently Asked Questions (FAQ)](https://fvf-viewer.com/faq/): Answers to common questions regarding privacy, screen sizes, exports, and errors.
+- [GitHub Repository](https://github.com/openscope-ai/fvf-viewer): Open-source codebase, issue tracker, and release tags (MIT License).

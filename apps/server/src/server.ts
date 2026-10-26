@@ -2,7 +2,7 @@ import fastify, { type FastifyInstance } from "fastify";
 import compress from "@fastify/compress";
 import helmet from "@fastify/helmet";
 import fastifyStatic from "@fastify/static";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 export interface ServerOptions {
@@ -144,10 +144,9 @@ export async function buildServer(
     });
   }
 
-  function renderIndexHtml(): string | null {
-    const indexPath = path.join(options.staticRoot, "index.html");
-    if (!existsSync(indexPath)) return null;
-    let html = readFileSync(indexPath, "utf8");
+  function renderHtmlFile(filePath: string): string | null {
+    if (!existsSync(filePath)) return null;
+    let html = readFileSync(filePath, "utf8");
     if (umamiWebsiteId) {
       html = html.replace(
         "</head>",
@@ -155,6 +154,10 @@ export async function buildServer(
       );
     }
     return html;
+  }
+
+  function renderIndexHtml(): string | null {
+    return renderHtmlFile(path.join(options.staticRoot, "index.html"));
   }
 
   app.get("/", async (_request, reply) => {
@@ -182,6 +185,58 @@ export async function buildServer(
     ) {
       return reply.code(404).send({ error: "not_found" });
     }
+
+    const rawUrl = request.raw.url?.split("?")[0] ?? "";
+    const safePath = path.normalize(rawUrl).replace(/^(\.\.(\/|\\|$))+/, "");
+    const cleanPath = safePath.replace(/^\/+|\/+$/g, "");
+
+    if (cleanPath) {
+      const resolvedRoot = path.resolve(options.staticRoot);
+
+      // 1. Direct static file check (e.g. robots.txt, sitemap.xml, llms.txt, share-image.png)
+      const directFilePath = path.resolve(options.staticRoot, cleanPath);
+      if (
+        directFilePath.startsWith(resolvedRoot) &&
+        existsSync(directFilePath) &&
+        statSync(directFilePath).isFile()
+      ) {
+        const ext = path.extname(cleanPath).toLowerCase();
+        const contentTypes: Record<string, string> = {
+          ".xml": "application/xml; charset=utf-8",
+          ".txt": "text/plain; charset=utf-8",
+          ".json": "application/json; charset=utf-8",
+          ".png": "image/png",
+          ".ico": "image/x-icon",
+          ".svg": "image/svg+xml",
+          ".html": "text/html; charset=utf-8",
+        };
+        const contentType = contentTypes[ext] ?? "application/octet-stream";
+        return reply.type(contentType).send(readFileSync(directFilePath));
+      }
+
+      // 2. Directory with static index.html ahead of SPA fallback
+      const staticIndexPath = path.resolve(
+        options.staticRoot,
+        cleanPath,
+        "index.html",
+      );
+      if (
+        staticIndexPath.startsWith(resolvedRoot) &&
+        existsSync(staticIndexPath)
+      ) {
+        if (!rawUrl.endsWith("/")) {
+          const queryString = request.raw.url?.includes("?")
+            ? "?" + request.raw.url.slice(request.raw.url.indexOf("?") + 1)
+            : "";
+          return reply.redirect(`${rawUrl}/${queryString}`, 308);
+        }
+        const html = renderHtmlFile(staticIndexPath);
+        if (html) {
+          return reply.type("text/html; charset=utf-8").send(html);
+        }
+      }
+    }
+
     const html = renderIndexHtml();
     if (!html) {
       return reply.code(404).send({ error: "not_found" });
