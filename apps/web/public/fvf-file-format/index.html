@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>The .fvf File Format Technical Reference — FVF Viewer</title>
+    <title>The .fvf File Format Technical Overview — FVF Viewer</title>
     <meta
       name="description"
-      content="Technical breakdown of the binary .fvf (FVF) ScopeMeter waveform capture format: 8-byte signature, sector table layout, timebase grammar, sample decoding, and error taxonomy."
+      content="Technical overview of how FVF Viewer decodes and validates ScopeMeter .fvf binary waveform captures: header validation, channel discovery, timebase ranges, sample scaling, and diagnostics."
     />
     <link rel="canonical" href="https://fvf-viewer.com/fvf-file-format/" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -466,25 +466,32 @@
       <main class="static-main">
         <article>
           <span class="hero-badge"
-            >Technical Reference • Binary Format Specification</span
+            >Technical Overview • Parser &amp; Validation Reference</span
           >
-          <h1>The .fvf File Format Technical Reference</h1>
+          <h1>The .fvf File Format Technical Overview</h1>
           <p class="lead">
             Binary <strong>.fvf</strong> (FVF) files are waveform capture
             archives recorded by portable ScopeMeter test instruments and
-            industrial diagnostic tools. This document provides a technical
-            specification of the file layout, header signature, sector table,
-            timebase grammar, sample decoding, and error taxonomy implemented in
-            FVF Viewer.
+            industrial diagnostic tools. This document provides an overview of
+            how the open-source FVF Viewer parser verifies file integrity,
+            validates horizontal and vertical parameters, decodes waveform
+            samples, and categorizes diagnostic errors and warnings for
+            interoperability.
           </p>
 
           <div class="callout">
+            <div class="callout-title">
+              Unofficial Interoperability Reference
+            </div>
             <p>
-              <strong>Open-Source Reference Implementation:</strong>
-              FVF Viewer decodes <code>.fvf</code> files using a
-              high-performance WebAssembly engine written in Rust. All parsing
-              executes entirely client-side in your browser with zero server
-              uploads. Inspect the complete parser implementation in the
+              This technical overview is an independent, unofficial reference
+              documenting how the open-source FVF Viewer WebAssembly engine
+              decodes and validates <code>.fvf</code> waveform files for
+              interoperability. All decoding executes entirely client-side in
+              your browser with zero server uploads. This documentation is
+              provided "as is" for diagnostic and troubleshooting purposes
+              without warranty of completeness. Inspect the complete parser
+              implementation in the
               <a
                 href="https://github.com/openscope-ai/fvf-viewer"
                 target="_blank"
@@ -501,28 +508,25 @@
           </p>
           <ul>
             <li>
-              <strong>8-Byte Magic Prologue:</strong> Authentic captures begin
-              with the exact 8-byte signature <code>FV.FVF\x1a\x00</code> (ASCII
-              <code>FV.FVF</code> followed by control bytes
-              <code>0x1A 0x00</code>). Files shorter than 8 bytes fail with
-              <code>truncated_capture</code>; files containing at least 8 bytes
-              with mismatched magic fail with <code>invalid_signature</code>,
-              reporting all 8 detected bytes.
+              <strong>8-Byte Header Signature:</strong> The file must begin with
+              the characteristic 8-byte ScopeMeter file header signature. Files
+              shorter than 8 bytes fail with <code>truncated_capture</code>;
+              files containing at least 8 bytes with an unrecognised signature
+              fail with <code>invalid_signature</code>, reporting the detected
+              header bytes.
             </li>
             <li>
-              <strong>Capture Version:</strong> A 16-bit little-endian integer
-              (<code>u16</code>) at byte offset <code>8</code> encodes the
-              capture format version. FVF Viewer supports Version 1
-              (<code>0x0001</code>); alternative version tags report
+              <strong>Capture Version:</strong> The capture format version field
+              in the header is validated. FVF Viewer supports Version 1
+              captures; alternative or unrecognised version numbers report
               <code>unsupported_capture_version</code>.
             </li>
             <li>
-              <strong>Root Pointer &amp; Variant Tag:</strong> A 32-bit
-              little-endian pointer (<code>u32</code>) at offset
-              <code>0x1C</code> targets the capture variant tag. Valid waveform
-              captures carry the 4-byte ASCII tag <code>CUR_</code>. Files
-              storing non-waveform payloads (such as instrument settings files
-              tagged <code>FV.FVS</code>) reject with
+              <strong>Waveform Variant Validation:</strong> The header pointer
+              targets the capture variant descriptor. Valid waveform captures
+              carry a waveform curve tag; files storing non-waveform payloads
+              (such as instrument setup or configuration archives) are safely
+              identified and rejected with
               <code>unsupported_capture_variant</code>.
             </li>
           </ul>
@@ -534,26 +538,23 @@
           </p>
           <ul>
             <li>
-              <strong>Sector Table Anchor:</strong> A 32-bit pointer at offset
-              <code>0x40</code> anchors the channel descriptor region. The table
-              is verified prior to decoding.
+              <strong>Sector Table Validation:</strong> The parser validates the
+              sector index table anchoring the channel descriptors before
+              decoding. Corrupted or unreadable sector indexing halts parsing
+              with <code>corrupt_sector_table</code>.
             </li>
             <li>
-              <strong>Grammar-Driven Discovery:</strong> Rather than relying on
-              fragile fixed file offsets, the parser dynamically walks the
-              sector table, accommodating both empirical instrument captures
-              (with 16-byte descriptors and 18-byte label slots) and synthetic
-              reference files.
+              <strong>Grammar-Driven Channel Discovery:</strong> Rather than
+              relying on fragile fixed file offsets, the parser dynamically
+              walks the sector table, accommodating variations across empirical
+              instrument acquisitions and synthetic test fixtures.
             </li>
             <li>
               <strong>Contiguous Record Chain:</strong> Waveform channel records
-              are stored contiguously from the first record through the end of
-              the file. Each channel record follows the triple structure:
-              <code
-                >[Parameter Block (388 bytes)][Raw Payload (4 &times; N
-                bytes)][Trailer Block (60+L bytes)]</code
-              >. The trailer of the final channel record ends precisely at the
-              end of the file.
+              are stored contiguously across the capture payload. Each channel
+              record contains a channel parameter block, a raw sample payload,
+              and a record trailer. The parser verifies that records chain
+              seamlessly through to the end of the file.
             </li>
           </ul>
 
@@ -590,18 +591,19 @@
             </li>
           </ul>
 
-          <h2>4. Timebase Token Grammar &amp; Horizontal Sweep</h2>
+          <h2>4. Timebase Validation &amp; Horizontal Sweep</h2>
           <p>
             The horizontal timebase specifies the acquisition sweep rate per
             horizontal division:
           </p>
           <ul>
             <li>
-              <strong>Anchored Grammar:</strong> Timebase tokens are parsed
-              using a case-insensitive grammar:
-              <code
-                >^([0-9]+([.,][0-9]{1,6})?)\s*(ns|us|&micro;s|ms|s|min)\s*/\s*div$</code
-              >.
+              <strong>Timebase Token Parsing:</strong> Timebase tokens are
+              parsed from the channel header string, matching numeric sweep
+              intervals and standard duration units (<code>ns</code>,
+              <code>&micro;s</code>, <code>ms</code>, <code>s</code>,
+              <code>min</code>) per division. Unparseable tokens fail with
+              <code>invalid_timebase_format</code>.
             </li>
             <li>
               <strong>Decimal Normalization:</strong> Transparently normalizes
@@ -617,23 +619,19 @@
               <code>invalid_timebase_range</code>.
             </li>
             <li>
-              <strong>Step Sequence Verification:</strong> Validates sweep
-              mantissas against nominal hardware steps (<code>1.0</code>,
-              <code>1.25</code>, <code>1.333</code>, <code>2.0</code>,
-              <code>2.5</code>, <code>4.0</code>, <code>5.0</code>,
-              <code>6.667</code>) and roll-mode values (<code>1</code>,
-              <code>2</code>, <code>4</code>, <code>5 min/div</code>). In-range
-              non-standard values trigger a
+              <strong>Step Sequence Verification:</strong> Validates sweep rates
+              against nominal hardware steps (e.g., <code>1.0</code>,
+              <code>2.0</code>, <code>5.0</code> intervals) and roll-mode values
+              (<code>1</code>, <code>2</code>, <code>4</code>,
+              <code>5 min/div</code>). In-range non-standard values trigger a
               <code>non_standard_timebase</code> warning.
             </li>
             <li>
               <strong>Timestamp Reconstruction:</strong> Each channel's stored
-              horizontal bounds (<code>t_left</code> at parameter offset +20,
-              <code>t_right</code> at +44) reconstruct 64-bit floating point
-              timestamps:
-              <code>&Delta;t = (t_right &minus; t_left) / N</code> and
-              <code>t_i = t_left + i &middot; &Delta;t</code>, preventing
-              cumulative phase drift across deep sweeps.
+              horizontal start and end bounds reconstruct uniform 64-bit
+              floating point timestamps (&Delta;t interval spacing), preventing
+              cumulative phase drift across deep sweeps. Invalid time axis spans
+              report <code>invalid_time_axis</code>.
             </li>
           </ul>
 
@@ -644,30 +642,27 @@
           </p>
           <ul>
             <li>
-              <strong>Physical Analog Channels:</strong> Decoded from 32-bit
-              signed little-endian raw integer counts multiplied by the
-              per-channel vertical calibration scale factor:
-              <code>value_i = raw_i &times; scale</code>.
+              <strong>Physical Analog Channels:</strong> Decoded from signed raw
+              integer sample words scaled by the channel's calibrated vertical
+              scale factor into physical signal units.
             </li>
             <li>
               <strong>Rail Saturation &amp; Overload Detection:</strong>
-              Instrument clipping rails (raw values matching
-              <code>i32::MAX</code>, <code>i32::MIN</code>, or
-              <code>i32::MIN + 2</code>) are mapped directly to IEEE 754
-              <code>NaN</code> values, accompanied by a
-              <code>saturated_samples</code> warning to signal out-of-range
+              Instrument clipping rails and overload saturation values are
+              mapped directly to IEEE 754 <code>NaN</code> values, accompanied
+              by a <code>saturated_samples</code> warning to signal out-of-range
               signal saturation.
             </li>
             <li>
-              <strong>Derived Math Channels:</strong> Converted from 32-bit
-              fixed-point representations using exact division by
-              <code>65536.0</code> (Q16.16 mantissa-preserving scaling).
+              <strong>Derived Math Channels:</strong> Converted from fixed-point
+              representations using normalized mantissa scaling to preserve
+              mathematical channel accuracy.
             </li>
             <li>
-              <strong>Vertical Units:</strong> Preserves calibrated units
-              including <code>V</code>, <code>mV</code>, <code>kV</code>,
-              <code>A</code>, and <code>mA</code> from parameter block offset
-              +312.
+              <strong>Vertical Units:</strong> Preserves calibrated vertical
+              units including <code>V</code>, <code>mV</code>, <code>kV</code>,
+              <code>A</code>, and <code>mA</code> extracted from channel
+              metadata.
             </li>
           </ul>
 
@@ -710,7 +705,7 @@
             </div>
           </div>
 
-          <div class="cta-box">
+          <div class="cta-section">
             <h3>Ready to Inspect Your Waveform Captures?</h3>
             <p>
               Open and analyze your <code>.fvf</code> captures directly in your

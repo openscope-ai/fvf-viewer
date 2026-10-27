@@ -4,6 +4,7 @@ import {
   DEFAULT_Y_SCALE_PERCENT,
   channelDisplayValue,
   displayKeyForChannel,
+  displayToReadoutValue,
   effectiveInverted,
   effectiveOffset,
   effectivePerDiv,
@@ -47,6 +48,20 @@ describe("channelDisplay pure transforms (issue #224)", () => {
     expect(invertSign({ A: { inverted: true } }, "B")).toBe(1);
     // Cursor keys never take channel display transforms.
     expect(invertSign({ A: { inverted: true } }, "C1")).toBe(1);
+
+    // Inverts display space to readout amplitude: (display - offset) / (scale% / 100)
+    expect(
+      displayToReadoutValue(5, { A: { yScalePercent: 200, offset: 1 } }, "A"),
+    ).toBe(2);
+    expect(
+      displayToReadoutValue(
+        -3,
+        { A: { yScalePercent: 200, offset: 1, inverted: true } },
+        "A",
+      ),
+    ).toBe(-2);
+    expect(displayToReadoutValue(-2, { A: { inverted: true } }, "A")).toBe(-2);
+    expect(displayToReadoutValue(2, {}, "A")).toBe(2);
   });
 
   it("resolves channel names to display keys (cursors never match)", () => {

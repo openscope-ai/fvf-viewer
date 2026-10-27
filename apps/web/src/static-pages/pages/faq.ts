@@ -46,23 +46,23 @@ export const FAQ_ITEMS: FaqItem[] = [
       "What happens if my .fvf file is corrupt, truncated, or unsupported?",
     answerHtml: `
       <p>
-        The parser validates the file's 8-byte signature (<code>FV.FVF\\x1a\\x00</code>), format version, record layout grammar, and physical parameter bounds.
+        The parser validates the file's 8-byte header signature, format version, record layout grammar, and physical parameter bounds.
         If a file is truncated, damaged, or carries an unsupported variant, FVF Viewer halts safely and displays a typed error modal detailing the exact failure (such as <code>invalid_signature</code> with detected bytes, <code>truncated_capture</code>, or <code>invalid_timebase_range</code>).
         Files with non-critical irregularities display non-blocking warning badges while continuing to render valid channels.
       </p>
     `,
     answerText:
-      "The parser validates the file's 8-byte signature (FV.FVF\\x1a\\x00), format version, record layout grammar, and physical parameter bounds. If a file is truncated, damaged, or carries an unsupported variant, FVF Viewer halts safely and displays a typed error modal detailing the exact failure (such as invalid_signature with detected bytes, truncated_capture, or invalid_timebase_range). Files with non-critical irregularities display non-blocking warning badges while continuing to render valid channels.",
+      "The parser validates the file's 8-byte header signature, format version, record layout grammar, and physical parameter bounds. If a file is truncated, damaged, or carries an unsupported variant, FVF Viewer halts safely and displays a typed error modal detailing the exact failure (such as invalid_signature with detected bytes, truncated_capture, or invalid_timebase_range). Files with non-critical irregularities display non-blocking warning badges while continuing to render valid channels.",
   },
   {
     question: "Can I try FVF Viewer without having a ScopeMeter .fvf file?",
     answerHtml: `
       <p>
-        <strong>Yes.</strong> The home screen includes a built-in sample capture button (<em>"Test fvf • viewer with a 100k sample synthetic capture"</em>) that instantly loads a bundled 100,000-sample ScopeMeter waveform with pre-configured analog channels, dual cursors, and live measurements.
+        <strong>Yes.</strong> The home screen includes a built-in sample capture button (<em>"Test fvf • viewer with a 20k sample synthetic capture"</em>) that instantly loads a bundled 20,000-sample ScopeMeter waveform with pre-configured analog channels, dual cursors, and live measurements.
       </p>
     `,
     answerText:
-      'Yes. The home screen includes a built-in sample capture button ("Test fvf • viewer with a 100k sample synthetic capture") that instantly loads a bundled 100,000-sample ScopeMeter waveform with pre-configured analog channels, dual cursors, and live measurements.',
+      'Yes. The home screen includes a built-in sample capture button ("Test fvf • viewer with a 20k sample synthetic capture") that instantly loads a bundled 20,000-sample ScopeMeter waveform with pre-configured analog channels, dual cursors, and live measurements.',
   },
 ];
 

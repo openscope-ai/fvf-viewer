@@ -432,14 +432,14 @@ pub const FIXTURES: &[FixtureSpec] = &[
     },
 ];
 
-/// Shipped demo sample (issue #193): the user-facing capture behind the
+/// Shipped demo sample (issue #193, #327): the user-facing capture behind the
 /// homepage "Try a sample capture" action. Four channels over a 1 s span
-/// ("100 ms/Div", 100,000 samples per channel, dt = 10 µs) chosen to
+/// ("100 ms/Div", 20,000 samples per channel, dt = 50 µs) chosen to
 /// showcase instant zooming (dense 50 Hz cycles at full view, individual
 /// cycles mid-zoom, 2 kHz PWM edges deep-zoomed), different y-axis scales
 /// (±450 V mains vs ±12 A current vs 0–5 V logic), cursor measurability
 /// (mains period, soft-start ramp time, state edges, PWM duty), and fast
-/// loading (~1.6 MB total). Committed byte-exactly at
+/// loading (~320 KB total). Committed byte-exactly at
 /// `apps/web/public/samples/fvf-sample.fvf.bin`; the `sample_asset` test
 /// fails on any drift.
 pub const SAMPLE_NAME: &str = "fvf-sample.fvf.bin";
@@ -452,7 +452,7 @@ pub const SAMPLE: &FixtureSpec = &FixtureSpec {
     records: &[
         RecordSpec {
             label: "Input A",
-            samples: 100_000,
+            samples: 20_000,
             source: None,
             shape: WaveShape::Mains,
             unit: "V",
@@ -464,7 +464,7 @@ pub const SAMPLE: &FixtureSpec = &FixtureSpec {
         },
         RecordSpec {
             label: "Input B",
-            samples: 100_000,
+            samples: 20_000,
             source: None,
             shape: WaveShape::SoftStart,
             unit: "A",
@@ -476,7 +476,7 @@ pub const SAMPLE: &FixtureSpec = &FixtureSpec {
         },
         RecordSpec {
             label: "Input C",
-            samples: 100_000,
+            samples: 20_000,
             source: None,
             shape: WaveShape::Pwm,
             unit: "V",
@@ -488,7 +488,7 @@ pub const SAMPLE: &FixtureSpec = &FixtureSpec {
         },
         RecordSpec {
             label: "Input D",
-            samples: 100_000,
+            samples: 20_000,
             source: None,
             shape: WaveShape::DriveState,
             unit: "V",

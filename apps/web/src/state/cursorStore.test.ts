@@ -214,3 +214,69 @@ describe("cursorStore jumpCursorToSample (issue #314)", () => {
     expect(useCursorStore.getState().c1SampleIndex).toBe(10);
   });
 });
+
+describe("cursorStore horizontal Y cursors (issue #281)", () => {
+  beforeEach(() => {
+    useCursorStore.getState().reset();
+  });
+
+  it("toggles Y1 and Y2 on and off, managing selection", () => {
+    const store = useCursorStore.getState();
+
+    // Toggle Y1 on
+    store.toggleHorizontalCursor("Y1");
+    expect(useCursorStore.getState().y1Active).toBe(true);
+    expect(useCursorStore.getState().selectedYCursor).toBe("Y1");
+
+    // Toggle Y2 on
+    store.toggleHorizontalCursor("Y2");
+    expect(useCursorStore.getState().y2Active).toBe(true);
+    expect(useCursorStore.getState().selectedYCursor).toBe("Y2");
+
+    // Toggle Y2 off -> selection reverts to Y1
+    store.toggleHorizontalCursor("Y2");
+    expect(useCursorStore.getState().y2Active).toBe(false);
+    expect(useCursorStore.getState().selectedYCursor).toBe("Y1");
+
+    // Toggle Y1 off -> selection reverts to null
+    store.toggleHorizontalCursor("Y1");
+    expect(useCursorStore.getState().y1Active).toBe(false);
+    expect(useCursorStore.getState().selectedYCursor).toBe(null);
+  });
+
+  it("sets and steps horizontal cursor values", () => {
+    const store = useCursorStore.getState();
+    store.toggleHorizontalCursor("Y1");
+    store.setHorizontalCursorValue("Y1", 1.5);
+    expect(useCursorStore.getState().y1Value).toBe(1.5);
+
+    store.stepHorizontalCursor("Y1", 0.25);
+    expect(useCursorStore.getState().y1Value).toBeCloseTo(1.75);
+
+    store.toggleHorizontalCursor("Y2");
+    store.setHorizontalCursorValue("Y2", -0.5);
+    expect(useCursorStore.getState().y2Value).toBe(-0.5);
+
+    store.stepHorizontalCursor("Y2", -0.1);
+    expect(useCursorStore.getState().y2Value).toBeCloseTo(-0.6);
+  });
+
+  it("rebinds horizontal cursor values when channel bounds change, preserving relative scale ratio", () => {
+    const store = useCursorStore.getState();
+    store.toggleHorizontalCursor("Y1");
+    store.toggleHorizontalCursor("Y2");
+
+    // Y1 at 2.0 (50% of [0, 4]), Y2 at 1.0 (25% of [0, 4])
+    store.setHorizontalCursorValue("Y1", 2.0);
+    store.setHorizontalCursorValue("Y2", 1.0);
+
+    // Old bounds: min = 0, max = 4. New bounds: min = -10, max = 10
+    store.rebindHorizontalCursors(0, 4, -10, 10, "B");
+
+    const state = useCursorStore.getState();
+    // 50% in [-10, 10] is 0.0
+    expect(state.y1Value).toBeCloseTo(0.0);
+    // 25% in [-10, 10] is -5.0
+    expect(state.y2Value).toBeCloseTo(-5.0);
+  });
+});

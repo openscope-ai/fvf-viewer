@@ -32,7 +32,7 @@ test("§issue-193 sample capture opens the app from the homepage without a file"
   const sampleButton = page.getByTestId("hero-sample-button");
   await expect(sampleButton).toBeVisible();
   await expect(sampleButton).toHaveText(
-    "Test fvf • viewer with a 100k sample synthetic capture",
+    "Test fvf • viewer with a 20k sample synthetic capture",
   );
 
   await sampleButton.click();
@@ -44,7 +44,7 @@ test("§issue-193 sample capture opens the app from the homepage without a file"
   );
   await expect(page.getByTestId("oscilloscope-container")).toBeVisible();
   await expect(page.locator(".banner-field-samples")).toContainText(
-    "100,000 samples",
+    "20,000 samples",
   );
   await expect(page.locator(".banner-field-timebase")).toContainText(
     "100 ms/Div",

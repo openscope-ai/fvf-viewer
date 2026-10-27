@@ -43,7 +43,10 @@ import CsvExportButton from "../export/CsvExportButton";
 import PngSnapshotButton from "../export/PngSnapshotButton";
 import { useMeasurementsStore } from "../../state/measurementsStore";
 import { trackEvent } from "../../analytics/tracker";
-import { CURSOR_MOVEMENT_SUMMARY } from "../cursors/cursorHelp";
+import {
+  CURSOR_MOVEMENT_SUMMARY,
+  HORIZONTAL_CURSOR_MOVEMENT_SUMMARY,
+} from "../cursors/cursorHelp";
 import { NAVIGATION_HELP_SUMMARY } from "../canvas/navigationHelp";
 import {
   AnchoredPopover,
@@ -102,6 +105,15 @@ export default function WaveformToolbar({
   const selectedCursor = useCursorStore((state) => state.selectedCursor);
   const toggleCursor = useCursorStore((state) => state.toggleCursor);
   const selectCursor = useCursorStore((state) => state.selectCursor);
+  const y1Active = useCursorStore((state) => state.y1Active);
+  const y2Active = useCursorStore((state) => state.y2Active);
+  const selectedYCursor = useCursorStore((state) => state.selectedYCursor);
+  const toggleHorizontalCursor = useCursorStore(
+    (state) => state.toggleHorizontalCursor,
+  );
+  const selectHorizontalCursor = useCursorStore(
+    (state) => state.selectHorizontalCursor,
+  );
   const totalSamples = useCaptureStore(
     (state) => state.capture?.timestamps.length ?? 0,
   );
@@ -499,9 +511,18 @@ export default function WaveformToolbar({
         data-testid="waveform-toolbar-cursors"
       >
         <span className="waveform-toolbar-label">Cursors</span>
-        {(["C1", "C2"] as const).map((id) => {
-          const active = id === "C1" ? c1Active : c2Active;
-          const selected = selectedCursor === id;
+        {(["C1", "C2", "Y1", "Y2"] as const).map((id) => {
+          const isHorizontal = id === "Y1" || id === "Y2";
+          const active = isHorizontal
+            ? id === "Y1"
+              ? y1Active
+              : y2Active
+            : id === "C1"
+              ? c1Active
+              : c2Active;
+          const selected = isHorizontal
+            ? selectedYCursor === id
+            : selectedCursor === id;
           const color = effectiveColorForKey(
             theme,
             customColors,
@@ -511,14 +532,28 @@ export default function WaveformToolbar({
           const popoverOpen = openKey === popoverKey;
 
           const handleClick = () => {
-            if (!active) {
-              toggleCursor(id, totalSamples);
-            } else if (!selected) {
-              selectCursor(id);
+            if (isHorizontal) {
+              if (!active) {
+                toggleHorizontalCursor(id);
+              } else if (!selected) {
+                selectHorizontalCursor(id);
+              } else {
+                toggleHorizontalCursor(id);
+              }
             } else {
-              toggleCursor(id, totalSamples);
+              if (!active) {
+                toggleCursor(id, totalSamples);
+              } else if (!selected) {
+                selectCursor(id);
+              } else {
+                toggleCursor(id, totalSamples);
+              }
             }
           };
+
+          const movementSummary = isHorizontal
+            ? HORIZONTAL_CURSOR_MOVEMENT_SUMMARY
+            : CURSOR_MOVEMENT_SUMMARY;
 
           return (
             <span
@@ -540,7 +575,7 @@ export default function WaveformToolbar({
                 aria-label={`Toggle cursor ${id} (currently ${
                   active ? "active" : "inactive"
                 }${selected ? ", selected" : ""})`}
-                title={`Toggle cursor ${id}${selected ? " (selected)" : ""}\nControls: ${CURSOR_MOVEMENT_SUMMARY}`}
+                title={`Toggle cursor ${id}${selected ? " (selected)" : ""}\nControls: ${movementSummary}`}
                 data-testid={`cursor-toggle-${id.toLowerCase()}`}
                 onClick={handleClick}
               >

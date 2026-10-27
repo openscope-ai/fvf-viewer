@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { useCursorDisplayStore } from "./cursorDisplayStore";
 
 export type CursorId = "C1" | "C2";
+export type HorizontalCursorId = "Y1" | "Y2";
 
 export interface CursorStoreState {
   c1Active: boolean;
@@ -19,6 +20,14 @@ export interface CursorStoreState {
   selectedCursor: CursorId | null;
   c1SampleIndex: number;
   c2SampleIndex: number;
+
+  // Horizontal (Y) cursors (issue #281)
+  y1Active: boolean;
+  y2Active: boolean;
+  selectedYCursor: HorizontalCursorId | null;
+  y1Value: number | null;
+  y2Value: number | null;
+  boundChannel: string | null;
 
   toggleCursor: (id: CursorId, totalSamples?: number) => void;
   setCursorActive: (
@@ -51,6 +60,25 @@ export interface CursorStoreState {
     index: number,
     totalSamples: number,
   ) => void;
+
+  // Horizontal cursor actions (issue #281)
+  toggleHorizontalCursor: (id: HorizontalCursorId, defaultVal?: number) => void;
+  setHorizontalCursorActive: (
+    id: HorizontalCursorId,
+    active: boolean,
+    defaultVal?: number,
+  ) => void;
+  selectHorizontalCursor: (id: HorizontalCursorId | null) => void;
+  setHorizontalCursorValue: (id: HorizontalCursorId, value: number) => void;
+  stepHorizontalCursor: (id: HorizontalCursorId, delta: number) => void;
+  rebindHorizontalCursors: (
+    prevMin: number,
+    prevMax: number,
+    nextMin: number,
+    nextMax: number,
+    nextChannel: string,
+  ) => void;
+
   initForCapture: (totalSamples: number) => void;
   reset: () => void;
 }
@@ -79,6 +107,13 @@ export const useCursorStore = create<CursorStoreState>((set) => ({
   selectedCursor: null,
   c1SampleIndex: 0,
   c2SampleIndex: 0,
+
+  y1Active: false,
+  y2Active: false,
+  selectedYCursor: null,
+  y1Value: null,
+  y2Value: null,
+  boundChannel: null,
 
   toggleCursor: (id, totalSamples = 0) =>
     set((state) => {
@@ -225,6 +260,112 @@ export const useCursorStore = create<CursorStoreState>((set) => ({
       };
     }),
 
+  toggleHorizontalCursor: (id, defaultVal) =>
+    set((state) => {
+      const activeKey = id === "Y1" ? "y1Active" : "y2Active";
+      const nowActive = !state[activeKey];
+      const otherId: HorizontalCursorId = id === "Y1" ? "Y2" : "Y1";
+      const otherActive = id === "Y1" ? state.y2Active : state.y1Active;
+
+      let newSelected = state.selectedYCursor;
+      if (nowActive) {
+        newSelected = id;
+      } else if (state.selectedYCursor === id) {
+        newSelected = otherActive ? otherId : null;
+      }
+
+      const valKey = id === "Y1" ? "y1Value" : "y2Value";
+      const currentVal = state[valKey];
+      const newVal =
+        currentVal !== null
+          ? currentVal
+          : defaultVal !== undefined
+            ? defaultVal
+            : null;
+
+      return {
+        [activeKey]: nowActive,
+        selectedYCursor: newSelected,
+        [valKey]: newVal,
+      };
+    }),
+
+  setHorizontalCursorActive: (id, active, defaultVal) =>
+    set((state) => {
+      const activeKey = id === "Y1" ? "y1Active" : "y2Active";
+      if (state[activeKey] === active) return state;
+
+      const otherId: HorizontalCursorId = id === "Y1" ? "Y2" : "Y1";
+      const otherActive = id === "Y1" ? state.y2Active : state.y1Active;
+
+      let newSelected = state.selectedYCursor;
+      if (active) {
+        newSelected = id;
+      } else if (state.selectedYCursor === id) {
+        newSelected = otherActive ? otherId : null;
+      }
+
+      const valKey = id === "Y1" ? "y1Value" : "y2Value";
+      const currentVal = state[valKey];
+      const newVal =
+        currentVal !== null
+          ? currentVal
+          : defaultVal !== undefined
+            ? defaultVal
+            : null;
+
+      return {
+        [activeKey]: active,
+        selectedYCursor: newSelected,
+        [valKey]: newVal,
+      };
+    }),
+
+  selectHorizontalCursor: (id) =>
+    set((state) => {
+      if (id === null) return { selectedYCursor: null };
+      const isActive = id === "Y1" ? state.y1Active : state.y2Active;
+      return isActive ? { selectedYCursor: id } : state;
+    }),
+
+  setHorizontalCursorValue: (id, value) =>
+    set(id === "Y1" ? { y1Value: value } : { y2Value: value }),
+
+  stepHorizontalCursor: (id, delta) =>
+    set((state) => {
+      const current = (id === "Y1" ? state.y1Value : state.y2Value) ?? 0;
+      return id === "Y1"
+        ? { y1Value: current + delta }
+        : { y2Value: current + delta };
+    }),
+
+  rebindHorizontalCursors: (prevMin, prevMax, nextMin, nextMax, nextChannel) =>
+    set((state) => {
+      const prevSpan = prevMax - prevMin;
+      const nextSpan = nextMax - nextMin;
+      if (
+        prevSpan <= 0 ||
+        nextSpan <= 0 ||
+        !Number.isFinite(prevSpan) ||
+        !Number.isFinite(nextSpan)
+      ) {
+        return {
+          boundChannel: nextChannel,
+          y1Value: state.y1Value !== null ? nextMin + 0.75 * nextSpan : null,
+          y2Value: state.y2Value !== null ? nextMin + 0.25 * nextSpan : null,
+        };
+      }
+      const r1 =
+        state.y1Value !== null ? (state.y1Value - prevMin) / prevSpan : null;
+      const r2 =
+        state.y2Value !== null ? (state.y2Value - prevMin) / prevSpan : null;
+      return {
+        boundChannel: nextChannel,
+        y1Value: r1 !== null ? nextMin + r1 * nextSpan : null,
+        y2Value: r2 !== null ? nextMin + r2 * nextSpan : null,
+      };
+    }),
+
   initForCapture: (totalSamples) =>
     set(() => {
       const { c1Index, c2Index } = computeDefaultSampleIndices(totalSamples);
@@ -234,6 +375,12 @@ export const useCursorStore = create<CursorStoreState>((set) => ({
         selectedCursor: null,
         c1SampleIndex: c1Index,
         c2SampleIndex: c2Index,
+        y1Active: false,
+        y2Active: false,
+        selectedYCursor: null,
+        y1Value: null,
+        y2Value: null,
+        boundChannel: null,
       };
     }),
 
@@ -244,5 +391,11 @@ export const useCursorStore = create<CursorStoreState>((set) => ({
       selectedCursor: null,
       c1SampleIndex: 0,
       c2SampleIndex: 0,
+      y1Active: false,
+      y2Active: false,
+      selectedYCursor: null,
+      y1Value: null,
+      y2Value: null,
+      boundChannel: null,
     }),
 }));

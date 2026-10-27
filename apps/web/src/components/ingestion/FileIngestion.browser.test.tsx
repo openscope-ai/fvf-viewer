@@ -343,7 +343,7 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
       "[data-testid='hero-sample-button']",
     ) as HTMLButtonElement;
     expect(sampleButton.textContent).toBe(
-      "Test fvf • viewer with a 100k sample synthetic capture",
+      "Test fvf • viewer with a 20k sample synthetic capture",
     );
 
     // Filled yellow hand icon before the text, rotated 90° clockwise
@@ -425,7 +425,7 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
     ) as HTMLButtonElement;
     expect(sampleButton).not.toBeNull();
     expect(sampleButton.textContent).toBe(
-      "Test fvf • viewer with a 100k sample synthetic capture",
+      "Test fvf • viewer with a 20k sample synthetic capture",
     );
 
     // Activation stays local: neither click nor keyboard activation of the
@@ -479,7 +479,7 @@ describe("FileIngestion browser integration (production ingestion path)", () => 
       "V",
       "V",
     ]);
-    expect(state.capture?.metadata.channels[0]?.samples).toBe(100_000);
+    expect(state.capture?.metadata.channels[0]?.samples).toBe(20_000);
     expect(hostElement.querySelector(".oscilloscope-container")).not.toBeNull();
   });
 

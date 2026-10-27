@@ -1767,6 +1767,23 @@ body,
   align-items: flex-end;
 }
 
+.cursor-recovery-group--top {
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: row;
+  align-items: center;
+}
+
+.cursor-recovery-group--bottom {
+  top: auto;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: row;
+  align-items: center;
+}
+
 .cursor-recovery-badge {
   display: inline-flex;
   align-items: center;
@@ -2566,6 +2583,75 @@ body,
     background 0.15s ease;
 }
 
+.amplitude-measurements-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.measurements-pill-group {
+  display: inline-flex;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #333333;
+}
+
+.measurements-pill-btn {
+  background: #222222;
+  color: #888888;
+  border: 0;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.measurements-pill-btn:not(:last-child) {
+  border-right: 1px solid #333333;
+}
+
+.measurements-pill-btn:hover {
+  color: #dddddd;
+  background: #2c2c2c;
+}
+
+.measurements-pill-btn.active {
+  background: #333333;
+  color: #00bfff;
+  font-weight: 600;
+}
+
+.measurements-pill-btn:focus-visible,
+.measurements-tool-btn:focus-visible {
+  outline: 2px solid #00bfff;
+  outline-offset: 1px;
+}
+
+.measurements-tool-btn {
+  background: #222222;
+  color: #aaaaaa;
+  border: 1px solid #333333;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.measurements-tool-btn:hover {
+  color: #ffffff;
+  background: #2c2c2c;
+  border-color: #444444;
+}
+
+.measurements-tool-btn.active {
+  background: #1a334d;
+  color: #00bfff;
+  border-color: #00bfff;
+}
+
 .amplitude-measurements-close:hover {
   color: #ffffff;
   background: #2a2a2a;
@@ -2641,6 +2727,89 @@ body,
   color: #777777;
   font-style: italic;
   padding: 12px;
+}
+
+/* Automatic timing measurements section (Issue #279) */
+.timing-measurements-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #2e2e2e;
+}
+
+.timing-measurements-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.timing-measurements-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  color: #cccccc;
+}
+
+.timing-measurements-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #dddddd;
+}
+
+.timing-measurements-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timing-measurements-channel .channel-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.timing-gate-badge {
+  font-size: 0.7rem;
+  color: #888888;
+  background: #222222;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid #333333;
+}
+
+.timing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.timing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+
+.timing-label {
+  font-size: 0.68rem;
+  color: #888888;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.timing-value {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #e0e0e0;
 }
 
 /* Visually-hidden utility class for screen readers (Issue #314) */

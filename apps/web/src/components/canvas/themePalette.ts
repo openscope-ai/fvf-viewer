@@ -15,6 +15,8 @@ export interface ThemePalette {
   axisText: string;
   cursor1: string;
   cursor2: string;
+  cursorY1: string;
+  cursorY2: string;
   /** Text color drawn on top of cursor handles. */
   cursorHandleText: string;
   /** Graticule-matched accent tone for the t=0 trigger reference (issue #61). */
@@ -33,6 +35,8 @@ export const DARK_THEME: ThemePalette = {
   axisText: "#888888",
   cursor1: "#E040FB",
   cursor2: "#B0B0B0",
+  cursorY1: "#00E5FF",
+  cursorY2: "#FF9100",
   cursorHandleText: "#000000",
   triggerAccent: "#555555",
   traces: {
@@ -64,6 +68,8 @@ export const LIGHT_THEME: ThemePalette = {
   axisText: "#555555",
   cursor1: "#6A1B9A",
   cursor2: "#4B5563",
+  cursorY1: "#0097A7",
+  cursorY2: "#E65100",
   cursorHandleText: "#FFFFFF",
   triggerAccent: "#888888",
   traces: {
@@ -115,7 +121,18 @@ export function resolveTraceColor(
 
 /** Entries of the palette a user may customize (issue #40). */
 export type PaletteKey =
-  "A" | "B" | "C" | "D" | "Ref-A" | "Ref-B" | "Ref-C" | "Ref-D" | "C1" | "C2";
+  | "A"
+  | "B"
+  | "C"
+  | "D"
+  | "Ref-A"
+  | "Ref-B"
+  | "Ref-C"
+  | "Ref-D"
+  | "C1"
+  | "C2"
+  | "Y1"
+  | "Y2";
 
 export const PALETTE_KEYS: readonly PaletteKey[] = [
   "A",
@@ -128,6 +145,8 @@ export const PALETTE_KEYS: readonly PaletteKey[] = [
   "Ref-D",
   "C1",
   "C2",
+  "Y1",
+  "Y2",
 ];
 
 export type CustomColors = Partial<Record<PaletteKey, string>>;
@@ -145,6 +164,8 @@ export function defaultColorForKey(
   const palette = resolveThemePalette(theme);
   if (key === "C1") return palette.cursor1;
   if (key === "C2") return palette.cursor2;
+  if (key === "Y1") return palette.cursorY1;
+  if (key === "Y2") return palette.cursorY2;
   return palette.traces[key] ?? palette.traceFallback;
 }
 
@@ -185,11 +206,11 @@ export function effectiveTraceColor(
   return resolveTraceColor(theme, channelName);
 }
 
-/** Effective cursor color for C1/C2 under a theme with user overrides. */
+/** Effective cursor color for C1/C2/Y1/Y2 under a theme with user overrides. */
 export function effectiveCursorColor(
   theme: ViewportTheme,
   customColors: CustomColors,
-  cursorId: "C1" | "C2",
+  cursorId: "C1" | "C2" | "Y1" | "Y2",
 ): string {
   return effectiveColorForKey(theme, customColors, cursorId);
 }

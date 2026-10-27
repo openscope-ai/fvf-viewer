@@ -160,6 +160,26 @@ export function channelDisplayValue(
 }
 
 /**
+ * Inverts the display transform (issue #224) to recover readout amplitude
+ * (sign * physical) from a display-space coordinate:
+ *
+ *   display = sign * physical * (scalePercent / 100) + offset
+ *   readout = (display - offset) / (scalePercent / 100)
+ */
+export function displayToReadoutValue(
+  displayVal: number,
+  configs: ChannelDisplayConfigs,
+  channelName: string,
+): number {
+  if (!Number.isFinite(displayVal)) return displayVal;
+  const key = displayKeyForChannel(channelName);
+  const scale = effectiveYScale(configs, key);
+  const offset = effectiveOffset(configs, key);
+  const factor = scale / 100;
+  return factor > 0 ? (displayVal - offset) / factor : displayVal;
+}
+
+/**
  * Builds a channel's transformed display lane from its physical
  * rail-clipped lane (issue #106 `buildDisplayData` output). Returns the
  * input array unchanged when every transform is at its default, so the

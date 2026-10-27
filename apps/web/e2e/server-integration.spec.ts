@@ -106,11 +106,9 @@ test("GET /fvf-file-format/ returns static technical reference page ahead of SPA
   expect(response.headers()["content-type"]).toContain("text/html");
 
   const html = await response.text();
-  expect(html).toContain("The .fvf File Format Technical Reference");
-  expect(html).toContain("FV.FVF");
+  expect(html).toContain("The .fvf File Format Technical Overview");
   expect(html).toContain("Sector Table");
-  expect(html).toContain("Parameter Block (388 bytes)");
-  expect(html).toContain("Timebase Token Grammar");
+  expect(html).toContain("Timebase Validation");
   expect(html).toContain("Physical Analog Channels");
   expect(html).toContain("FvfError Codes");
   expect(html).toContain('href="/"');

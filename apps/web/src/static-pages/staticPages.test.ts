@@ -200,7 +200,7 @@ describe("the .fvf file format static page (issue #301)", () => {
     expect(html).toContain("<!doctype html>");
     expect(html).toContain('<html lang="en">');
     expect(html).toContain(
-      "<title>The .fvf File Format Technical Reference — FVF Viewer</title>",
+      "<title>The .fvf File Format Technical Overview — FVF Viewer</title>",
     );
     expect(html).toMatch(
       /<link\s+rel="canonical"\s+href="https:\/\/fvf-viewer\.com\/fvf-file-format\/"\s*\/?>/,
@@ -209,21 +209,30 @@ describe("the .fvf file format static page (issue #301)", () => {
     expect(html).not.toContain('src="/src/main.tsx"');
   });
 
-  it("contains technical format facts traceable to parser implementation (AC2)", () => {
+  it("contains softened technical format facts and interoperability disclaimer (AC1, AC2, AC3)", () => {
     const content = fvfFileFormatPage.renderContent();
 
-    // Signature and header facts (crates/fvf-wasm/src/header.rs)
-    expect(content).toContain("FV.FVF\\x1a\\x00");
-    expect(content).toContain("0x1A 0x00");
-    expect(content).toContain("u16");
-    expect(content).toContain("CUR_");
-    expect(content).toContain("0x1C");
-    expect(content).toContain("0x40");
+    // Wording reframe & disclaimer (AC1)
+    expect(content).toContain(
+      "Technical Overview • Parser &amp; Validation Reference",
+    );
+    expect(content).toContain("Unofficial Interoperability Reference");
+    expect(content).toContain("without warranty of completeness");
 
-    // Sector table & record architecture (crates/fvf-wasm/src/records.rs)
-    expect(content).toContain("Parameter Block (388 bytes)");
-    expect(content).toContain("Raw Payload");
-    expect(content).toContain("Trailer Block");
+    // Softened header and sector table descriptions without byte offsets (AC2)
+    expect(content).toContain("8-Byte Header Signature");
+    expect(content).toContain("Sector Table Validation");
+    expect(content).toContain("Grammar-Driven Channel Discovery");
+    expect(content).toContain("Contiguous Record Chain");
+
+    // Specific low-level byte offsets, sizes, and internal constants are removed (AC2)
+    expect(content).not.toContain("0x1C");
+    expect(content).not.toContain("0x40");
+    expect(content).not.toContain("0x1A 0x00");
+    expect(content).not.toContain("Parameter Block (388 bytes)");
+    expect(content).not.toContain("Trailer Block (60+L bytes)");
+    expect(content).not.toContain("i32::MAX");
+    expect(content).not.toContain("65536.0");
 
     // Channel topologies & envelope (crates/fvf-wasm/src/records.rs, header.rs)
     expect(content).toContain("500");
@@ -232,18 +241,16 @@ describe("the .fvf file format static page (issue #301)", () => {
     expect(content).toContain("Eingang A");
     expect(content).toContain("Derived Math Channels");
 
-    // Timebase grammar & sweep range (crates/fvf-wasm/src/timebase.rs)
+    // Timebase sweep range & normalization (crates/fvf-wasm/src/timebase.rs)
     expect(content).toContain("1.0 ns/div");
     expect(content).toContain("120.0 s/div");
     expect(content).toContain("div");
     expect(content).toContain("Timestamp Reconstruction");
 
     // Sample decoding (crates/fvf-wasm/src/records.rs, fixed_point.rs)
-    expect(content).toContain("raw_i &times; scale");
     expect(content).toContain("IEEE 754 <code>NaN</code>");
-    expect(content).toContain("i32::MAX");
-    expect(content).toContain("i32::MIN");
-    expect(content).toContain("65536.0");
+    expect(content).toContain("V");
+    expect(content).toContain("mV");
 
     // Error & warning taxonomy (crates/fvf-wasm/src/error.rs, error-taxonomy.json)
     expect(content).toContain("invalid_signature");
@@ -362,7 +369,8 @@ describe("FAQ static page with FAQPage JSON-LD (issue #302)", () => {
     expect(content).toContain(
       "What happens if my .fvf file is corrupt, truncated, or unsupported?",
     );
-    expect(content).toContain("FV.FVF");
+    expect(content).toContain("8-byte header signature");
+    expect(content).not.toContain("FV.FVF");
     expect(content).toContain("invalid_signature");
     expect(content).toContain("truncated_capture");
     expect(content).toContain("invalid_timebase_range");
@@ -372,9 +380,9 @@ describe("FAQ static page with FAQPage JSON-LD (issue #302)", () => {
       "Can I try FVF Viewer without having a ScopeMeter .fvf file?",
     );
     expect(content).toContain(
-      "Test fvf • viewer with a 100k sample synthetic capture",
+      "Test fvf • viewer with a 20k sample synthetic capture",
     );
-    expect(content).toContain("100,000-sample ScopeMeter waveform");
+    expect(content).toContain("20,000-sample ScopeMeter waveform");
   });
 
   it("embeds valid FAQPage JSON-LD matching the visible page text (AC4)", () => {

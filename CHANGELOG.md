@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.13.0] - 2026-10-27
+
+[v0.12.3...v0.13.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.3...v0.13.0)
+
+### Added
+
+- Measurement statistics and gating modes (Ref #280):
+  - Added running statistics accumulation (Count, Min, Max, Mean, and Sample Standard Deviation) using Welford's algorithm across viewport zoom/pan, cursor movements, and gating changes.
+  - Added dedicated Statistics table view toggled by the `Stats` header button and a `Clear` action that resets all running statistics.
+  - Implemented dual gating modes: `Visible Window` (gating to the active zoom/pan time window) and `Full Record` (evaluating the entire capture buffer from sample 0 to N-1).
+- Automatic timing measurements (Ref #279):
+  - Added automatic timing statistics (Period, Frequency, +Pulse Width, -Pulse Width, Duty Cycle, 10-90% Rise Time, 90-10% Fall Time) for the selected channel in a dedicated timing panel section.
+  - Implemented cursor gating between C1 and C2 when both measurement cursors are active, falling back to the active visible viewport window when cursors are inactive.
+  - Added mid-level crossing detection with 2% hysteresis and linear interpolation, providing accurate cycle timing and graceful null (`--`) fallback on flat, non-periodic, or insufficient sample sequences.
+- Horizontal (Y) measurement cursors (Ref #281):
+  - Added dual horizontal Y1 and Y2 voltage/amplitude cursors spanning the full width of the waveform plot.
+  - Implemented toolbar toggle controls (`cursor-toggle-y1`, `cursor-toggle-y2`) and interactive direct dragging with cursor line hovering and pointer cursor styling.
+  - Added horizontal measurement readout card section displaying absolute amplitude values ($Y_1$, $Y_2$) and differential amplitude ($\Delta Y$) formatted in the active channel's units.
+  - Added channel-switching re-binding preserving relative position across scale transitions and snapping back out-of-view cursors via top/bottom recovery badges.
+
+### Changed
+
+- Reduced demo sample capture from 100k to 20k samples per channel (Ref #327):
+  - Updated synthetic showcase capture configuration in `synth.rs` to generate 20,000 samples per channel across 4 channels (Input A–D) over a 1 s span (50 µs sample interval, ~320 KB payload).
+  - Regenerated `apps/web/public/samples/fvf-sample.fvf.bin` and updated asset verification test gates in `sample_asset.rs`.
+  - Updated CTA button label, static FAQ copy, documentation, and browser/E2E test suites to reflect the 20k sample count.
+
 ## [0.12.3] - 2026-10-26
 
 [v0.12.2...v0.12.3](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.2...v0.12.3)
@@ -27,9 +54,9 @@ _This changelog records the public release history; releases appear here as they
   - Added standalone static FAQ page answering questions on 100% in-browser zero-upload privacy, desktop and tablet viewport requirements (>= 1024px), lossless CSV and high-resolution PNG exports, typed error and warning validation, and the bundled 100k sample capture.
   - Embedded valid `FAQPage` JSON-LD schema matching the visible question and answer text for search and AI indexability.
   - Linked page to the viewer at `/`, integrated into shared static-page header navigation and homepage `<noscript>` links.
-- Static technical reference page for the .fvf file format at `/fvf-file-format/` (Ref #301):
-  - Added standalone static page providing a detailed specification of the binary .fvf capture format, including the 8-byte `FV.FVF\x1a\x00` signature, format version word, and root variant pointer.
-  - Documented sector table architecture, contiguous parameter/payload/trailer record chains, physical channel decoding (`raw * scale` with NaN saturation rails), derived channel fixed-point conversion, timebase grammar, and typed error/warning taxonomy.
+- Static technical reference page for the .fvf file format at `/fvf-file-format/` (Ref #301, #325):
+  - Added standalone static page providing an unofficial technical overview of the binary .fvf capture format, header verification, format version checks, and variant validation.
+  - Documented sector table architecture, channel records, physical channel scaling with saturation detection, timebase validation, and typed error/warning taxonomy.
   - Linked page to the viewer at `/` and the GitHub repository, integrated into shared static-page navigation and homepage `<noscript>` links.
 - Static page for supported ScopeMeter models at `/supported-scopemeter-models/` (Ref #300):
   - Added standalone static page detailing supported ScopeMeter instrument families (190 Series, 120B Series, MDA-500 Series, and legacy models) and 1- to 4-channel configurations.

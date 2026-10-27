@@ -21,6 +21,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   effectiveCursorColor,
   effectiveTraceColor,
+  resolveThemePalette,
 } from "../canvas/themePalette";
 import { usePaletteStore } from "../../state/paletteStore";
 import { getPhysicalChannelUnit, splitUnit } from "../../capture/channelUnits";
@@ -46,7 +47,7 @@ import {
 import { clampCardPosition, type CardPoint } from "./readoutCardPosition";
 import { CURSOR_MOVEMENT_GUIDE, CURSOR_MOVEMENT_SUMMARY } from "./cursorHelp";
 import type { ParsedCapture } from "../../types/capture";
-import { invertSign } from "../canvas/channelDisplay";
+import { displayToReadoutValue, invertSign } from "../canvas/channelDisplay";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 
 export interface CursorReadoutCardProps {
@@ -131,6 +132,16 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
   const c1SampleIndex = useCursorStore((state) => state.c1SampleIndex);
   const c2SampleIndex = useCursorStore((state) => state.c2SampleIndex);
   const selectCursor = useCursorStore((state) => state.selectCursor);
+
+  // Horizontal (Y) cursors (issue #281)
+  const y1Active = useCursorStore((state) => state.y1Active);
+  const y2Active = useCursorStore((state) => state.y2Active);
+  const selectedYCursor = useCursorStore((state) => state.selectedYCursor);
+  const y1Value = useCursorStore((state) => state.y1Value);
+  const y2Value = useCursorStore((state) => state.y2Value);
+  const selectHorizontalCursor = useCursorStore(
+    (state) => state.selectHorizontalCursor,
+  );
 
   const activeChannels = useViewportStore((state) => state.activeChannels);
   const selectedChannel = useViewportStore((state) => state.selectedChannel);
@@ -322,7 +333,7 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
   // resize so the card never hangs off-screen. Prefers the in-flight drag
   // position; otherwise re-clamps the persisted store position. Re-bound
   // whenever the card mounts/unmounts (cursor activity toggles rendering).
-  const cardMounted = c1Active || c2Active;
+  const cardMounted = c1Active || c2Active || y1Active || y2Active;
   useEffect(() => {
     const card = cardRef.current;
     if (!card || !cardMounted) return;
@@ -356,7 +367,7 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
     };
   }, [cardMounted, clampWithLayout, setPosition]);
 
-  if (!c1Active && !c2Active) {
+  if (!c1Active && !c2Active && !y1Active && !y2Active) {
     return null;
   }
 
@@ -405,6 +416,45 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
         right: "auto",
       }
     : undefined;
+
+  // Horizontal cursor readouts (Issue #281)
+  const selectedChData =
+    capture.channels.find((c) => c.name === selectedChannel) ??
+    capture.channels[0];
+  const selectedChIdx = capture.channels.findIndex(
+    (c) => c.name === (selectedChData?.name ?? ""),
+  );
+  const selectedChUnit =
+    selectedChIdx >= 0 ? getPhysicalChannelUnit(capture, selectedChIdx) : "V";
+  const selectedChColor = selectedChData
+    ? effectiveTraceColor(theme, customColors, selectedChData.name)
+    : "#FFD700";
+  const selectedChName = selectedChData
+    ? formatReadoutChannelName(
+        selectedChData.name,
+        selectedChData.label,
+        customNames[selectedChData.name],
+      )
+    : "A";
+
+  const selectedChInfo =
+    selectedChIdx >= 0 ? capture.metadata.channels[selectedChIdx] : undefined;
+  const selMin = selectedChInfo?.windowMin ?? -1;
+  const selMax = selectedChInfo?.windowMax ?? 1;
+
+  const y1Color = effectiveCursorColor(theme, customColors, "Y1");
+  const y2Color = effectiveCursorColor(theme, customColors, "Y2");
+
+  const rawY1 = y1Value !== null ? y1Value : selMin + 0.75 * (selMax - selMin);
+  const rawY2 = y2Value !== null ? y2Value : selMin + 0.25 * (selMax - selMin);
+
+  const y1Val = selectedChData
+    ? displayToReadoutValue(rawY1, displayConfigs, selectedChData.name)
+    : rawY1;
+  const y2Val = selectedChData
+    ? displayToReadoutValue(rawY2, displayConfigs, selectedChData.name)
+    : rawY2;
+  const deltaYVal = Math.abs(y2Val - y1Val);
 
   const renderCursorRow = (
     id: CursorId,
@@ -731,6 +781,132 @@ export const CursorReadoutCard: React.FC<CursorReadoutCardProps> = ({
                     </div>
                   );
                 })}
+            </div>
+          )}
+
+          {/* Horizontal cursors section (issue #281) */}
+          {(y1Active || y2Active) && (
+            <div
+              className="cursor-readout-horizontal"
+              data-testid="cursor-readout-horizontal"
+            >
+              {y1Active && (
+                <div
+                  className="cursor-row cursor-row--y1"
+                  data-testid="cursor-readout-y1"
+                >
+                  <div className="cursor-identity-bar">
+                    <button
+                      type="button"
+                      className={`cursor-badge cursor-badge--y1${
+                        selectedYCursor === "Y1"
+                          ? " cursor-badge--selected"
+                          : ""
+                      }`}
+                      data-testid="cursor-badge-y1"
+                      style={{
+                        backgroundColor: y1Color,
+                        color: resolveThemePalette(theme).cursorHandleText,
+                        fontWeight: 700,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectHorizontalCursor("Y1");
+                      }}
+                      aria-label="Select cursor Y1"
+                    >
+                      Y1
+                    </button>
+                    <span className="cursor-channel-identity">
+                      <span
+                        className="cursor-channel-swatch"
+                        style={{ backgroundColor: selectedChColor }}
+                        aria-hidden="true"
+                        data-testid="cursor-y1-swatch"
+                      />
+                      <span className="cursor-channel-name">
+                        {selectedChName}:
+                      </span>
+                    </span>
+                    <span
+                      className="cursor-voltage-value"
+                      data-testid="cursor-value-y1"
+                    >
+                      {formatVoltageWithUnit(
+                        y1Val,
+                        selectedChUnit,
+                        voltageUnit,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {y2Active && (
+                <div
+                  className="cursor-row cursor-row--y2"
+                  data-testid="cursor-readout-y2"
+                >
+                  <div className="cursor-identity-bar">
+                    <button
+                      type="button"
+                      className={`cursor-badge cursor-badge--y2${
+                        selectedYCursor === "Y2"
+                          ? " cursor-badge--selected"
+                          : ""
+                      }`}
+                      data-testid="cursor-badge-y2"
+                      style={{
+                        backgroundColor: y2Color,
+                        color: resolveThemePalette(theme).cursorHandleText,
+                        fontWeight: 700,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectHorizontalCursor("Y2");
+                      }}
+                      aria-label="Select cursor Y2"
+                    >
+                      Y2
+                    </button>
+                    <span className="cursor-channel-identity">
+                      <span
+                        className="cursor-channel-swatch"
+                        style={{ backgroundColor: selectedChColor }}
+                        aria-hidden="true"
+                        data-testid="cursor-y2-swatch"
+                      />
+                      <span className="cursor-channel-name">
+                        {selectedChName}:
+                      </span>
+                    </span>
+                    <span
+                      className="cursor-voltage-value"
+                      data-testid="cursor-value-y2"
+                    >
+                      {formatVoltageWithUnit(
+                        y2Val,
+                        selectedChUnit,
+                        voltageUnit,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {y1Active && y2Active && (
+                <div className="cursor-diff-row" data-testid="cursor-delta-y">
+                  <span className="cursor-diff-label">ΔY:</span>
+                  <span
+                    className="cursor-diff-value"
+                    data-testid="cursor-delta-y-value"
+                  >
+                    {formatVoltageWithUnit(
+                      deltaYVal,
+                      selectedChUnit,
+                      voltageUnit,
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

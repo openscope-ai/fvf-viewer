@@ -23,6 +23,6 @@ FVF Viewer (https://fvf-viewer.com/) is an open-source, client-side engineering 
 - [Viewer](https://fvf-viewer.com/): Interactive waveform viewer application.
 - [How to Open a .fvf File](https://fvf-viewer.com/open-fvf-file/): Guide on opening ScopeMeter .fvf captures in your browser.
 - [Supported ScopeMeter Models](https://fvf-viewer.com/supported-scopemeter-models/): Technical reference on supported ScopeMeter families and channel configurations.
-- [The .fvf File Format](https://fvf-viewer.com/fvf-file-format/): Binary file format specification, record layout grammar, timebases, and error taxonomy.
+- [The .fvf File Format](https://fvf-viewer.com/fvf-file-format/): Unofficial technical overview of parser validation, record structure, timebases, and error diagnostics.
 - [Frequently Asked Questions (FAQ)](https://fvf-viewer.com/faq/): Answers to common questions regarding privacy, screen sizes, exports, and errors.
 - [GitHub Repository](https://github.com/openscope-ai/fvf-viewer): Open-source codebase, issue tracker, and release tags (MIT License).

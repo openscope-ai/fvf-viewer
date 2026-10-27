@@ -19,11 +19,17 @@ import {
 } from "../canvas/themePalette";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
-import { useCursorStore, type CursorId } from "../../state/cursorStore";
+import {
+  useCursorStore,
+  type CursorId,
+  type HorizontalCursorId,
+} from "../../state/cursorStore";
 import {
   useCursorDisplayStore,
   type LineStyle,
 } from "../../state/cursorDisplayStore";
+import { useViewportStore } from "../../state/viewportStore";
+import { yScaleKey } from "../../capture/channelUnits";
 import { getCursorHandleAriaLabel, getCursorHandleTitle } from "./cursorHelp";
 import type { ParsedCapture } from "../../types/capture";
 
@@ -60,7 +66,7 @@ function currentPalette() {
 }
 
 /** Issue #40: effective cursor color — user override first, theme default second. */
-function effectiveCursor(id: "C1" | "C2"): string {
+function effectiveCursor(id: "C1" | "C2" | "Y1" | "Y2"): string {
   return effectiveCursorColor(
     useThemeStore.getState().theme,
     usePaletteStore.getState().customColors,
@@ -205,14 +211,90 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
   c2Handle.style.cursor = "pointer";
   c2Line.appendChild(c2Handle);
 
+  // DOM elements for horizontal cursors Y1 and Y2 (Issue #281)
+  const y1Line = document.createElement("div");
+  y1Line.className = "cursor-line cursor-line--y1 cursor-line--horizontal";
+  y1Line.setAttribute("data-testid", "cursor-line-y1");
+  y1Line.style.position = "absolute";
+  y1Line.style.left = "0";
+  y1Line.style.right = "0";
+  y1Line.style.height = "2px";
+  y1Line.style.backgroundColor = effectiveCursor("Y1");
+  y1Line.style.display = "none";
+  y1Line.style.zIndex = "10";
+  y1Line.style.pointerEvents = "auto";
+  y1Line.style.cursor = "row-resize";
+
+  const y1Handle = document.createElement("div");
+  y1Handle.className =
+    "cursor-handle cursor-handle--y1 cursor-handle--horizontal";
+  y1Handle.setAttribute("data-testid", "cursor-handle-y1");
+  y1Handle.innerText = "Y1";
+  y1Handle.style.position = "absolute";
+  y1Handle.style.left = "0";
+  y1Handle.style.top = "-9px";
+  y1Handle.style.width = "26px";
+  y1Handle.style.height = "18px";
+  y1Handle.style.lineHeight = "18px";
+  y1Handle.style.textAlign = "center";
+  y1Handle.style.fontSize = "10px";
+  y1Handle.style.fontWeight = "700";
+  y1Handle.style.backgroundColor = effectiveCursor("Y1");
+  y1Handle.style.color = currentPalette().cursorHandleText;
+  y1Handle.style.borderRadius = "0 3px 3px 0";
+  y1Handle.style.cursor = "pointer";
+  y1Handle.title = getCursorHandleTitle("Y1");
+  y1Handle.setAttribute("aria-label", getCursorHandleAriaLabel("Y1"));
+  y1Line.appendChild(y1Handle);
+
+  const y2Line = document.createElement("div");
+  y2Line.className = "cursor-line cursor-line--y2 cursor-line--horizontal";
+  y2Line.setAttribute("data-testid", "cursor-line-y2");
+  y2Line.style.position = "absolute";
+  y2Line.style.left = "0";
+  y2Line.style.right = "0";
+  y2Line.style.height = "2px";
+  y2Line.style.backgroundColor = effectiveCursor("Y2");
+  y2Line.style.display = "none";
+  y2Line.style.zIndex = "10";
+  y2Line.style.pointerEvents = "auto";
+  y2Line.style.cursor = "row-resize";
+
+  const y2Handle = document.createElement("div");
+  y2Handle.className =
+    "cursor-handle cursor-handle--y2 cursor-handle--horizontal";
+  y2Handle.setAttribute("data-testid", "cursor-handle-y2");
+  y2Handle.innerText = "Y2";
+  y2Handle.style.position = "absolute";
+  y2Handle.style.left = "0";
+  y2Handle.style.top = "-9px";
+  y2Handle.style.width = "26px";
+  y2Handle.style.height = "18px";
+  y2Handle.style.lineHeight = "18px";
+  y2Handle.style.textAlign = "center";
+  y2Handle.style.fontSize = "10px";
+  y2Handle.style.fontWeight = "700";
+  y2Handle.style.backgroundColor = effectiveCursor("Y2");
+  y2Handle.style.color = currentPalette().cursorHandleText;
+  y2Handle.style.borderRadius = "0 3px 3px 0";
+  y2Handle.style.cursor = "pointer";
+  y2Handle.title = getCursorHandleTitle("Y2");
+  y2Handle.setAttribute("aria-label", getCursorHandleAriaLabel("Y2"));
+  y2Line.appendChild(y2Handle);
+
   let activeDraggingCursor: CursorId | null = null;
   let preDragSampleIndex = 0;
+  let activeDraggingYCursor: HorizontalCursorId | null = null;
+  let preDragYValue = 0;
   let unsubscribeStore: (() => void) | null = null;
   let unsubscribeTheme: (() => void) | null = null;
   let unsubscribePalette: (() => void) | null = null;
   let unsubscribeCursorDisplay: (() => void) | null = null;
+  let unsubscribeViewport: (() => void) | null = null;
   let pendingClientX: number | null = null;
+  let pendingClientY: number | null = null;
   let rafId: number | null = null;
+  let rafYId: number | null = null;
 
   function updateVisuals() {
     if (!uplot) return;
@@ -278,12 +360,86 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
     } else {
       c2Line.style.display = "none";
     }
+
+    // Update Y1 & Y2 (Issue #281)
+    const selectedChannel =
+      useViewportStore.getState().selectedChannel ?? capture.channels[0]?.name;
+    const chIdx = capture.channels.findIndex((c) => c.name === selectedChannel);
+    if (chIdx !== -1) {
+      const scaleKey = yScaleKey(chIdx);
+      const info = capture.metadata.channels[chIdx];
+      const scaleMin = uplot.scales[scaleKey]?.min ?? info?.windowMin ?? -1;
+      const scaleMax = uplot.scales[scaleKey]?.max ?? info?.windowMax ?? 1;
+      const yMin = Number.isFinite(scaleMin) ? scaleMin : -1;
+      const yMax = Number.isFinite(scaleMax) ? scaleMax : 1;
+
+      const y1Color = effectiveCursor("Y1");
+      const y2Color = effectiveCursor("Y2");
+      const handleTextColor = currentPalette().cursorHandleText;
+
+      // Update Y1
+      if (state.y1Active) {
+        const val1 =
+          state.y1Value !== null ? state.y1Value : yMin + 0.75 * (yMax - yMin);
+        if (state.y1Value === null) {
+          state.setHorizontalCursorValue("Y1", val1);
+        }
+        const pos1 = uplot.valToPos(val1, scaleKey);
+        y1Line.style.top = `${pos1}px`;
+        y1Line.style.display = "block";
+        y1Line.style.backgroundColor = y1Color;
+        y1Handle.style.backgroundColor = y1Color;
+        y1Handle.style.color = handleTextColor;
+        if (state.selectedYCursor === "Y1") {
+          y1Line.style.boxShadow = `0 0 10px ${y1Color}`;
+          y1Handle.style.boxShadow = `0 0 8px #ffffff`;
+        } else {
+          y1Line.style.boxShadow = "none";
+          y1Handle.style.boxShadow = "none";
+        }
+      } else {
+        y1Line.style.display = "none";
+      }
+
+      // Update Y2
+      if (state.y2Active) {
+        const val2 =
+          state.y2Value !== null ? state.y2Value : yMin + 0.25 * (yMax - yMin);
+        if (state.y2Value === null) {
+          state.setHorizontalCursorValue("Y2", val2);
+        }
+        const pos2 = uplot.valToPos(val2, scaleKey);
+        y2Line.style.top = `${pos2}px`;
+        y2Line.style.display = "block";
+        y2Line.style.backgroundColor = y2Color;
+        y2Handle.style.backgroundColor = y2Color;
+        y2Handle.style.color = handleTextColor;
+        if (state.selectedYCursor === "Y2") {
+          y2Line.style.boxShadow = `0 0 10px ${y2Color}`;
+          y2Handle.style.boxShadow = `0 0 8px #ffffff`;
+        } else {
+          y2Line.style.boxShadow = "none";
+          y2Handle.style.boxShadow = "none";
+        }
+      } else {
+        y2Line.style.display = "none";
+      }
+    } else {
+      y1Line.style.display = "none";
+      y2Line.style.display = "none";
+    }
   }
 
   function getPlotX(clientX: number): number {
     if (!plotArea) return 0;
     const rect = plotArea.getBoundingClientRect();
     return Math.min(Math.max(clientX - rect.left, 0), rect.width);
+  }
+
+  function getPlotY(clientY: number): number {
+    if (!plotArea) return 0;
+    const rect = plotArea.getBoundingClientRect();
+    return Math.min(Math.max(clientY - rect.top, 0), rect.height);
   }
 
   function processDragMove() {
@@ -307,6 +463,30 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
       .setCursorSample(activeDraggingCursor, idx, capture.timestamps.length);
   }
 
+  function processYDragMove() {
+    rafYId = null;
+    if (
+      pendingClientY === null ||
+      !activeDraggingYCursor ||
+      !uplot ||
+      !plotArea
+    ) {
+      return;
+    }
+    const capture = options.getCapture();
+    if (!capture) return;
+    const selectedChannel =
+      useViewportStore.getState().selectedChannel ?? capture.channels[0]?.name;
+    const chIdx = capture.channels.findIndex((c) => c.name === selectedChannel);
+    if (chIdx === -1) return;
+    const scaleKey = yScaleKey(chIdx);
+    const yPx = getPlotY(pendingClientY);
+    const val = uplot.posToVal(yPx, scaleKey);
+    useCursorStore
+      .getState()
+      .setHorizontalCursorValue(activeDraggingYCursor, val);
+  }
+
   function endDrag() {
     activeDraggingCursor = null;
     pendingClientX = null;
@@ -318,6 +498,87 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
     document.removeEventListener("mouseup", onMouseUp, { capture: true });
     window.removeEventListener("keydown", onKeyDown, { capture: true });
     window.removeEventListener("blur", onBlur, { capture: true });
+  }
+
+  function endYDrag() {
+    activeDraggingYCursor = null;
+    pendingClientY = null;
+    if (rafYId !== null) {
+      cancelAnimationFrame(rafYId);
+      rafYId = null;
+    }
+    document.removeEventListener("mousemove", onYMouseMove, { capture: true });
+    document.removeEventListener("mouseup", onYMouseUp, { capture: true });
+    window.removeEventListener("keydown", onYKeyDown, { capture: true });
+    window.removeEventListener("blur", onYBlur, { capture: true });
+  }
+
+  function onYMouseMove(event: MouseEvent) {
+    if (!activeDraggingYCursor || !uplot || !plotArea) return;
+    if ((event.buttons & 1) === 0) {
+      endYDrag();
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    pendingClientY = event.clientY;
+    if (rafYId === null) {
+      rafYId = requestAnimationFrame(processYDragMove);
+    }
+  }
+
+  function onYMouseUp(event: MouseEvent) {
+    if (!activeDraggingYCursor) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (rafYId !== null) {
+      cancelAnimationFrame(rafYId);
+      rafYId = null;
+      processYDragMove();
+    }
+    endYDrag();
+  }
+
+  function onYBlur() {
+    if (activeDraggingYCursor) {
+      endYDrag();
+    }
+  }
+
+  function onYKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape" && activeDraggingYCursor) {
+      event.preventDefault();
+      event.stopPropagation();
+      const cursorToRestore = activeDraggingYCursor;
+      endYDrag();
+      useCursorStore
+        .getState()
+        .setHorizontalCursorValue(cursorToRestore, preDragYValue);
+    }
+  }
+
+  function onYLineMouseDown(id: HorizontalCursorId, event: MouseEvent) {
+    if (event.button !== 0 || !uplot || !plotArea) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    activeDraggingYCursor = id;
+    preDragYValue =
+      (id === "Y1"
+        ? useCursorStore.getState().y1Value
+        : useCursorStore.getState().y2Value) ?? 0;
+    useCursorStore.getState().selectHorizontalCursor(id);
+
+    document.addEventListener("mousemove", onYMouseMove, { capture: true });
+    document.addEventListener("mouseup", onYMouseUp, { capture: true });
+    window.addEventListener("keydown", onYKeyDown, { capture: true });
+    window.addEventListener("blur", onYBlur, { capture: true });
+  }
+
+  function onYLineClick(id: HorizontalCursorId, event: MouseEvent) {
+    event.stopPropagation();
+    useCursorStore.getState().selectHorizontalCursor(id);
   }
 
   function onLineClick(id: CursorId, event: MouseEvent) {
@@ -453,21 +714,54 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
       return;
     }
 
-    // AC5: Ctrl + Left/Right arrows micro-stepping
-    if (event.ctrlKey || event.metaKey) {
+    // AC5: Ctrl + Left/Right arrows micro-stepping for vertical cursors
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight")
+    ) {
       const state = useCursorStore.getState();
       const selected = state.selectedCursor;
-      if (!selected) return;
+      if (selected) {
+        const capture = options.getCapture();
+        if (capture) {
+          event.preventDefault();
+          state.stepCursor(
+            selected,
+            event.key === "ArrowLeft" ? -1 : 1,
+            capture.timestamps.length,
+          );
+        }
+      }
+    }
 
-      const capture = options.getCapture();
-      if (!capture) return;
-
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        state.stepCursor(selected, -1, capture.timestamps.length);
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        state.stepCursor(selected, 1, capture.timestamps.length);
+    // Ctrl + Up/Down arrows micro-stepping for horizontal cursors
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      const state = useCursorStore.getState();
+      const selectedY = state.selectedYCursor;
+      if (selectedY && uplot) {
+        const capture = options.getCapture();
+        if (capture) {
+          const selectedChannel =
+            useViewportStore.getState().selectedChannel ??
+            capture.channels[0]?.name;
+          const chIdx = capture.channels.findIndex(
+            (c) => c.name === selectedChannel,
+          );
+          if (chIdx !== -1) {
+            const scaleKey = yScaleKey(chIdx);
+            const scale = uplot.scales[scaleKey];
+            const info = capture.metadata.channels[chIdx];
+            const scaleMin = scale?.min ?? info?.windowMin ?? -1;
+            const scaleMax = scale?.max ?? info?.windowMax ?? 1;
+            const span = scaleMax > scaleMin ? scaleMax - scaleMin : 2;
+            const step = span * 0.01 * (event.key === "ArrowUp" ? 1 : -1);
+            event.preventDefault();
+            state.stepHorizontalCursor(selectedY, step);
+          }
+        }
       }
     }
   }
@@ -504,10 +798,16 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
         plotArea = u.over;
         plotArea.appendChild(c1Line);
         plotArea.appendChild(c2Line);
+        plotArea.appendChild(y1Line);
+        plotArea.appendChild(y2Line);
 
         // Click line or handle to select cursor (AC2)
         c1Line.addEventListener("click", (e) => onLineClick("C1", e));
         c2Line.addEventListener("click", (e) => onLineClick("C2", e));
+        y1Line.addEventListener("click", (e) => onYLineClick("Y1", e));
+        y2Line.addEventListener("click", (e) => onYLineClick("Y2", e));
+        y1Line.addEventListener("mousedown", (e) => onYLineMouseDown("Y1", e));
+        y2Line.addEventListener("mousedown", (e) => onYLineMouseDown("Y2", e));
 
         plotArea.addEventListener("mousedown", onMouseDown, { capture: true });
         plotArea.addEventListener("wheel", onWheel, { passive: false });
@@ -530,6 +830,49 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
           updateVisuals();
         });
 
+        // Channel switch re-binding (Issue #281)
+        let lastSelectedChannel = useViewportStore.getState().selectedChannel;
+        unsubscribeViewport = useViewportStore.subscribe((vpState) => {
+          if (
+            vpState.selectedChannel &&
+            vpState.selectedChannel !== lastSelectedChannel
+          ) {
+            const prevName = lastSelectedChannel;
+            lastSelectedChannel = vpState.selectedChannel;
+            const capture = options.getCapture();
+            if (capture && prevName) {
+              const prevIdx = capture.channels.findIndex(
+                (c) => c.name === prevName,
+              );
+              const nextIdx = capture.channels.findIndex(
+                (c) => c.name === lastSelectedChannel,
+              );
+              if (prevIdx !== -1 && nextIdx !== -1) {
+                const prevScaleKey = yScaleKey(prevIdx);
+                const nextScaleKey = yScaleKey(nextIdx);
+                const prevScale = uplot?.scales[prevScaleKey];
+                const nextScale = uplot?.scales[nextScaleKey];
+                const prevInfo = capture.metadata.channels[prevIdx];
+                const nextInfo = capture.metadata.channels[nextIdx];
+                const prevMin = prevScale?.min ?? prevInfo?.windowMin ?? -1;
+                const prevMax = prevScale?.max ?? prevInfo?.windowMax ?? 1;
+                const nextMin = nextScale?.min ?? nextInfo?.windowMin ?? -1;
+                const nextMax = nextScale?.max ?? nextInfo?.windowMax ?? 1;
+                useCursorStore
+                  .getState()
+                  .rebindHorizontalCursors(
+                    prevMin,
+                    prevMax,
+                    nextMin,
+                    nextMax,
+                    lastSelectedChannel,
+                  );
+              }
+            }
+            updateVisuals();
+          }
+        });
+
         updateVisuals();
       },
       draw() {
@@ -540,6 +883,7 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
       },
       destroy() {
         endDrag();
+        endYDrag();
         if (unsubscribeStore) {
           unsubscribeStore();
           unsubscribeStore = null;
@@ -556,6 +900,10 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
           unsubscribeCursorDisplay();
           unsubscribeCursorDisplay = null;
         }
+        if (unsubscribeViewport) {
+          unsubscribeViewport();
+          unsubscribeViewport = null;
+        }
         window.removeEventListener("keydown", onKeyDown);
         if (plotArea) {
           plotArea.removeEventListener("mousedown", onMouseDown, {
@@ -564,6 +912,8 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
           plotArea.removeEventListener("wheel", onWheel);
           if (c1Line.parentElement === plotArea) plotArea.removeChild(c1Line);
           if (c2Line.parentElement === plotArea) plotArea.removeChild(c2Line);
+          if (y1Line.parentElement === plotArea) plotArea.removeChild(y1Line);
+          if (y2Line.parentElement === plotArea) plotArea.removeChild(y2Line);
         }
         plotArea = null;
         uplot = null;

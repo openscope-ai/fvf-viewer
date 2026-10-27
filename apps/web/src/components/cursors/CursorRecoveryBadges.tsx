@@ -19,8 +19,17 @@ import React from "react";
 import { THEME_COLORS } from "../canvas/Oscilloscope";
 import { formatTime } from "./siFormat";
 import { findNearestSampleIndex } from "./cursorPlugin";
-import { useCursorStore, type CursorId } from "../../state/cursorStore";
+import {
+  useCursorStore,
+  type CursorId,
+  type HorizontalCursorId,
+} from "../../state/cursorStore";
 import { useViewportStore } from "../../state/viewportStore";
+import { useThemeStore } from "../../state/themeStore";
+import { usePaletteStore } from "../../state/paletteStore";
+import { effectiveColorForKey, type PaletteKey } from "../canvas/themePalette";
+import { displayToReadoutValue } from "../canvas/channelDisplay";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import type { ParsedCapture } from "../../types/capture";
 
 export interface CursorRecoveryBadgesProps {
@@ -38,6 +47,24 @@ export const CursorRecoveryBadges: React.FC<CursorRecoveryBadgesProps> = ({
   const c2SampleIndex = useCursorStore((state) => state.c2SampleIndex);
   const setCursorSample = useCursorStore((state) => state.setCursorSample);
   const selectCursor = useCursorStore((state) => state.selectCursor);
+
+  // Horizontal cursor recovery (Issue #281)
+  const y1Active = useCursorStore((state) => state.y1Active);
+  const y2Active = useCursorStore((state) => state.y2Active);
+  const y1Value = useCursorStore((state) => state.y1Value);
+  const y2Value = useCursorStore((state) => state.y2Value);
+  const setHorizontalCursorValue = useCursorStore(
+    (state) => state.setHorizontalCursorValue,
+  );
+  const selectHorizontalCursor = useCursorStore(
+    (state) => state.selectHorizontalCursor,
+  );
+  const selectedChannel = useViewportStore((state) => state.selectedChannel);
+  const yMin = useViewportStore((state) => state.yMin);
+  const yMax = useViewportStore((state) => state.yMax);
+  const theme = useThemeStore((state) => state.theme);
+  const customColors = usePaletteStore((state) => state.customColors);
+  const displayConfigs = useChannelDisplayStore((state) => state.keyConfigs);
 
   const xMin = useViewportStore((state) => state.xMin);
   const xMax = useViewportStore((state) => state.xMax);
@@ -60,7 +87,37 @@ export const CursorRecoveryBadges: React.FC<CursorRecoveryBadgesProps> = ({
   const c2Left = c2Active && t2 < effectiveXMin;
   const c2Right = c2Active && t2 > effectiveXMax;
 
-  if (!c1Left && !c1Right && !c2Left && !c2Right) {
+  // Horizontal out-of-view checks
+  const selectedChInfo =
+    capture.metadata.channels.find((c) => c.name === selectedChannel) ??
+    capture.metadata.channels[0];
+  const effectiveYMin = yMin ?? selectedChInfo?.windowMin ?? -1;
+  const effectiveYMax = yMax ?? selectedChInfo?.windowMax ?? 1;
+
+  const y1Val =
+    y1Value !== null
+      ? y1Value
+      : effectiveYMin + 0.75 * (effectiveYMax - effectiveYMin);
+  const y2Val =
+    y2Value !== null
+      ? y2Value
+      : effectiveYMin + 0.25 * (effectiveYMax - effectiveYMin);
+
+  const y1Top = y1Active && y1Val > effectiveYMax;
+  const y1Bottom = y1Active && y1Val < effectiveYMin;
+  const y2Top = y2Active && y2Val > effectiveYMax;
+  const y2Bottom = y2Active && y2Val < effectiveYMin;
+
+  if (
+    !c1Left &&
+    !c1Right &&
+    !c2Left &&
+    !c2Right &&
+    !y1Top &&
+    !y1Bottom &&
+    !y2Top &&
+    !y2Bottom
+  ) {
     return null;
   }
 
@@ -71,6 +128,61 @@ export const CursorRecoveryBadges: React.FC<CursorRecoveryBadgesProps> = ({
     const snappedIdx = findNearestSampleIndex(timestamps, targetTime);
     setCursorSample(id, snappedIdx, totalSamples);
     selectCursor(id);
+  };
+
+  const handleRecoverY = (id: HorizontalCursorId) => {
+    const fraction = id === "Y1" ? 0.67 : 0.33;
+    const targetY = effectiveYMin + fraction * (effectiveYMax - effectiveYMin);
+    setHorizontalCursorValue(id, targetY);
+    selectHorizontalCursor(id);
+  };
+
+  const renderHorizontalBadge = (
+    id: HorizontalCursorId,
+    side: "top" | "bottom",
+    val: number,
+  ) => {
+    const color = effectiveColorForKey(theme, customColors, id as PaletteKey);
+    const readoutAmp = selectedChInfo
+      ? displayToReadoutValue(val, displayConfigs, selectedChInfo.name)
+      : val;
+    const formattedAmp = readoutAmp.toFixed(2);
+
+    return (
+      <button
+        key={id}
+        type="button"
+        tabIndex={0}
+        className={`cursor-recovery-badge cursor-recovery-badge--${id.toLowerCase()} cursor-recovery-badge--${side}`}
+        data-testid={`cursor-recovery-badge-${id.toLowerCase()}`}
+        style={{
+          borderColor: color,
+          color,
+          boxShadow: `0 0 6px ${color}66`,
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleRecoverY(id);
+        }}
+        title={`${id} (${formattedAmp}) - Click to bring into view`}
+        aria-label={`Recover cursor ${id} into view (current amplitude ${formattedAmp})`}
+      >
+        {side === "top" && (
+          <span className="cursor-recovery-chevron" aria-hidden="true">
+            ▲
+          </span>
+        )}
+        <span className="cursor-recovery-tag">{id}</span>
+        {side === "bottom" && (
+          <span className="cursor-recovery-chevron" aria-hidden="true">
+            ▼
+          </span>
+        )}
+      </button>
+    );
   };
 
   const renderBadge = (
@@ -139,6 +251,24 @@ export const CursorRecoveryBadges: React.FC<CursorRecoveryBadgesProps> = ({
         >
           {c1Right && renderBadge("C1", "right", t1)}
           {c2Right && renderBadge("C2", "right", t2)}
+        </div>
+      )}
+      {(y1Top || y2Top) && (
+        <div
+          className="cursor-recovery-group cursor-recovery-group--top"
+          data-testid="cursor-recovery-top"
+        >
+          {y1Top && renderHorizontalBadge("Y1", "top", y1Val)}
+          {y2Top && renderHorizontalBadge("Y2", "top", y2Val)}
+        </div>
+      )}
+      {(y1Bottom || y2Bottom) && (
+        <div
+          className="cursor-recovery-group cursor-recovery-group--bottom"
+          data-testid="cursor-recovery-bottom"
+        >
+          {y1Bottom && renderHorizontalBadge("Y1", "bottom", y1Val)}
+          {y2Bottom && renderHorizontalBadge("Y2", "bottom", y2Val)}
         </div>
       )}
     </div>

@@ -38,7 +38,7 @@ beforeAll(async () => {
   mkdirSync(fvfDir);
   writeFileSync(
     path.join(fvfDir, "index.html"),
-    `<!doctype html><html lang="en"><head><title>The .fvf File Format Technical Reference — FVF Viewer</title><meta name="description" content="Technical breakdown of the binary .fvf (FVF) ScopeMeter waveform capture format."><link rel="canonical" href="https://fvf-viewer.com/fvf-file-format/"></head><body><h1>The .fvf File Format Technical Reference</h1><p>Binary .fvf waveform capture format specification.</p><a href="/">Open the viewer</a></body></html>`,
+    `<!doctype html><html lang="en"><head><title>The .fvf File Format Technical Overview — FVF Viewer</title><meta name="description" content="Technical overview of the binary .fvf (FVF) ScopeMeter waveform capture format."><link rel="canonical" href="https://fvf-viewer.com/fvf-file-format/"></head><body><h1>The .fvf File Format Technical Overview</h1><p>Binary .fvf waveform capture format overview.</p><a href="/">Open the viewer</a></body></html>`,
   );
   const faqDir = path.join(staticRoot, "faq");
   mkdirSync(faqDir);
@@ -173,7 +173,7 @@ describe("static SPA serving (AC1)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/html");
-    expect(res.body).toContain("The .fvf File Format Technical Reference");
+    expect(res.body).toContain("The .fvf File Format Technical Overview");
     expect(res.body).toContain(
       '<link rel="canonical" href="https://fvf-viewer.com/fvf-file-format/">',
     );

@@ -16,7 +16,10 @@ import {
 } from "../../canvas/themePalette";
 import { usePaletteStore } from "../../../state/paletteStore";
 import { useThemeStore } from "../../../state/themeStore";
-import { CURSOR_MOVEMENT_SUMMARY } from "../../cursors/cursorHelp";
+import {
+  CURSOR_MOVEMENT_SUMMARY,
+  HORIZONTAL_CURSOR_MOVEMENT_SUMMARY,
+} from "../../cursors/cursorHelp";
 import { HeroIdentity } from "./HeroIdentity";
 import { QuickKnobs } from "./QuickKnobs";
 import { ColorDetail } from "./ColorDetail";
@@ -31,7 +34,7 @@ import { ChannelDisplaySection } from "./ChannelSettings";
 
 export type BadgeConfigTarget =
   | { kind: "channel"; paletteKey: PaletteKey; channelName: string }
-  | { kind: "cursor"; paletteKey: "C1" | "C2" };
+  | { kind: "cursor"; paletteKey: "C1" | "C2" | "Y1" | "Y2" };
 
 export interface BadgeConfigPopoverProps {
   target: BadgeConfigTarget;
@@ -82,15 +85,21 @@ export function BadgeConfigPopover({
         {target.kind === "cursor" && (
           <>
             <MeasurementUnitsSection />
-            <ChannelBindingSection cursorId={target.paletteKey} />
-            <CursorFeatureJumpSection cursorId={target.paletteKey} />
-            <LockedDeltaSection />
-            <LineStyleSection cursorId={target.paletteKey} />
+            {target.paletteKey !== "Y1" && target.paletteKey !== "Y2" && (
+              <>
+                <ChannelBindingSection cursorId={target.paletteKey} />
+                <CursorFeatureJumpSection cursorId={target.paletteKey} />
+                <LockedDeltaSection />
+                <LineStyleSection cursorId={target.paletteKey} />
+              </>
+            )}
             <p
               className="badge-popover-hint"
               data-testid="cursor-movement-hint"
             >
-              {CURSOR_MOVEMENT_SUMMARY}
+              {target.paletteKey === "Y1" || target.paletteKey === "Y2"
+                ? HORIZONTAL_CURSOR_MOVEMENT_SUMMARY
+                : CURSOR_MOVEMENT_SUMMARY}
             </p>
           </>
         )}

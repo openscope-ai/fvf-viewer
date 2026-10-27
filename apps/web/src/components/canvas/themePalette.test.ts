@@ -11,7 +11,7 @@ import {
 } from "./themePalette";
 
 describe("user-configurable palette resolution (issue #40)", () => {
-  it("exposes exactly the six customizable palette keys", () => {
+  it("exposes exactly the customizable palette keys", () => {
     expect(PALETTE_KEYS).toEqual([
       "A",
       "B",
@@ -23,6 +23,8 @@ describe("user-configurable palette resolution (issue #40)", () => {
       "Ref-D",
       "C1",
       "C2",
+      "Y1",
+      "Y2",
     ]);
   });
 
@@ -93,10 +95,17 @@ describe("user-configurable palette resolution (issue #40)", () => {
     ).toBe("#00BFFF");
   });
 
-  it("effectiveCursorColor resolves C1/C2 with overrides", () => {
+  it("effectiveCursorColor resolves C1/C2/Y1/Y2 with overrides", () => {
     expect(effectiveCursorColor("dark", {}, "C2")).toBe("#B0B0B0");
     expect(effectiveCursorColor("dark", { C2: "#00FFAA" }, "C2")).toBe(
       "#00FFAA",
+    );
+    expect(effectiveCursorColor("dark", {}, "Y1")).toBe("#00E5FF");
+    expect(effectiveCursorColor("light", {}, "Y1")).toBe("#0097A7");
+    expect(effectiveCursorColor("dark", {}, "Y2")).toBe("#FF9100");
+    expect(effectiveCursorColor("light", {}, "Y2")).toBe("#E65100");
+    expect(effectiveCursorColor("dark", { Y1: "#FFFFFF" }, "Y1")).toBe(
+      "#FFFFFF",
     );
   });
 

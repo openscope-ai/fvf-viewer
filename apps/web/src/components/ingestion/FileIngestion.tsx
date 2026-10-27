@@ -134,7 +134,7 @@ export function HeroDropZone({
           >
             <OneFingerSelectHandGestureIcon className="hero-sample-icon" />
             <span className="hero-sample-label">
-              Test fvf • viewer with a 100k sample synthetic capture
+              Test fvf • viewer with a 20k sample synthetic capture
             </span>
           </button>
         </div>

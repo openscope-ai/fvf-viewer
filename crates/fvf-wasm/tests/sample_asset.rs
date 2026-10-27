@@ -74,8 +74,8 @@ fn sample_decodes_as_clean_showcase_capture() {
         assert!((channel.scale - scale).abs() < 1e-15);
         assert!((channel.window_min - window_min).abs() < 1e-12);
         assert!((channel.window_max - window_max).abs() < 1e-12);
-        assert_eq!(channel.samples, 100_000);
-        assert!((channel.delta_t - 1.0e-5).abs() < 1.0e-12);
+        assert_eq!(channel.samples, 20_000);
+        assert!((channel.delta_t - 5.0e-5).abs() < 1.0e-12);
         assert_eq!(channel.saturated_sample_count, 0);
         // Monotone trigger-relative time axis starting at -0.5 s over the
         // 1 s stored span.
@@ -91,7 +91,7 @@ fn sample_decodes_as_clean_showcase_capture() {
 
     // Motor current: silent before the ramp, soft-start peak in (8, 10) A.
     let current = &channels[1].values;
-    assert!(current[..4_000].iter().all(|v| v.abs() < 0.6));
+    assert!(current[..800].iter().all(|v| v.abs() < 0.6));
     let peak = current.iter().fold(0.0_f32, |acc, v| acc.max(v.abs()));
     assert!(
         (8.0..10.0).contains(&peak),
@@ -103,7 +103,7 @@ fn sample_decodes_as_clean_showcase_capture() {
     assert!(pwm.iter().fold(0.0_f32, |a, v| a.max(v.abs())) < 5.5);
     assert!(pwm.iter().any(|v| *v > 4.0));
     assert!(pwm.iter().any(|v| *v < 1.0));
-    assert!(pwm[85_000..].iter().all(|v| *v < 1.0));
+    assert!(pwm[17_000..].iter().all(|v| *v < 1.0));
 
     // Drive state: crisp two-level signal with exactly four rail crossings
     // (run, fault, restart, stop) for cursor measurements.
