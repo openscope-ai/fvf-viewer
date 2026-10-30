@@ -277,10 +277,16 @@ export function computeAllVisibleChannelStats(
         false,
       );
 
+      const displayName = channelDisplayName(
+        refName,
+        undefined,
+        customNames?.[refName],
+      );
+
       results.push({
         channelKey: refName,
         channelName: refName,
-        displayName: refName,
+        displayName,
         color,
         unit,
         ...stats,

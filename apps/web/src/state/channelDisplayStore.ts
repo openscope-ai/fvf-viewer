@@ -203,6 +203,12 @@ export interface ChannelDisplayStoreState {
    * untouched (they are view layout, not display transforms).
    */
   resetTransforms: () => void;
+  /**
+   * Issue #337: clears compare-specific display transforms (Ref-A…Ref-D)
+   * and any Ref-* solo state when File 2 is removed, leaving primary
+   * channel transforms and primary solo state intact.
+   */
+  clearRefTransforms: () => void;
   reset: () => void;
 }
 
@@ -390,6 +396,26 @@ export function createChannelDisplayStore() {
       commit(set, (state) =>
         Object.keys(state.keyConfigs).length > 0 ? { keyConfigs: {} } : {},
       ),
+
+    clearRefTransforms: () =>
+      commit(set, (state) => {
+        const nextConfigs: ChannelDisplayConfigs = {};
+        let configsChanged = false;
+        for (const [k, v] of Object.entries(state.keyConfigs)) {
+          if (isChannelKey(k) && isRefChannelKey(k)) {
+            configsChanged = true;
+          } else if (isChannelKey(k) && v) {
+            nextConfigs[k] = v;
+          }
+        }
+        const clearRefSolo =
+          state.solo !== null && isRefChannelKey(state.solo.key);
+        if (!configsChanged && !clearRefSolo) return {};
+        return {
+          ...(configsChanged ? { keyConfigs: nextConfigs } : {}),
+          ...(clearRefSolo ? { solo: null } : {}),
+        };
+      }),
 
     reset: () => {
       commit(set, () => ({ keyConfigs: {}, solo: null }));

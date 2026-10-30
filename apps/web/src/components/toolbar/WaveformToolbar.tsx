@@ -142,6 +142,7 @@ export default function WaveformToolbar({
     channel: string;
     activeChannels: ChannelTag[];
     selectedChannel: ChannelTag | null;
+    refActiveChannels: string[];
     timestamp: number;
   } | null>(null);
 
@@ -339,8 +340,13 @@ export default function WaveformToolbar({
                       ],
                       selectedChannel:
                         useViewportStore.getState().selectedChannel,
+                      refActiveChannels: [
+                        ...useReferenceStore.getState().refActiveChannels,
+                      ],
                       timestamp: now,
                     };
+                  } else {
+                    preDoubleClickRef.current.timestamp = now;
                   }
                   cycleChannelBadge(name);
                 }}
@@ -425,8 +431,57 @@ export default function WaveformToolbar({
           const color = effectiveTraceColor(theme, customColors, name);
           const custom = customNames[name];
           const displayLabel = custom ? `${name}: ${custom}` : name;
+          const editing = editingChannel === name;
           const popoverKey = `channel:${name}`;
           const popoverOpen = openKey === popoverKey;
+
+          const commitEdit = () => {
+            if (cancelledRef.current) {
+              cancelledRef.current = false;
+              setEditingChannel(null);
+              return;
+            }
+            setName(name, draftRef.current);
+            setEditingChannel(null);
+          };
+
+          if (editing) {
+            return (
+              <span
+                key={name}
+                className="waveform-channel-badge waveform-channel-badge--editing"
+                data-testid={`channel-badge-edit-${name}`}
+              >
+                <span className="waveform-channel-badge-prefix">{name}: </span>
+                <input
+                  type="text"
+                  autoFocus
+                  maxLength={CHANNEL_NAME_MAX_LENGTH}
+                  size={Math.max(6, CHANNEL_NAME_MAX_LENGTH - 8)}
+                  defaultValue={custom ?? ""}
+                  aria-label={`Custom name for channel ${name}`}
+                  data-testid={`channel-name-input-${name}`}
+                  onChange={(event) => {
+                    draftRef.current = event.target.value;
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitEdit();
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      cancelledRef.current = true;
+                      setEditingChannel(null);
+                    }
+                    // Isolate keys so app-level handlers never fire.
+                    event.stopPropagation();
+                  }}
+                  onBlur={commitEdit}
+                />
+              </span>
+            );
+          }
+
           return (
             <span
               key={name}
@@ -445,17 +500,54 @@ export default function WaveformToolbar({
                 aria-label={`Toggle reference channel ${displayLabel} visibility (double-click to rename)`}
                 title={`Toggle reference channel ${displayLabel} visibility (double-click to rename)`}
                 data-testid={`channel-badge-${name}`}
-                onClick={() => toggleRefChannel(name)}
+                onClick={(event) => {
+                  const now = Date.now();
+                  if (
+                    event.detail <= 1 ||
+                    !preDoubleClickRef.current ||
+                    preDoubleClickRef.current.channel !== name ||
+                    now - preDoubleClickRef.current.timestamp > 400
+                  ) {
+                    preDoubleClickRef.current = {
+                      channel: name,
+                      activeChannels: [
+                        ...useViewportStore.getState().activeChannels,
+                      ],
+                      selectedChannel:
+                        useViewportStore.getState().selectedChannel,
+                      refActiveChannels: [
+                        ...useReferenceStore.getState().refActiveChannels,
+                      ],
+                      timestamp: now,
+                    };
+                  } else {
+                    preDoubleClickRef.current.timestamp = now;
+                  }
+                  toggleRefChannel(name);
+                }}
                 onDoubleClick={() => {
-                  setEditingChannel(name);
-                  preDoubleClickRef.current = {
-                    channel: name,
-                    activeChannels: [],
-                    selectedChannel: null,
-                    timestamp: Date.now(),
-                  };
-                  cancelledRef.current = false;
+                  if (
+                    preDoubleClickRef.current &&
+                    preDoubleClickRef.current.channel === name
+                  ) {
+                    useReferenceStore
+                      .getState()
+                      .setRefActiveChannels(
+                        preDoubleClickRef.current.refActiveChannels,
+                      );
+                    preDoubleClickRef.current = null;
+                  }
                   draftRef.current = custom ?? "";
+                  cancelledRef.current = false;
+                  setEditingChannel(name);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    draftRef.current = custom ?? "";
+                    cancelledRef.current = false;
+                    setEditingChannel(name);
+                  }
                 }}
               >
                 {displayLabel}
@@ -624,106 +716,111 @@ export default function WaveformToolbar({
         })}
       </div>
       <div
-        className="waveform-stack-toggle"
-        role="group"
-        aria-label="Channel lane layout"
-        data-testid="stack-mode-toggle"
+        className="waveform-toolbar-actions"
+        data-testid="waveform-toolbar-actions"
       >
+        <div
+          className="waveform-stack-toggle"
+          role="group"
+          aria-label="Channel lane layout"
+          data-testid="stack-mode-toggle"
+        >
+          <button
+            type="button"
+            className={`waveform-stack-option${!stackMode ? " waveform-stack-option--active" : ""}`}
+            aria-pressed={!stackMode}
+            aria-label="Overlay: all channels share the full graticule"
+            title="Overlay: all channels share the full graticule"
+            data-testid="stack-mode-overlay"
+            onClick={() => {
+              if (stackMode) {
+                setStackMode(false);
+                trackEvent("layout_toggled", { mode: "overlay" });
+              }
+            }}
+          >
+            Overlay
+          </button>
+          <button
+            type="button"
+            className={`waveform-stack-option${stackMode ? " waveform-stack-option--active" : ""}`}
+            aria-pressed={stackMode}
+            aria-label="Stack: partition the canvas into equal horizontal lanes per visible channel"
+            title="Stack: partition the canvas into equal horizontal lanes per visible channel"
+            data-testid="stack-mode-stack"
+            onClick={() => {
+              if (!stackMode) {
+                setStackMode(true);
+                trackEvent("layout_toggled", { mode: "stack" });
+              }
+            }}
+          >
+            Stack
+          </button>
+        </div>
+        <div
+          className="waveform-history-group"
+          role="group"
+          aria-label="Viewport zoom history and reset"
+          data-testid="waveform-history-group"
+        >
+          <button
+            type="button"
+            className="waveform-fit-button"
+            aria-label={`Reset View: reset display transforms, File 2 time slip, and viewport. ${NAVIGATION_HELP_SUMMARY}`}
+            title={`Reset View: reset display transforms, File 2 time slip, and viewport\nControls: ${NAVIGATION_HELP_SUMMARY}`}
+            data-testid="reset-view-button"
+            onClick={handleResetView}
+          >
+            Reset View
+          </button>
+          <button
+            type="button"
+            className="waveform-history-button"
+            aria-label="Zoom history back (Alt+Left)"
+            title="Zoom history back (Alt+Left)"
+            data-testid="zoom-history-back"
+            disabled={!canGoBack}
+            onClick={goBack}
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            className="waveform-history-button"
+            aria-label="Zoom history forward (Alt+Right)"
+            title="Zoom history forward (Alt+Right)"
+            data-testid="zoom-history-forward"
+            disabled={!canGoForward}
+            onClick={goForward}
+          >
+            ▶
+          </button>
+        </div>
         <button
           type="button"
-          className={`waveform-stack-option${!stackMode ? " waveform-stack-option--active" : ""}`}
-          aria-pressed={!stackMode}
-          aria-label="Overlay: all channels share the full graticule"
-          title="Overlay: all channels share the full graticule"
-          data-testid="stack-mode-overlay"
-          onClick={() => {
-            if (stackMode) {
-              setStackMode(false);
-              trackEvent("layout_toggled", { mode: "overlay" });
-            }
-          }}
+          className="waveform-theme-button"
+          aria-label={`Toggle viewport theme (currently ${theme})`}
+          title={`Toggle viewport theme (currently ${theme})`}
+          data-testid="theme-toggle-button"
+          onClick={toggleTheme}
         >
-          Overlay
+          {theme === "dark" ? "Light Theme" : "Dark Theme"}
         </button>
         <button
           type="button"
-          className={`waveform-stack-option${stackMode ? " waveform-stack-option--active" : ""}`}
-          aria-pressed={stackMode}
-          aria-label="Stack: partition the canvas into equal horizontal lanes per visible channel"
-          title="Stack: partition the canvas into equal horizontal lanes per visible channel"
-          data-testid="stack-mode-stack"
-          onClick={() => {
-            if (!stackMode) {
-              setStackMode(true);
-              trackEvent("layout_toggled", { mode: "stack" });
-            }
-          }}
+          className={`waveform-measurements-button${measurementsOpen ? " waveform-measurements-button--active" : ""}`}
+          aria-pressed={measurementsOpen}
+          aria-label="Toggle amplitude measurements table"
+          title="Toggle amplitude measurements table"
+          data-testid="measurements-toggle-button"
+          onClick={toggleMeasurements}
         >
-          Stack
+          Measurements
         </button>
+        <CsvExportButton />
+        <PngSnapshotButton />
       </div>
-      <div
-        className="waveform-history-group"
-        role="group"
-        aria-label="Viewport zoom history and reset"
-        data-testid="waveform-history-group"
-      >
-        <button
-          type="button"
-          className="waveform-fit-button"
-          aria-label={`Reset View: reset display transforms, File 2 time slip, and viewport. ${NAVIGATION_HELP_SUMMARY}`}
-          title={`Reset View: reset display transforms, File 2 time slip, and viewport\nControls: ${NAVIGATION_HELP_SUMMARY}`}
-          data-testid="reset-view-button"
-          onClick={handleResetView}
-        >
-          Reset View
-        </button>
-        <button
-          type="button"
-          className="waveform-history-button"
-          aria-label="Zoom history back (Alt+Left)"
-          title="Zoom history back (Alt+Left)"
-          data-testid="zoom-history-back"
-          disabled={!canGoBack}
-          onClick={goBack}
-        >
-          ◀
-        </button>
-        <button
-          type="button"
-          className="waveform-history-button"
-          aria-label="Zoom history forward (Alt+Right)"
-          title="Zoom history forward (Alt+Right)"
-          data-testid="zoom-history-forward"
-          disabled={!canGoForward}
-          onClick={goForward}
-        >
-          ▶
-        </button>
-      </div>
-      <button
-        type="button"
-        className="waveform-theme-button"
-        aria-label={`Toggle viewport theme (currently ${theme})`}
-        title={`Toggle viewport theme (currently ${theme})`}
-        data-testid="theme-toggle-button"
-        onClick={toggleTheme}
-      >
-        {theme === "dark" ? "Light Theme" : "Dark Theme"}
-      </button>
-      <button
-        type="button"
-        className={`waveform-measurements-button${measurementsOpen ? " waveform-measurements-button--active" : ""}`}
-        aria-pressed={measurementsOpen}
-        aria-label="Toggle amplitude measurements table"
-        title="Toggle amplitude measurements table"
-        data-testid="measurements-toggle-button"
-        onClick={toggleMeasurements}
-      >
-        Measurements
-      </button>
-      <CsvExportButton />
-      <PngSnapshotButton />
     </div>
   );
 }

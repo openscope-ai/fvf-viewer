@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.13.1] - 2026-10-30
+
+[v0.13.0...v0.13.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.13.0...v0.13.1)
+
+### Added
+
+- Support removing compare waveform and preserving primary view (Ref #337):
+  - Added `- Compare` action in red text next to the secondary file name in the banner when a comparison waveform is active, enabling instant removal without confirmation prompts.
+  - Reset compare-specific state (File 2 visibility and time slip) while preserving primary waveform zoom, pan, cursor, and channel visibility settings.
+
+### Fixed
+
+- Prevent Y-axis overlay and space crash on compare toggle (Ref #338):
+  - Ensured axes in `uPlot` are constructed with `show: true` so default formatting and spacing functions are initialized on all channels, preventing `TypeError: axis.space is not a function` when channels are dynamically enabled or reset.
+  - Restored `labelSize = AXIS_LABEL_SIZE_PX` and cleared cached axis sizes when transitioning between Stack and Overlay modes.
+  - Invalidated cached axis sizes on mode transitions and channel visibility toggles to force clean recalculation of staggered Y-axis columns.
+- Defer popover channel name commit until Enter or blur (Ref #336):
+  - Updated channel name configuration popover to maintain local draft state while typing, eliminating lag from per-keystroke store writes.
+- Support double-click rename and per-file persistence for compare channels (Ref #335):
+  - Enabled double-clicking comparison (Ref-*) channel badges to open inline rename editor without toggling channel visibility.
+  - Persisted custom compare channel names across sessions keyed to compare file identity.
+- Group and center wrapped action buttons when channel names are long (Ref #334):
+  - Grouped toolbar action controls into a centered flex wrapper with consistent spacing when long channel names wrap across multiple lines.
+- Include comparison waveform and legend in PNG export and canvas copy (Ref #333):
+  - Included secondary comparison traces and matching legend entries across Overlay and Stack modes in both dark and light theme exports and canvas clipboard copy.
+
 ## [0.13.0] - 2026-10-27
 
 [v0.12.3...v0.13.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.12.3...v0.13.0)

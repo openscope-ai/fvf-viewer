@@ -175,6 +175,15 @@ export function computeYAxisSize(
 ): number {
   const measured = measureYAxisSize(values);
   if (!isStacked || !self || !self.axes) {
+    if (self?.axes) {
+      const ax = self.axes.find((a) => a.scale === scaleKey);
+      if (ax) {
+        ax.labelSize = AXIS_LABEL_SIZE_PX;
+      }
+      (
+        self as unknown as { _yAxisSizeCache?: Map<string, number> }
+      )._yAxisSizeCache?.delete(scaleKey);
+    }
     return measured;
   }
   const cache = ((

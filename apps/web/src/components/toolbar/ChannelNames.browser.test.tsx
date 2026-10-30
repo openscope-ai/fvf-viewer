@@ -6,17 +6,25 @@ import Oscilloscope from "../canvas/Oscilloscope";
 import "../../index.css";
 import WaveformToolbar from "./WaveformToolbar";
 import MetadataBanner from "../banner/MetadataBanner";
+import MeasurementsTable from "../measurements/MeasurementsTable";
 import { CursorReadoutCard } from "../cursors/CursorReadoutCard";
 import {
   captureFileKey,
   useChannelNamesStore,
 } from "../../state/channelNamesStore";
-import { alignedChannels, buildCsvHeaderLines } from "../export/csvExport";
+import {
+  alignedChannels,
+  buildCsvHeaderLines,
+  exportCompositeCsv,
+} from "../export/csvExport";
 import { useCaptureStore } from "../../state/captureStore";
+import { useReferenceStore } from "../../state/referenceStore";
+import { useMeasurementsStore } from "../../state/measurementsStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
+import { useBadgePopoverStore } from "./badgeConfig/anchoredPopover";
 import type { ParsedCapture } from "../../types/capture";
 
 (
@@ -295,5 +303,295 @@ describe("Channel name inline editing (Issue #64)", () => {
     // A different file starts clean.
     fresh.getState().setFileKey("other.fvf::999");
     expect(fresh.getState().names).toEqual({});
+  });
+
+  describe("Compare (Ref-*) channel renaming & per-file persistence (Issue #335)", () => {
+    let refCapture: ParsedCapture;
+
+    const refBadge = () =>
+      hostElement.querySelector(
+        "[data-testid='channel-badge-Ref-A']",
+      ) as HTMLButtonElement;
+
+    function createRefCapture(sampleCount = 500): ParsedCapture {
+      const base = createTestCapture(sampleCount);
+      return {
+        ...base,
+        metadata: {
+          ...base.metadata,
+          timestamp14: "09150020261029",
+        },
+      };
+    }
+
+    function mountCompareAll() {
+      act(() => {
+        root.render(
+          <div>
+            <MetadataBanner capture={capture} fileName="scope.fvf" />
+            <WaveformToolbar />
+            <Oscilloscope capture={capture} />
+            <MeasurementsTable capture={capture} />
+            <CursorReadoutCard capture={capture} />
+          </div>,
+        );
+      });
+    }
+
+    beforeEach(() => {
+      useBadgePopoverStore.getState().setOpen(null);
+      useReferenceStore.getState().clear();
+      useMeasurementsStore.setState({ isOpen: false });
+      refCapture = createRefCapture();
+      act(() => {
+        useChannelNamesStore
+          .getState()
+          .setRefFileKey(
+            captureFileKey("compare.fvf", refCapture.metadata.timestamp14),
+          );
+        useReferenceStore.setState({
+          capture: refCapture,
+          fileName: "compare.fvf",
+          lanes: [new Float32Array(refCapture.channels[0]!.data)],
+          refActiveChannels: ["Ref-A"],
+          parseState: "success",
+          error: null,
+          timeSlipSamples: 0,
+        });
+      });
+    });
+
+    afterEach(() => {
+      useBadgePopoverStore.getState().setOpen(null);
+      useReferenceStore.getState().clear();
+      useMeasurementsStore.setState({ isOpen: false });
+    });
+
+    it("AC1+AC2+AC4: double-clicking a Ref-* badge opens inline editor without changing visibility; single click toggles visibility; Enter/blur commits and Escape cancels", () => {
+      mountCompareAll();
+
+      // AC2: single click toggles visibility
+      expect(refBadge().getAttribute("aria-pressed")).toBe("true");
+      act(() => {
+        refBadge().click();
+      });
+      expect(refBadge().getAttribute("aria-pressed")).toBe("false");
+      expect(useReferenceStore.getState().refActiveChannels).toEqual([]);
+
+      // Double-click while hidden (false): 2 rapid clicks (detail 1, 2) + dblclick leaves visibility false
+      act(() => {
+        refBadge().dispatchEvent(
+          new MouseEvent("click", { bubbles: true, detail: 1 }),
+        );
+        refBadge().dispatchEvent(
+          new MouseEvent("click", { bubbles: true, detail: 2 }),
+        );
+        refBadge().dispatchEvent(
+          new MouseEvent("dblclick", { bubbles: true, detail: 2 }),
+        );
+      });
+      expect(useReferenceStore.getState().refActiveChannels).toEqual([]);
+      const editorHidden = hostElement.querySelector(
+        "[data-testid='channel-badge-edit-Ref-A']",
+      ) as HTMLElement;
+      expect(editorHidden).not.toBeNull();
+      expect(editorHidden.textContent).toContain("Ref-A: ");
+
+      // AC4: Escape cancels with no change
+      const inputHidden = editorHidden.querySelector(
+        "input",
+      ) as HTMLInputElement;
+      act(() => {
+        typeInto(inputHidden, "Abandoned");
+        inputHidden.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        inputHidden.dispatchEvent(
+          new FocusEvent("focusout", { bubbles: true }),
+        );
+      });
+      expect(
+        hostElement.querySelector("[data-testid='channel-badge-edit-Ref-A']"),
+      ).toBeNull();
+      expect(useChannelNamesStore.getState().names["Ref-A"]).toBeUndefined();
+      expect(useReferenceStore.getState().refActiveChannels).toEqual([]);
+
+      // Toggle back to visible (true) via single click
+      act(() => {
+        refBadge().dispatchEvent(
+          new MouseEvent("click", { bubbles: true, detail: 1 }),
+        );
+      });
+      expect(useReferenceStore.getState().refActiveChannels).toEqual(["Ref-A"]);
+
+      // Double-click while visible (true): 2 rapid clicks (detail 1, 2) + dblclick leaves visibility true
+      act(() => {
+        refBadge().dispatchEvent(
+          new MouseEvent("click", { bubbles: true, detail: 1 }),
+        );
+        refBadge().dispatchEvent(
+          new MouseEvent("click", { bubbles: true, detail: 2 }),
+        );
+        refBadge().dispatchEvent(
+          new MouseEvent("dblclick", { bubbles: true, detail: 2 }),
+        );
+      });
+      expect(useReferenceStore.getState().refActiveChannels).toEqual(["Ref-A"]);
+
+      const input = hostElement.querySelector(
+        "[data-testid='channel-name-input-Ref-A']",
+      ) as HTMLInputElement;
+      expect(input).not.toBeNull();
+
+      // AC4: Enter commits the name
+      act(() => {
+        typeInto(input, "V_ref_bus");
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
+      });
+      expect(
+        hostElement.querySelector("[data-testid='channel-badge-edit-Ref-A']"),
+      ).toBeNull();
+      expect(refBadge().textContent).toBe("Ref-A: V_ref_bus");
+      expect(useChannelNamesStore.getState().names["Ref-A"]).toBe("V_ref_bus");
+      expect(useReferenceStore.getState().refActiveChannels).toEqual(["Ref-A"]);
+
+      // Blur commits an empty name to clear back to default (AC4)
+      act(() => {
+        refBadge().dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      });
+      const inputClear = hostElement.querySelector(
+        "[data-testid='channel-name-input-Ref-A']",
+      ) as HTMLInputElement;
+      act(() => {
+        typeInto(inputClear, "   ");
+        inputClear.dispatchEvent(new FocusEvent("blur", { bubbles: false }));
+        inputClear.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+      expect(useChannelNamesStore.getState().names["Ref-A"]).toBeUndefined();
+      expect(refBadge().textContent).toBe("Ref-A");
+    });
+
+    it("AC3+AC4: renaming via the Ref-* badge gear Configuration popover works with Enter, blur, empty-clear, and Escape cancel", async () => {
+      mountCompareAll();
+
+      const gear = hostElement.querySelector(
+        "[data-testid='channel-gear-Ref-A']",
+      ) as HTMLButtonElement;
+      await act(async () => {
+        gear.click();
+        await new Promise((r) => setTimeout(r, 30));
+      });
+
+      const popover = document.body.querySelector(
+        "[data-testid='badge-config-popover']",
+      ) as HTMLElement;
+      expect(popover).not.toBeNull();
+      const nameField = popover.querySelector(
+        "[data-testid='popover-name-field']",
+      ) as HTMLInputElement;
+      expect(nameField).not.toBeNull();
+      expect(nameField.getAttribute("placeholder")).toBe("Channel Ref-A");
+
+      // Type and press Escape -> cancels back to empty default
+      act(() => {
+        nameField.focus();
+        typeInto(nameField, "CancelledName");
+        nameField.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+      });
+      expect(useChannelNamesStore.getState().names["Ref-A"]).toBeUndefined();
+      expect(refBadge().textContent).toBe("Ref-A");
+
+      // Type and press Enter -> commits
+      act(() => {
+        nameField.focus();
+        typeInto(nameField, "Ref_Shunt");
+        nameField.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
+      });
+      expect(useChannelNamesStore.getState().names["Ref-A"]).toBe("Ref_Shunt");
+      expect(refBadge().textContent).toBe("Ref-A: Ref_Shunt");
+
+      // Type new draft and press Escape -> reverts to committed "Ref_Shunt"
+      act(() => {
+        nameField.focus();
+        typeInto(nameField, "DiscardedEdit");
+        nameField.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+      });
+      expect(useChannelNamesStore.getState().names["Ref-A"]).toBe("Ref_Shunt");
+      expect(refBadge().textContent).toBe("Ref-A: Ref_Shunt");
+
+      // Type empty and blur -> clears back to default
+      act(() => {
+        nameField.focus();
+        typeInto(nameField, "");
+        nameField.dispatchEvent(new FocusEvent("blur", { bubbles: false }));
+        nameField.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+      expect(useChannelNamesStore.getState().names["Ref-A"]).toBeUndefined();
+      expect(refBadge().textContent).toBe("Ref-A");
+    });
+
+    it("AC5+AC6+AC7: custom compare name propagation and per-file persistence", async () => {
+      act(() => {
+        useMeasurementsStore.setState({ isOpen: true });
+      });
+      mountCompareAll();
+
+      act(() => {
+        useChannelNamesStore.getState().setName("A", "Primary_Vin");
+        useChannelNamesStore.getState().setName("Ref-A", "Compare_Vout");
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+
+      // Primary and Ref badges
+      expect(badge().textContent).toBe("A: Primary_Vin");
+      expect(refBadge().textContent).toBe("Ref-A: Compare_Vout");
+
+      // Canvas uPlot series & axis label
+      const container = hostElement.querySelector(
+        "[data-testid='oscilloscope-container']",
+      ) as HTMLElement & { __uplot?: uPlot };
+      const uplot = container.__uplot!;
+      expect(String(uplot.series[1]!.label)).toBe("A: Primary_Vin");
+      expect(String(uplot.series[2]!.label)).toBe("Ref-A: Compare_Vout");
+      const refAxis = uplot.axes.find((a) => a.scale === "y1");
+      expect(String(refAxis?.label)).toContain("Compare_Vout");
+
+      // Measurements table row for Ref-A
+      const refMeasRow = hostElement.querySelector(
+        "[data-testid='measurement-row-ref-a']",
+      );
+      expect(refMeasRow?.textContent).toContain("Ref-A: Compare_Vout");
+
+      // Composite CSV header includes both custom names
+      const csvBlob = await exportCompositeCsv(
+        capture,
+        "scope.fvf",
+        refCapture,
+        "compare.fvf",
+        useReferenceStore.getState().lanes ?? [],
+        0,
+        useChannelNamesStore.getState().names,
+      );
+      const csvText = await csvBlob.text();
+      expect(csvText).toContain("[File 1] A: Primary_Vin");
+      expect(csvText).toContain("[File 2] A: Compare_Vout");
+
+      // AC6 & AC7: localStorage keys primary under scope.fvf and compare under compare.fvf
+      const stored = JSON.parse(localStorage.getItem("fvf.channel-names")!);
+      expect(stored).toEqual({
+        "scope.fvf::12300020260912": { A: "Primary_Vin" },
+        "compare.fvf::09150020261029": { A: "Compare_Vout" },
+      });
+    });
   });
 });

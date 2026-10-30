@@ -263,6 +263,15 @@ export function applyFitBounds(
       if (preStackMap) {
         preStackMap.clear();
       }
+      instance.axes.forEach((ax) => {
+        if (ax.side === 3) {
+          ax.labelSize = AXIS_LABEL_SIZE_PX;
+          (ax as unknown as { _size?: number })._size = -1;
+        }
+      });
+      (
+        instance as unknown as { _yAxisSizeCache?: Map<string, number> }
+      )._yAxisSizeCache?.clear();
       unstackedPrimaryBounds.forEach((display, index) => {
         instance.setScale(yScaleKey(index), {
           min: display.min,
@@ -512,6 +521,14 @@ export default function Oscilloscope({
   const lastFitRequestRef = useRef(fitRequest);
   const captureRef = useRef(capture);
   captureRef.current = capture;
+  const mountedCaptureRef = useRef<ParsedCapture | null>(null);
+  const preservedViewRef = useRef<{
+    capture: ParsedCapture;
+    xMin: number;
+    xMax: number;
+    yScales: Map<string, { min: number; max: number }>;
+    preStack: Map<string, { min: number; max: number }>;
+  } | null>(null);
 
   // Per-channel Y-axis adapters: hysteresis state lives here per channel index.
   const adaptersRef = useRef(new Map<number, YAxisAdapter>());
@@ -630,15 +647,30 @@ export default function Oscilloscope({
       capture.channels[0]?.name ??
       null;
     const initialFit = computeCaptureFit(capture);
+    const preserved =
+      mountedCaptureRef.current === capture &&
+      preservedViewRef.current?.capture === capture
+        ? preservedViewRef.current
+        : null;
+    mountedCaptureRef.current = capture;
+    const mountXMin = preserved ? preserved.xMin : initialFit.xMin;
+    const mountXMax = preserved ? preserved.xMax : initialFit.xMax;
 
     // Zoom-adaptive SI time units for the X axis
     const timeAxis = createTimeAxisAdapter();
     timeAxis.sync({
-      scales: { x: { min: initialFit.xMin, max: initialFit.xMax } },
+      scales: { x: { min: mountXMin, max: mountXMax } },
       axes: [{ label: undefined }],
     });
 
     const unstackedPrimaryBounds = initialFit.channels.map((bounds, index) => {
+      const scaleKey = yScaleKey(index);
+      if (preserved) {
+        const savedBase = preserved.preStack.get(scaleKey);
+        if (savedBase) return savedBase;
+        const savedScale = preserved.yScales.get(scaleKey);
+        if (savedScale) return savedScale;
+      }
       const key = displayKeyForChannel(capture.channels[index]!.name);
       return transformBounds(
         bounds,
@@ -852,8 +884,8 @@ export default function Oscilloscope({
         x: {
           time: false,
           auto: false,
-          min: initialFit.xMin,
-          max: initialFit.xMax,
+          min: mountXMin,
+          max: mountXMax,
         },
         ...Object.fromEntries(
           capture.channels.map((_channel, index) => {
@@ -924,7 +956,10 @@ export default function Oscilloscope({
             // lane band render (ticks + labels stay in the band).
             filter: (self: uPlot, splits: number[]) =>
               laneTickFilter(self, capture, scaleKey, splits),
-            show: mountChannels.includes(channel.name),
+            // Always initialize with show: true so uPlot's initAxis sets up default functions
+            // (axis.space, axis.incrs, splits, _el, etc.). Initial visibility is applied
+            // immediately after construction.
+            show: true,
             // Issue #250: tick marks + the selected channel's grid lines
             // stay inside the lane band too (null-masked same length).
             grid: {
@@ -979,7 +1014,8 @@ export default function Oscilloscope({
           // Issue #250: reference columns band-scope like primaries.
           filter: (self: uPlot, splits: number[]) =>
             laneTickFilter(self, capture, scaleKey, splits),
-          show: mountReference.refActiveChannels.includes(name),
+          // Always initialize with show: true so uPlot's initAxis sets up default functions
+          show: true,
           stroke: () =>
             effectiveTraceColor(
               useThemeStore.getState().theme,
@@ -1179,19 +1215,53 @@ export default function Oscilloscope({
     styledConfigsRef.current = {
       ...usePaletteStore.getState().keyConfigs,
     };
-    applyFitBounds(
-      instance,
-      capture,
-      useViewportStore.getState().activeChannels,
-      preStackRef.current,
-      adaptersRef.current,
-    );
-    const initialSnapshot = createViewportSnapshot(
-      instance,
-      preStackRef.current,
-    );
-    if (initialSnapshot) {
-      useZoomHistoryStore.getState().push(initialSnapshot);
+
+    // Issue #338: Synchronize initial axis visibility. Axes were constructed with
+    // show: true so uPlot's initAxis configures default functions (space, incrs, splits)
+    // and creates the axis DOM element. We now apply initial channel visibility.
+    capture.channels.forEach((c, idx) => {
+      const ax = instance.axes.find((a) => a.scale === yScaleKey(idx));
+      if (ax) {
+        ax.show = mountChannels.includes(c.name);
+      }
+    });
+    refColumns.forEach(({ name, scaleKey }) => {
+      const ax = instance.axes.find((a) => a.scale === scaleKey);
+      if (ax) {
+        ax.show = mountReference.refActiveChannels.includes(name);
+      }
+    });
+    if (!preserved) {
+      applyFitBounds(
+        instance,
+        capture,
+        useViewportStore.getState().activeChannels,
+        preStackRef.current,
+        adaptersRef.current,
+      );
+      const initialSnapshot = createViewportSnapshot(
+        instance,
+        preStackRef.current,
+      );
+      if (initialSnapshot) {
+        useZoomHistoryStore.getState().push(initialSnapshot);
+      }
+    } else {
+      syncAdapters(instance, capture, adaptersRef.current);
+      const curSelected = useViewportStore.getState().selectedChannel;
+      const selectedIdx = curSelected
+        ? capture.channels.findIndex(
+            (c) => c.name === curSelected && mountChannels.includes(c.name),
+          )
+        : -1;
+      const selectedKey = selectedIdx >= 0 ? yScaleKey(selectedIdx) : null;
+      const selectedScale = selectedKey ? instance.scales[selectedKey] : null;
+      useViewportStore.getState().setBounds({
+        xMin: mountXMin,
+        xMax: mountXMax,
+        yMin: selectedScale?.min ?? null,
+        yMax: selectedScale?.max ?? null,
+      });
     }
     const extendedContainer = container as HTMLElement & {
       __uplot?: uPlot;
@@ -1316,20 +1386,35 @@ export default function Oscilloscope({
       // palette, light = the print pass (today's invert toggle).
       const renderTheme = settings.theme === "light" ? "light" : "dark";
       const customNames = useChannelNamesStore.getState().names;
+      const refState = useReferenceStore.getState();
       // Issue #226: the embedded readout card mirrors the live card's
       // display-unit selections.
-      const legend = liveCapture.channels
-        .filter((channel) =>
-          viewportState.activeChannels.includes(channel.name),
-        )
-        .map((channel) => ({
-          label: channelDisplayName(
-            channel.name,
-            channel.label,
-            customNames[channel.name],
-          ),
-          color: effectiveTraceColor(renderTheme, colorsNow, channel.name),
-        }));
+      // Issue #333: include both visible primary and visible reference
+      // channels in the exported legend.
+      const legend = [
+        ...liveCapture.channels
+          .filter((channel) =>
+            viewportState.activeChannels.includes(channel.name),
+          )
+          .map((channel) => ({
+            label: channelDisplayName(
+              channel.name,
+              channel.label,
+              customNames[channel.name],
+            ),
+            color: effectiveTraceColor(renderTheme, colorsNow, channel.name),
+          })),
+        ...(refState.capture?.channels ?? [])
+          .map((channel) => {
+            const name = toRefName(channel.name);
+            return { name, channel };
+          })
+          .filter(({ name }) => refState.refActiveChannels.includes(name))
+          .map(({ name }) => ({
+            label: channelDisplayName(name, undefined, customNames[name]),
+            color: effectiveTraceColor(renderTheme, colorsNow, name),
+          })),
+      ];
       const displayNow = useCursorDisplayStore.getState();
       const overlay = {
         cursor1: effectiveCursorStroke(
@@ -1445,15 +1530,28 @@ export default function Oscilloscope({
         return snapshotToBlob(composite.canvas);
       }
 
-      const printSeries = liveCapture.channels.map((channel, index) => ({
-        label: channelDisplayName(
-          channel.name,
-          channel.label,
-          customNames[channel.name],
-        ),
-        color: effectiveTraceColor(renderTheme, colorsNow, channel.name),
-        show: live.series[index + 1]?.show ?? false,
-      }));
+      const printSeries = [
+        ...liveCapture.channels.map((channel, index) => ({
+          label: channelDisplayName(
+            channel.name,
+            channel.label,
+            customNames[channel.name],
+          ),
+          color: effectiveTraceColor(renderTheme, colorsNow, channel.name),
+          show: live.series[index + 1]?.show ?? false,
+        })),
+        ...(refState.capture?.channels ?? []).map((channel, refIdx) => {
+          const name = toRefName(channel.name);
+          const seriesIdx = liveCapture.channels.length + refIdx + 1;
+          return {
+            label: channelDisplayName(name, undefined, customNames[name]),
+            color: effectiveTraceColor(renderTheme, colorsNow, name),
+            show:
+              live.series[seriesIdx]?.show ??
+              refState.refActiveChannels.includes(name),
+          };
+        }),
+      ];
       const printComposite = await composePrintSnapshot(
         live,
         liveCapture,
@@ -1477,6 +1575,28 @@ export default function Oscilloscope({
     container.addEventListener("wheel", onWheel, { passive: false });
 
     return () => {
+      if (captureRef.current === capture) {
+        const yScales = new Map<string, { min: number; max: number }>();
+        capture.channels.forEach((_, index) => {
+          const scaleKey = yScaleKey(index);
+          const scale = instance.scales[scaleKey];
+          if (scale?.min != null && scale.max != null) {
+            yScales.set(scaleKey, { min: scale.min, max: scale.max });
+          }
+        });
+        const xScale = instance.scales.x;
+        if (xScale?.min != null && xScale.max != null) {
+          preservedViewRef.current = {
+            capture,
+            xMin: xScale.min,
+            xMax: xScale.max,
+            yScales,
+            preStack: new Map(preStackRef.current),
+          };
+        }
+      } else {
+        preservedViewRef.current = null;
+      }
       container.removeEventListener("wheel", onWheel);
       container.removeEventListener("click", onContainerClick);
       over.removeEventListener("mousedown", onPointerDown);
@@ -1562,6 +1682,15 @@ export default function Oscilloscope({
             min: scale.min,
             max: scale.max,
           });
+        }
+      });
+    }
+
+    const stackModeNow = useChannelDisplayStore.getState().stackMode;
+    if (!stackModeNow) {
+      instance.axes.forEach((ax) => {
+        if (ax.side === 3) {
+          (ax as unknown as { _size?: number })._size = -1;
         }
       });
     }
@@ -1713,6 +1842,7 @@ export default function Oscilloscope({
     const axesReady = instance.axes.every(
       (axis) => (axis as unknown as { _found?: unknown })._found != null,
     );
+
     if (axesReady) {
       instance.batch(() => {
         swaps.forEach((swap) => swap());
@@ -1790,17 +1920,28 @@ export default function Oscilloscope({
       }
     });
 
-    // Issue #96: reference series labels track custom names too.
+    // Issue #96/#335: reference series labels and Y-axis headings track custom names too.
     const reference = useReferenceStore.getState();
     reference.capture?.channels.forEach((refChannel, refIdx) => {
       const name = toRefName(refChannel.name);
+      const custom = customNames[name];
       const refSeriesIdx = capture.channels.length + refIdx + 1;
       if (instance.series[refSeriesIdx]) {
         instance.series[refSeriesIdx].label = channelDisplayName(
           name,
           undefined,
-          customNames[name],
+          custom,
         );
+      }
+      const adapterIdx = capture.channels.length + refIdx;
+      const adapter = adaptersRef.current.get(adapterIdx);
+      if (adapter) {
+        adapter.setQuantity(custom || name, instance);
+        const scaleKey = yScaleKey(adapterIdx);
+        const axis = instance.axes.find((a) => a.scale === scaleKey);
+        if (axis) {
+          axis.label = adapter.label;
+        }
       }
     });
 
@@ -1912,6 +2053,23 @@ export default function Oscilloscope({
         }
       });
     };
+    // Issue #338: Invalidate cached axis sizes and restore labelSize on mode change so
+    // uPlot's convergeSize is guaranteed to detect a size delta and recompute
+    // staggered column rects via calcAxesRects.
+    instance.axes.forEach((ax) => {
+      if (ax.side === 3) {
+        if (!stackMode) {
+          ax.labelSize = AXIS_LABEL_SIZE_PX;
+        }
+        (ax as unknown as { _size?: number })._size = -1;
+      }
+    });
+    if (!stackMode) {
+      (
+        instance as unknown as { _yAxisSizeCache?: Map<string, number> }
+      )._yAxisSizeCache?.clear();
+    }
+
     if (axesReady) {
       instance.batch(apply);
       instance.redraw(true, true);

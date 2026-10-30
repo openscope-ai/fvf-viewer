@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import WaveformToolbar from "./WaveformToolbar";
@@ -8,6 +9,8 @@ import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { useChannelNamesStore } from "../../state/channelNamesStore";
+import { useMeasurementsStore } from "../../state/measurementsStore";
 import { useReferenceStore } from "../../state/referenceStore";
 import { useBadgePopoverStore } from "./badgeConfig/anchoredPopover";
 
@@ -543,5 +546,176 @@ describe("WaveformToolbar (browser)", () => {
     expect(btnC2.title).toContain("Toggle cursor C2");
     expect(btnC2.title).toContain("Ctrl+Drag or Ctrl+Click to move");
     expect(btnC2.title).toContain("Ctrl+Wheel or Ctrl+Arrow keys to step");
+  });
+
+  it("issue #334 (AC1-AC5): when long custom channel names cause action buttons to wrap, wrapped lines stay grouped with consistent 12px gaps, centered on their line at any viewport width, and clickable", async () => {
+    await page.viewport(1920, 900);
+    hostElement.style.height = "auto";
+    useChannelNamesStore.getState().setFileKey("wrap-test.fvf::20261029120000");
+
+    // 1. Short/default channel names on a wide desktop viewport (1920px): single-line layout (AC4)
+    hostElement.style.width = "1920px";
+    act(() => {
+      root.render(<WaveformToolbar channels={["A", "B", "C", "D"]} />);
+    });
+
+    const toolbar = hostElement.querySelector(
+      "[data-testid='waveform-toolbar']",
+    ) as HTMLElement;
+    const actionsGroup = hostElement.querySelector(
+      "[data-testid='waveform-toolbar-actions']",
+    ) as HTMLElement;
+    expect(actionsGroup).not.toBeNull();
+    expect(window.getComputedStyle(toolbar).justifyContent).toBe(
+      "space-between",
+    );
+    expect(window.getComputedStyle(actionsGroup).justifyContent).toBe("center");
+
+    const actionItems = Array.from(actionsGroup.children) as HTMLElement[];
+    expect(actionItems.length).toBe(6);
+
+    const channelsGroup = hostElement.querySelector(
+      ".waveform-toolbar-channels",
+    ) as HTMLElement;
+    const cursorsGroup = hostElement.querySelector(
+      "[data-testid='waveform-toolbar-cursors']",
+    ) as HTMLElement;
+    const unwrappedGroupRects = [channelsGroup, cursorsGroup, actionsGroup].map(
+      (el) => el.getBoundingClientRect(),
+    );
+    const unwrappedFirstCenterY =
+      (unwrappedGroupRects[0]!.top + unwrappedGroupRects[0]!.bottom) / 2;
+    for (const r of unwrappedGroupRects) {
+      const centerY = (r.top + r.bottom) / 2;
+      expect(Math.abs(centerY - unwrappedFirstCenterY)).toBeLessThanOrEqual(4);
+    }
+    const unwrappedActionRects = actionItems.map((el) =>
+      el.getBoundingClientRect(),
+    );
+    // Consecutive gaps inside the action buttons group on the unwrapped single line are uniform (~12px)
+    for (let i = 1; i < unwrappedActionRects.length; i += 1) {
+      const gap =
+        unwrappedActionRects[i]!.left - unwrappedActionRects[i - 1]!.right;
+      expect(gap).toBeGreaterThanOrEqual(10);
+      expect(gap).toBeLessThanOrEqual(14);
+    }
+
+    // 2. Long custom channel names causing action buttons to wrap across multiple viewport widths (AC1, AC2, AC3)
+    act(() => {
+      useChannelNamesStore.getState().setName("A", "PrimaryGridPhaseAVoltage");
+      useChannelNamesStore.getState().setName("B", "PrimaryGridPhaseBVoltage");
+      useChannelNamesStore.getState().setName("C", "PrimaryGridPhaseCVoltage");
+      useChannelNamesStore.getState().setName("D", "NeutralReturnCurrentSense");
+    });
+
+    for (const width of [1920, 1600, 1440, 1280, 1100, 960, 820]) {
+      await page.viewport(width, 900);
+      hostElement.style.width = `${width}px`;
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const channelsRect = channelsGroup.getBoundingClientRect();
+      const actionsRect = actionsGroup.getBoundingClientRect();
+
+      // At these widths with 4 x 24-char custom channel names, the action buttons group wraps below channels
+      expect(
+        actionsRect.top,
+        `expected action buttons to wrap below channels at width ${width}px`,
+      ).toBeGreaterThanOrEqual(channelsRect.bottom);
+
+      const itemRects = actionItems.map((el) => el.getBoundingClientRect());
+
+      // Group action buttons into wrapped lines by vertical center proximity
+      const lines: DOMRect[][] = [];
+      for (const rect of itemRects) {
+        const cy = (rect.top + rect.bottom) / 2;
+        const existingLine = lines.find((line) => {
+          const lineCy = (line[0]!.top + line[0]!.bottom) / 2;
+          return Math.abs(cy - lineCy) <= 10;
+        });
+        if (existingLine) {
+          existingLine.push(rect);
+        } else {
+          lines.push([rect]);
+        }
+      }
+
+      for (const line of lines) {
+        // AC1: Adjacent action buttons on the same wrapped line have consistent 12px gap (never space-between stretched)
+        for (let i = 1; i < line.length; i += 1) {
+          const gap = line[i]!.left - line[i - 1]!.right;
+          expect(
+            gap,
+            `gap between action buttons on wrapped line at width ${width}px`,
+          ).toBeGreaterThanOrEqual(10);
+          expect(
+            gap,
+            `gap between action buttons on wrapped line at width ${width}px`,
+          ).toBeLessThanOrEqual(14);
+        }
+
+        // AC2: When the action buttons group occupies its wrapped line, each line of action buttons is centered on its line
+        const cursorsRect = cursorsGroup.getBoundingClientRect();
+        const sharesLineWithCursors =
+          Math.abs(
+            (cursorsRect.top + cursorsRect.bottom) / 2 -
+              (line[0]!.top + line[0]!.bottom) / 2,
+          ) <= 10;
+        if (!sharesLineWithCursors) {
+          const lineLeft = line[0]!.left - toolbarRect.left;
+          const lineRight = toolbarRect.right - line[line.length - 1]!.right;
+          expect(
+            Math.abs(lineLeft - lineRight),
+            `centering of wrapped action button line at width ${width}px (left=${lineLeft}, right=${lineRight})`,
+          ).toBeLessThanOrEqual(2);
+        }
+      }
+    }
+
+    // 3. AC5: All action buttons remain fully visible and clickable in the wrapped state
+    const stackBtn = hostElement.querySelector(
+      "[data-testid='stack-mode-stack']",
+    ) as HTMLButtonElement;
+    const resetBtn = hostElement.querySelector(
+      "[data-testid='reset-view-button']",
+    ) as HTMLButtonElement;
+    const themeBtn = hostElement.querySelector(
+      "[data-testid='theme-toggle-button']",
+    ) as HTMLButtonElement;
+    const measBtn = hostElement.querySelector(
+      "[data-testid='measurements-toggle-button']",
+    ) as HTMLButtonElement;
+    const csvBtn = hostElement.querySelector(
+      "[data-testid='csv-export-button']",
+    ) as HTMLButtonElement;
+    const pngBtn = hostElement.querySelector(
+      "[data-testid='png-export-button']",
+    ) as HTMLButtonElement;
+
+    for (const btn of [stackBtn, resetBtn, themeBtn, measBtn, csvBtn, pngBtn]) {
+      expect(btn).not.toBeNull();
+      const rect = btn.getBoundingClientRect();
+      expect(rect.width).toBeGreaterThan(0);
+      expect(rect.height).toBeGreaterThan(0);
+    }
+
+    act(() => {
+      stackBtn.click();
+    });
+    expect(useChannelDisplayStore.getState().stackMode).toBe(true);
+
+    act(() => {
+      themeBtn.click();
+    });
+    expect(useThemeStore.getState().theme).toBe("light");
+
+    act(() => {
+      measBtn.click();
+    });
+    expect(useMeasurementsStore.getState().isOpen).toBe(true);
+    act(() => {
+      measBtn.click();
+    });
+    expect(useMeasurementsStore.getState().isOpen).toBe(false);
+
+    useChannelNamesStore.getState().setFileKey(null);
   });
 });

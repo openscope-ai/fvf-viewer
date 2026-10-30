@@ -6,6 +6,7 @@
  * monospace stats line, and the close affordance.
  */
 
+import { useRef } from "react";
 import {
   CHANNEL_NAME_MAX_LENGTH,
   useChannelNamesStore,
@@ -40,6 +41,8 @@ export interface HeroIdentityProps {
 function GhostNameField({ channelName }: { channelName: string }) {
   const custom = useChannelNamesStore((s) => s.names[channelName]);
   const setName = useChannelNamesStore((s) => s.setName);
+  const initialCustomRef = useRef(custom ?? "");
+  const cancelledRef = useRef(false);
   return (
     <div className="badge-ghost-field">
       <input
@@ -50,11 +53,34 @@ function GhostNameField({ channelName }: { channelName: string }) {
         defaultValue={custom ?? ""}
         aria-label={`Custom name for channel ${channelName}`}
         data-testid="popover-name-field"
-        onChange={(event) => {
-          // Live commit into the same store the double-click inline
-          // rename writes (uncontrolled input: store trims never fight
-          // the cursor).
-          setName(channelName, event.target.value);
+        onFocus={() => {
+          initialCustomRef.current =
+            useChannelNamesStore.getState().names[channelName] ?? "";
+          cancelledRef.current = false;
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            setName(channelName, event.currentTarget.value);
+            initialCustomRef.current =
+              useChannelNamesStore.getState().names[channelName] ?? "";
+            event.currentTarget.blur();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            cancelledRef.current = true;
+            const revertVal = initialCustomRef.current;
+            event.currentTarget.value = revertVal;
+            event.currentTarget.blur();
+          }
+        }}
+        onBlur={(event) => {
+          if (cancelledRef.current) {
+            cancelledRef.current = false;
+            return;
+          }
+          setName(channelName, event.currentTarget.value);
         }}
       />
     </div>

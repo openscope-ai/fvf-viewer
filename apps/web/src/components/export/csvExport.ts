@@ -320,13 +320,16 @@ export async function* generateCompositeCsvChunks(
     }),
   );
 
-  const refCols = referenceCapture.channels.map((channel, idx) => ({
-    channel,
-    header: `[File 2] ${channelDisplayName(channel.name, channel.label, undefined)}`,
-    slippedLane: refLanes[idx]
-      ? slippedRefDisplayLane(refLanes[idx]!, timeSlipSamples, 100, 0, false)
-      : new Float32Array(primaryCapture.timestamps.length).fill(Number.NaN),
-  }));
+  const refCols = referenceCapture.channels.map((channel, idx) => {
+    const refTag = `Ref-${channel.name.replace(/^Input\s+/i, "")}`;
+    return {
+      channel,
+      header: `[File 2] ${channelDisplayName(channel.name, channel.label, customNames?.[refTag])}`,
+      slippedLane: refLanes[idx]
+        ? slippedRefDisplayLane(refLanes[idx]!, timeSlipSamples, 100, 0, false)
+        : new Float32Array(primaryCapture.timestamps.length).fill(Number.NaN),
+    };
+  });
 
   const allColumns = [...primaryCols, ...refCols];
   const axisLength = primaryCapture.timestamps.length;

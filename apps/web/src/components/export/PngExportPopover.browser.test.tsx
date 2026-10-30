@@ -709,10 +709,16 @@ describe("PNG export options popover (issue #252)", () => {
       expect(popover).not.toBeNull();
       const rect = popover.getBoundingClientRect();
 
+      const gear = document.querySelector(
+        "[data-testid='png-export-gear']",
+      ) as HTMLElement;
+      const gearRect = gear.getBoundingClientRect();
       // Must be positioned within viewport bounds (rect.right <= innerWidth - 12 and rect.left >= 12)
       expect(rect.right).toBeLessThanOrEqual(window.innerWidth - 12);
       expect(rect.left).toBeGreaterThanOrEqual(12);
-      expect(popover.className).toContain("badge-popover--anchor-r");
+      if (gearRect.left + rect.width > window.innerWidth - 12) {
+        expect(popover.className).toContain("badge-popover--anchor-r");
+      }
 
       // Close popover
       await act(async () => {
@@ -731,7 +737,29 @@ describe("PNG export options popover (issue #252)", () => {
       const reopenedRect = reopened.getBoundingClientRect();
       expect(reopenedRect.right).toBeLessThanOrEqual(window.innerWidth - 12);
       expect(reopenedRect.left).toBeGreaterThanOrEqual(12);
-      expect(reopened.className).toContain("badge-popover--anchor-r");
+      if (gearRect.left + reopenedRect.width > window.innerWidth - 12) {
+        expect(reopened.className).toContain("badge-popover--anchor-r");
+      }
+
+      // Also verify at 1440px (unwrapped single-line toolbar) where the PNG gear sits near the right edge and triggers right-anchoring
+      await act(async () => {
+        reopened.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      await page.viewport(1440, 800);
+      host.style.width = "1440px";
+      await settle(50);
+      await openPopover();
+      await settle(50);
+      const widePopover = document.querySelector(
+        "[data-testid='png-export-popover']",
+      ) as HTMLElement;
+      const wideRect = widePopover.getBoundingClientRect();
+      expect(wideRect.right).toBeLessThanOrEqual(window.innerWidth - 12);
+      expect(wideRect.left).toBeGreaterThanOrEqual(12);
+      expect(widePopover.className).toContain("badge-popover--anchor-r");
     } finally {
       await page.viewport(414, 896);
     }

@@ -237,7 +237,7 @@ describe("Badge config popover (issue #204)", () => {
     );
   });
 
-  it("AC2: hero carries the ghost name field (live commit) and the unwrapped stats line", async () => {
+  it("AC2: hero carries the ghost name field (deferred commit on Enter/blur, no per-keystroke store writes) and the unwrapped stats line", async () => {
     const popover = await openChannelPopover("A");
 
     const nameField = popover.querySelector(
@@ -250,10 +250,20 @@ describe("Badge config popover (issue #204)", () => {
     );
 
     await act(async () => {
+      nameField.focus();
       setReactInputValue(nameField, "V_grid");
       await new Promise((r) => setTimeout(r, 30));
     });
-    // Live commit into the same store the inline rename writes.
+    // Issue #336: typing updates the local draft only; the store is not committed per keystroke.
+    expect(useChannelNamesStore.getState().names.A).toBeUndefined();
+
+    // Commit on Enter updates the shared store.
+    await act(async () => {
+      nameField.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+      await new Promise((r) => setTimeout(r, 30));
+    });
     expect(useChannelNamesStore.getState().names.A).toBe("V_grid");
 
     // Stats line: sample count + voltage extents, monospace, never wraps.
@@ -266,6 +276,87 @@ describe("Badge config popover (issue #204)", () => {
     const statsStyle = window.getComputedStyle(stats);
     expect(statsStyle.whiteSpace).toBe("nowrap");
     expect(statsStyle.fontFamily).toContain("monospace");
+  });
+
+  it("issue #336 AC1-AC4: typing a 24-character name in the popover does not notify store subscribers or write localStorage per keystroke; blur/Enter commits and Escape cancels", async () => {
+    useChannelNamesStore.getState().setFileKey("primary.fvf::123");
+    const popover = await openChannelPopover("A");
+    const nameField = popover.querySelector(
+      "[data-testid='popover-name-field']",
+    ) as HTMLInputElement;
+
+    let storeNotificationCount = 0;
+    const unsubscribe = useChannelNamesStore.subscribe(() => {
+      storeNotificationCount += 1;
+    });
+
+    try {
+      await act(async () => {
+        nameField.focus();
+      });
+
+      // Type a full 24-character name one character at a time.
+      const maxLenName = "ChA_MaxLen_24Characters!";
+      expect(maxLenName.length).toBe(24);
+      await act(async () => {
+        for (let i = 1; i <= maxLenName.length; i += 1) {
+          setReactInputValue(nameField, maxLenName.slice(0, i));
+        }
+        await new Promise((r) => setTimeout(r, 30));
+      });
+
+      // Every character is present in the input draft immediately, with zero store commits.
+      expect(nameField.value).toBe(maxLenName);
+      expect(storeNotificationCount).toBe(0);
+      expect(useChannelNamesStore.getState().names.A).toBeUndefined();
+      expect(window.localStorage.getItem("fvf.channel-names")).toBeNull();
+
+      // Blur commits the 24-char draft once.
+      await act(async () => {
+        nameField.blur();
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      expect(storeNotificationCount).toBe(1);
+      expect(useChannelNamesStore.getState().names.A).toBe(maxLenName);
+      expect(
+        hostElement.querySelector("[data-testid='channel-badge-A']")
+          ?.textContent,
+      ).toContain(`A: ${maxLenName}`);
+
+      // Escape cancels an in-progress edit without mutating the store.
+      await act(async () => {
+        nameField.focus();
+        setReactInputValue(nameField, "Aborted_Draft");
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      expect(storeNotificationCount).toBe(1);
+      expect(useChannelNamesStore.getState().names.A).toBe(maxLenName);
+
+      await act(async () => {
+        nameField.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      expect(storeNotificationCount).toBe(1);
+      expect(nameField.value).toBe(maxLenName);
+      expect(useChannelNamesStore.getState().names.A).toBe(maxLenName);
+
+      // Empty draft committed on blur clears back to default.
+      await act(async () => {
+        nameField.focus();
+        setReactInputValue(nameField, "   ");
+        nameField.blur();
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      expect(useChannelNamesStore.getState().names.A).toBeUndefined();
+      expect(
+        hostElement.querySelector("[data-testid='channel-badge-A']")
+          ?.textContent,
+      ).toBe("A");
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("AC2: hero square shows the effective color at opacity over a checkerboard and toggles the color detail", async () => {

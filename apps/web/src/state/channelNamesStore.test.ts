@@ -98,4 +98,54 @@ describe("channelNamesStore (issue #64)", () => {
     expect(captureFileKey(null, null)).toBeNull();
     expect(captureFileKey(null, "123")).toBe("(unnamed)::123");
   });
+
+  it("issue #335: persists compare (Ref-*) channel names under refFileKey and restores them on re-compare without touching primary names", async () => {
+    const { createChannelNamesStore, CHANNEL_NAMES_STORAGE_KEY } =
+      await importStore();
+    const store = createChannelNamesStore();
+    store.getState().setFileKey("primary.fvf::111");
+    store.getState().setRefFileKey("compare.fvf::222");
+
+    store.getState().setName("A", "V_main");
+    store.getState().setName("Ref-A", "V_ref_grid");
+    store.getState().setName("Ref-B", "I_ref_load");
+
+    expect(store.getState().names).toEqual({
+      A: "V_main",
+      "Ref-A": "V_ref_grid",
+      "Ref-B": "I_ref_load",
+    });
+
+    const raw = backing!.get(CHANNEL_NAMES_STORAGE_KEY)!;
+    expect(JSON.parse(raw)).toEqual({
+      "primary.fvf::111": { A: "V_main" },
+      "compare.fvf::222": { A: "V_ref_grid", B: "I_ref_load" },
+    });
+
+    // Clearing the compare file drops Ref-* from active names while keeping primary A intact
+    store.getState().setRefFileKey(null);
+    expect(store.getState().names).toEqual({ A: "V_main" });
+
+    // Comparing a different file starts with no Ref-* custom names
+    store.getState().setRefFileKey("other-compare.fvf::333");
+    expect(store.getState().names).toEqual({ A: "V_main" });
+
+    // Re-comparing the original compare file in a fresh session restores its Ref-* names
+    const fresh = createChannelNamesStore();
+    fresh.getState().setFileKey("primary.fvf::111");
+    fresh.getState().setRefFileKey("compare.fvf::222");
+    expect(fresh.getState().names).toEqual({
+      A: "V_main",
+      "Ref-A": "V_ref_grid",
+      "Ref-B": "I_ref_load",
+    });
+
+    // Clearing a compare channel name removes it from storage
+    fresh.getState().setName("Ref-A", "   ");
+    fresh.getState().clearName("Ref-B");
+    expect(fresh.getState().names).toEqual({ A: "V_main" });
+    expect(JSON.parse(backing!.get(CHANNEL_NAMES_STORAGE_KEY)!)).toEqual({
+      "primary.fvf::111": { A: "V_main" },
+    });
+  });
 });

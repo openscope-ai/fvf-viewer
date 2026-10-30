@@ -3,8 +3,12 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import uPlot from "uplot";
 import fourChUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-4ch-10000-10ms-div.fvf.bin?url";
+import twoChMinUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-2ch-10000-1min-div.fvf.bin?url";
 import Oscilloscope from "../canvas/Oscilloscope";
 import { useCaptureStore } from "../../state/captureStore";
+import { useReferenceStore } from "../../state/referenceStore";
+import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { useCursorDisplayStore } from "../../state/cursorDisplayStore";
@@ -87,6 +91,9 @@ describe("PNG snapshot export (browser, issue #18)", () => {
 
   beforeEach(async () => {
     useCaptureStore.getState().reset();
+    useReferenceStore.getState().clear();
+    useChannelDisplayStore.getState().reset();
+    useChannelNamesStore.setState({ fileKey: null, names: {} });
     useViewportStore.getState().reset();
     useCursorStore.getState().reset();
     useSnapshotStore.getState().registerExporter(null);
@@ -138,6 +145,9 @@ describe("PNG snapshot export (browser, issue #18)", () => {
     });
     hostElement.remove();
     useCaptureStore.getState().reset();
+    useReferenceStore.getState().clear();
+    useChannelDisplayStore.getState().reset();
+    useChannelNamesStore.setState({ fileKey: null, names: {} });
     useViewportStore.getState().reset();
     useCursorStore.getState().reset();
     useSnapshotStore.getState().registerExporter(null);
@@ -892,6 +902,409 @@ describe("PNG snapshot export (browser, issue #18)", () => {
       });
       host.remove();
       canvasPermission.setCanvasReadbackOverride(null);
+    });
+  });
+
+  describe("comparison mode PNG export & clipboard copy (issue #333)", () => {
+    async function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+      return canvas;
+    }
+
+    async function loadReference(): Promise<void> {
+      const refBuf = await fixture(twoChMinUrl);
+      await act(async () => {
+        await useReferenceStore
+          .getState()
+          .parseReferenceBuffer(refBuf, "file2.fvf");
+        for (
+          let i = 0;
+          i < 80 && useReferenceStore.getState().parseState !== "success";
+          i += 1
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+      expect(useReferenceStore.getState().parseState).toBe("success");
+    }
+
+    it("AC1+AC2+AC3+AC4+AC5: exports and copies both primary and comparison waveforms and legends in Overlay & Stack, light & dark modes", async () => {
+      await loadReference();
+
+      // Custom name on primary A and reference Ref-A to verify legend labels/swatches
+      act(() => {
+        useChannelNamesStore.getState().setName("A", "V_main");
+        useChannelNamesStore.getState().setName("Ref-A", "V_ref");
+        useViewportStore.getState().setActiveChannels(["A"]);
+        useReferenceStore.getState().setRefActiveChannels(["Ref-A"]);
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+
+      const exportedBlobs: Blob[] = [];
+      vi.spyOn(URL, "createObjectURL").mockImplementation(
+        (blob: Blob | MediaSource) => {
+          exportedBlobs.push(blob as Blob);
+          return `blob:compare-${exportedBlobs.length}`;
+        },
+      );
+      vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+      const clipboardItems: ClipboardItem[] = [];
+      vi.spyOn(navigator.clipboard, "write").mockImplementation(
+        async (items: ClipboardItems) => {
+          clipboardItems.push(...items);
+        },
+      );
+
+      const btnHost = document.createElement("div");
+      document.body.appendChild(btnHost);
+      const btnRoot = createRoot(btnHost);
+      await act(async () => {
+        btnRoot.render(<PngSnapshotButton />);
+      });
+      const exportBtn = btnHost.querySelector(
+        "[data-testid='png-export-button']",
+      ) as HTMLButtonElement;
+      const copyBtn = btnHost.querySelector(
+        "[data-testid='png-copy-button']",
+      ) as HTMLButtonElement;
+
+      const triggerExportAndCopy = async (): Promise<{
+        exportCanvas: HTMLCanvasElement;
+        copyCanvas: HTMLCanvasElement;
+        exportBytes: Uint8Array;
+        copyBytes: Uint8Array;
+      }> => {
+        const prevExports = exportedBlobs.length;
+        const prevCopies = clipboardItems.length;
+        await act(async () => {
+          exportBtn.click();
+          for (
+            let i = 0;
+            i < 60 && exportedBlobs.length <= prevExports;
+            i += 1
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+        });
+        await act(async () => {
+          copyBtn.click();
+          for (
+            let i = 0;
+            i < 60 && clipboardItems.length <= prevCopies;
+            i += 1
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+        });
+        // Reset transient copied state so copyBtn is immediately clickable again
+        const exportBlob = exportedBlobs[exportedBlobs.length - 1]!;
+        const copyBlob =
+          await clipboardItems[clipboardItems.length - 1]!.getType("image/png");
+        const exportBytes = new Uint8Array(await exportBlob.arrayBuffer());
+        const copyBytes = new Uint8Array(await copyBlob.arrayBuffer());
+        return {
+          exportCanvas: await blobToCanvas(exportBlob),
+          copyCanvas: await blobToCanvas(copyBlob),
+          exportBytes,
+          copyBytes,
+        };
+      };
+
+      const uplot = mountedUplot!;
+      const bbox = uplot.bbox;
+      const pxRatio = window.devicePixelRatio || 1;
+      const instancePxRatio =
+        uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+      const plotLeftDev = (bbox.left / instancePxRatio) * pxRatio;
+      const plotTopDev = (bbox.top / instancePxRatio) * pxRatio;
+      const plotWidDev = (bbox.width / instancePxRatio) * pxRatio;
+      const plotHgtDev = (bbox.height / instancePxRatio) * pxRatio;
+
+      // 1. Overlay + Dark mode (AC2, AC4, AC5)
+      act(() => {
+        useChannelDisplayStore.getState().setStackMode(false);
+        usePngExportStore.getState().setTheme("dark");
+      });
+      const overlayDark = await triggerExportAndCopy();
+      expect(overlayDark.exportBytes).toEqual(overlayDark.copyBytes);
+      // Primary A (#FFD700) and Ref-A (#FF6EC7) trace pixels inside plot area
+      expect(
+        colorPresentInRegion(
+          overlayDark.exportCanvas,
+          plotLeftDev,
+          plotTopDev + 36 * pxRatio,
+          plotWidDev,
+          plotHgtDev - 36 * pxRatio,
+          hexToBytes("#FFD700"),
+        ),
+      ).toBe(true);
+      expect(
+        colorPresentInRegion(
+          overlayDark.exportCanvas,
+          plotLeftDev,
+          plotTopDev + 36 * pxRatio,
+          plotWidDev,
+          plotHgtDev - 36 * pxRatio,
+          hexToBytes("#FF6EC7"),
+        ),
+      ).toBe(true);
+      // Legend swatches at top-left of plot area: row 0 = A (#FFD700), row 1 = Ref-A (#FF6EC7)
+      expect(
+        colorPresentInRegion(
+          overlayDark.exportCanvas,
+          plotLeftDev + 4 * pxRatio,
+          plotTopDev,
+          30 * pxRatio,
+          16 * pxRatio,
+          hexToBytes("#FFD700"),
+        ),
+      ).toBe(true);
+      expect(
+        colorPresentInRegion(
+          overlayDark.exportCanvas,
+          plotLeftDev + 4 * pxRatio,
+          plotTopDev + 14 * pxRatio,
+          30 * pxRatio,
+          20 * pxRatio,
+          hexToBytes("#FF6EC7"),
+        ),
+      ).toBe(true);
+
+      // Re-mount button to clear copied cooldown timer between modes
+      const remountButton = async () => {
+        await act(async () => {
+          btnRoot.render(<div />);
+        });
+        await act(async () => {
+          btnRoot.render(<PngSnapshotButton />);
+        });
+      };
+
+      // 2. Overlay + Light mode (AC1, AC4, AC5)
+      await remountButton();
+      const exportBtn2 = btnHost.querySelector(
+        "[data-testid='png-export-button']",
+      ) as HTMLButtonElement;
+      const copyBtn2 = btnHost.querySelector(
+        "[data-testid='png-copy-button']",
+      ) as HTMLButtonElement;
+      act(() => {
+        usePngExportStore.getState().setTheme("light");
+      });
+      await act(async () => {
+        exportBtn2.click();
+        for (let i = 0; i < 60 && exportedBlobs.length < 2; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      await act(async () => {
+        copyBtn2.click();
+        for (let i = 0; i < 60 && clipboardItems.length < 2; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      const lightOverlayExportBlob = exportedBlobs[1]!;
+      const lightOverlayCopyBlob =
+        await clipboardItems[1]!.getType("image/png");
+      expect(
+        new Uint8Array(await lightOverlayExportBlob.arrayBuffer()),
+      ).toEqual(new Uint8Array(await lightOverlayCopyBlob.arrayBuffer()));
+      const overlayLightCanvas = await blobToCanvas(lightOverlayExportBlob);
+      // White background
+      expect(colorAt(overlayLightCanvas, 2, 2)).toEqual([255, 255, 255]);
+      // Light theme Primary A (#B8860B) and Ref-A (#C2185B) traces in plot area
+      expect(
+        colorPresentInRegion(
+          overlayLightCanvas,
+          plotLeftDev,
+          plotTopDev + 36 * pxRatio,
+          plotWidDev,
+          plotHgtDev - 36 * pxRatio,
+          hexToBytes("#B8860B"),
+        ),
+      ).toBe(true);
+      expect(
+        colorPresentInRegion(
+          overlayLightCanvas,
+          plotLeftDev,
+          plotTopDev + 36 * pxRatio,
+          plotWidDev,
+          plotHgtDev - 36 * pxRatio,
+          hexToBytes("#C2185B"),
+        ),
+      ).toBe(true);
+      // Light theme legend swatches for both A (#B8860B) and Ref-A (#C2185B)
+      expect(
+        colorPresentInRegion(
+          overlayLightCanvas,
+          0,
+          plotTopDev,
+          overlayLightCanvas.width,
+          16 * pxRatio,
+          hexToBytes("#B8860B"),
+        ),
+      ).toBe(true);
+      expect(
+        colorPresentInRegion(
+          overlayLightCanvas,
+          0,
+          plotTopDev + 14 * pxRatio,
+          overlayLightCanvas.width,
+          20 * pxRatio,
+          hexToBytes("#C2185B"),
+        ),
+      ).toBe(true);
+
+      // 3. Stack + Dark mode (AC3, AC4, AC5)
+      await remountButton();
+      const exportBtn3 = btnHost.querySelector(
+        "[data-testid='png-export-button']",
+      ) as HTMLButtonElement;
+      const copyBtn3 = btnHost.querySelector(
+        "[data-testid='png-copy-button']",
+      ) as HTMLButtonElement;
+      act(() => {
+        useChannelDisplayStore.getState().setStackMode(true);
+        usePngExportStore.getState().setTheme("dark");
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+      await act(async () => {
+        exportBtn3.click();
+        for (let i = 0; i < 60 && exportedBlobs.length < 3; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      await act(async () => {
+        copyBtn3.click();
+        for (let i = 0; i < 60 && clipboardItems.length < 3; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      const stackDarkExportBlob = exportedBlobs[2]!;
+      const stackDarkCopyBlob = await clipboardItems[2]!.getType("image/png");
+      expect(new Uint8Array(await stackDarkExportBlob.arrayBuffer())).toEqual(
+        new Uint8Array(await stackDarkCopyBlob.arrayBuffer()),
+      );
+      const stackDarkCanvas = await blobToCanvas(stackDarkExportBlob);
+      const stackBbox = mountedUplot!.bbox;
+      const stackInstanceRatio =
+        mountedUplot!.width > 0
+          ? mountedUplot!.ctx.canvas.width / mountedUplot!.width
+          : 1;
+      const sLeft = (stackBbox.left / stackInstanceRatio) * pxRatio;
+      const sTop = (stackBbox.top / stackInstanceRatio) * pxRatio;
+      const sWid = (stackBbox.width / stackInstanceRatio) * pxRatio;
+      const sHgt = (stackBbox.height / stackInstanceRatio) * pxRatio;
+      // Top lane (0..sHgt/2) has Primary A (#FFD700); bottom lane (sHgt/2..sHgt) has Ref-A (#FF6EC7)
+      expect(
+        colorPresentInRegion(
+          stackDarkCanvas,
+          sLeft,
+          sTop + 36 * pxRatio,
+          sWid,
+          sHgt / 2 - 36 * pxRatio,
+          hexToBytes("#FFD700"),
+        ),
+      ).toBe(true);
+      expect(
+        colorPresentInRegion(
+          stackDarkCanvas,
+          sLeft,
+          sTop + sHgt / 2,
+          sWid,
+          sHgt / 2,
+          hexToBytes("#FF6EC7"),
+        ),
+      ).toBe(true);
+
+      // 4. Stack + Light mode (AC3, AC4, AC5)
+      await remountButton();
+      const exportBtn4 = btnHost.querySelector(
+        "[data-testid='png-export-button']",
+      ) as HTMLButtonElement;
+      const copyBtn4 = btnHost.querySelector(
+        "[data-testid='png-copy-button']",
+      ) as HTMLButtonElement;
+      act(() => {
+        usePngExportStore.getState().setTheme("light");
+      });
+      await act(async () => {
+        exportBtn4.click();
+        for (let i = 0; i < 60 && exportedBlobs.length < 4; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      await act(async () => {
+        copyBtn4.click();
+        for (let i = 0; i < 60 && clipboardItems.length < 4; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      const stackLightExportBlob = exportedBlobs[3]!;
+      const stackLightCopyBlob = await clipboardItems[3]!.getType("image/png");
+      expect(new Uint8Array(await stackLightExportBlob.arrayBuffer())).toEqual(
+        new Uint8Array(await stackLightCopyBlob.arrayBuffer()),
+      );
+      const stackLightCanvas = await blobToCanvas(stackLightExportBlob);
+      // Top lane has Primary A (#B8860B); bottom lane has Ref-A (#C2185B)
+      expect(
+        colorPresentInRegion(
+          stackLightCanvas,
+          sLeft,
+          sTop + 36 * pxRatio,
+          sWid,
+          sHgt / 2 - 36 * pxRatio,
+          hexToBytes("#B8860B"),
+        ),
+      ).toBe(true);
+      expect(
+        colorPresentInRegion(
+          stackLightCanvas,
+          sLeft,
+          sTop + sHgt / 2,
+          sWid,
+          sHgt / 2,
+          hexToBytes("#C2185B"),
+        ),
+      ).toBe(true);
+      // Legend swatches for both channels in Stack + Light mode
+      expect(
+        colorPresentInRegion(
+          stackLightCanvas,
+          0,
+          sTop,
+          stackLightCanvas.width,
+          16 * pxRatio,
+          hexToBytes("#B8860B"),
+        ),
+      ).toBe(true);
+      expect(
+        colorPresentInRegion(
+          stackLightCanvas,
+          0,
+          sTop + 14 * pxRatio,
+          stackLightCanvas.width,
+          20 * pxRatio,
+          hexToBytes("#C2185B"),
+        ),
+      ).toBe(true);
+
+      act(() => {
+        btnRoot.unmount();
+      });
+      btnHost.remove();
+      vi.restoreAllMocks();
     });
   });
 });

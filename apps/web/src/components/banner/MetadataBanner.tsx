@@ -25,6 +25,8 @@ import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
+import { useReferenceStore } from "../../state/referenceStore";
+import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { effectiveTraceColor } from "../canvas/themePalette";
 import {
   GITHUB_REPOSITORY_URL,
@@ -57,7 +59,11 @@ export default function MetadataBanner({
   const selectedChannel = useViewportStore((state) => state.selectedChannel);
   const theme = useThemeStore((state) => state.theme);
   const customColors = usePaletteStore((state) => state.customColors);
+  const hasComparison = useReferenceStore((state) => state.capture !== null);
+  const refFileName = useReferenceStore((state) => state.fileName);
+  const clearReference = useReferenceStore((state) => state.clear);
   const model = buildMetadataModel(capture, fileName, customNames);
+  const compareFileName = refFileName ?? "Reference capture";
 
   return (
     <header className="metadata-banner" aria-label="Capture metadata inspector">
@@ -81,7 +87,33 @@ export default function MetadataBanner({
               Open file…
             </button>
           ) : null}
-          {onCompareFile ? (
+          {hasComparison ? (
+            <>
+              <button
+                type="button"
+                className="banner-open-btn banner-compare-remove-btn"
+                onClick={() => {
+                  const openKey = useBadgePopoverStore.getState().openKey;
+                  if (openKey?.startsWith("channel:Ref-")) {
+                    useBadgePopoverStore.getState().setOpen(null);
+                  }
+                  clearReference();
+                }}
+                aria-label="Remove comparison capture (File 2)"
+                title="Remove comparison capture (File 2)"
+                data-testid="compare-file-button"
+              >
+                - Compare
+              </button>
+              <div
+                className="banner-filename banner-compare-filename"
+                title={compareFileName}
+                data-testid="compare-file-name"
+              >
+                <span className="banner-filename-text">{compareFileName}</span>
+              </div>
+            </>
+          ) : onCompareFile ? (
             <button
               type="button"
               className="banner-open-btn"

@@ -66,7 +66,7 @@ function t2XDev(u: uPlot, t2Time: number): number | null {
  * border immediately above u.bbox.top, stroked in the given accent.
  * Mirrors drawTriggerGlyph's #85 geometry with the edge inverted.
  */
-function drawT2Glyph(
+export function drawT2Glyph(
   u: uPlot,
   accentColor: string,
   backgroundColor: string,

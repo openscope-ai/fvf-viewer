@@ -79,6 +79,20 @@ export default function App() {
     );
   }, [fileName, capture, setChannelNamesFileKey]);
 
+  // Issue #335: per-file channel-name persistence for File 2 comparison captures.
+  const refCapture = useReferenceStore((state) => state.capture);
+  const refFileName = useReferenceStore((state) => state.fileName);
+  const setChannelNamesRefFileKey = useChannelNamesStore(
+    (state) => state.setRefFileKey,
+  );
+  useEffect(() => {
+    setChannelNamesRefFileKey(
+      refCapture
+        ? captureFileKey(refFileName, refCapture.metadata.timestamp14)
+        : null,
+    );
+  }, [refFileName, refCapture, setChannelNamesRefFileKey]);
+
   // Issue #251: Stack-view lane proportions persist per .fvf file through
   // the same capture-identity keying; a different file starts equal.
   const setLaneWeightsFileKey = useLaneLayoutStore((state) => state.setFileKey);
@@ -107,7 +121,6 @@ export default function App() {
 
   // Issue #251: whenever the comparison goes away (File 1 replacement or
   // an explicit teardown), the reference lanes' weights drop with it.
-  const refCapture = useReferenceStore((state) => state.capture);
   useEffect(() => {
     if (refCapture) return;
     const refKeys = Object.keys(useLaneLayoutStore.getState().weights).filter(

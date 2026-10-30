@@ -64,10 +64,16 @@ export default function CsvExportButton() {
           );
           downloadName = csvFileName(fileName);
         } else if (settings.dataset === "reference") {
+          const refCustomNames: Record<string, string> = {};
+          for (const [tag, value] of Object.entries(customNames)) {
+            if (tag.startsWith("Ref-")) {
+              refCustomNames[tag.slice("Ref-".length)] = value;
+            }
+          }
           blob = await exportCaptureCsv(
             refCapture,
             refFileName,
-            undefined,
+            refCustomNames,
             delimiterChar,
           );
           downloadName = csvFileName(refFileName);

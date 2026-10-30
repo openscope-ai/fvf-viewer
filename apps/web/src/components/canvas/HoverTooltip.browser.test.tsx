@@ -181,8 +181,7 @@ describe("Hover tooltip (issue #150, browser)", () => {
   it("AC1/AC2: shows x/y coordinates after 500ms dwell on the same snap point", async () => {
     await mount();
     const sample = isolatedSample(2000);
-    const pos = dotPosition(sample);
-    const { cx, cy } = clientPoint(pos);
+    const { cx, cy } = roundedClientPoint(sample);
 
     // Not visible before the dwell elapses.
     dispatchMouse(mountedUplot!.over, "mousemove", cx, cy);

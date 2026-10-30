@@ -483,6 +483,15 @@ body,
   border-color: #00bfff;
 }
 
+.banner-compare-remove-btn {
+  color: #ff5252;
+}
+
+.banner-compare-remove-btn:hover {
+  background: #222222;
+  border-color: #ff5252;
+}
+
 .banner-metrics {
   display: flex;
   align-items: center;
@@ -543,6 +552,15 @@ body,
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.waveform-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-inline: auto;
 }
 
 .waveform-toolbar-label {

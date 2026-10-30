@@ -67,11 +67,14 @@ function writeStoredNames(names: StoredChannelNames): void {
 }
 
 export interface ChannelNamesState {
-  /** Capture identity of the active file (fileName::timestamp14). */
+  /** Capture identity of the active primary file (fileName::timestamp14). */
   fileKey: string | null;
-  /** Active file's custom names: channel tag -> custom amendment. */
+  /** Capture identity of the active File 2 comparison file (fileName::timestamp14). */
+  refFileKey: string | null;
+  /** Active custom names: channel tag (A..D, Ref-A..Ref-D) -> custom amendment. */
   names: Record<string, string>;
   setFileKey: (fileKey: string | null) => void;
+  setRefFileKey: (refFileKey: string | null) => void;
   /** Commits an amendment (empty/whitespace clears to the default). */
   setName: (channel: string, raw: string) => void;
   clearName: (channel: string) => void;
@@ -79,33 +82,78 @@ export interface ChannelNamesState {
 
 export function createChannelNamesStore() {
   return create<ChannelNamesState>((set, get) => {
-    const persistActive = () => {
-      const { fileKey, names } = get();
-      if (!fileKey) return;
+    const persistSlot = (isRef: boolean) => {
+      const { fileKey, refFileKey, names } = get();
+      const targetKey = isRef ? refFileKey : fileKey;
+      if (!targetKey) return;
       const stored = readStoredNames();
-      if (Object.keys(names).length === 0) {
-        delete stored[fileKey];
+      const slotNames: Record<string, string> = {};
+      for (const [tag, value] of Object.entries(names)) {
+        if (isRef && tag.startsWith("Ref-")) {
+          slotNames[tag.slice("Ref-".length)] = value;
+        } else if (!isRef && !tag.startsWith("Ref-")) {
+          slotNames[tag] = value;
+        }
+      }
+      if (Object.keys(slotNames).length === 0) {
+        delete stored[targetKey];
       } else {
-        stored[fileKey] = names;
+        stored[targetKey] = slotNames;
       }
       writeStoredNames(stored);
     };
     return {
       fileKey: null,
+      refFileKey: null,
       names: {},
       setFileKey: (fileKey) =>
-        set(() => {
+        set((state) => {
+          const nextNames: Record<string, string> = {};
+          for (const [tag, value] of Object.entries(state.names)) {
+            if (tag.startsWith("Ref-")) {
+              nextNames[tag] = value;
+            }
+          }
           if (!fileKey) {
-            return { fileKey: null, names: {} };
+            return { fileKey: null, names: nextNames };
           }
           const stored = readStoredNames();
+          for (const [tag, value] of Object.entries(stored[fileKey] ?? {})) {
+            if (!tag.startsWith("Ref-")) {
+              nextNames[tag] = value;
+            }
+          }
           return {
             fileKey,
-            names: { ...(stored[fileKey] ?? {}) },
+            names: nextNames,
+          };
+        }),
+      setRefFileKey: (refFileKey) =>
+        set((state) => {
+          const nextNames: Record<string, string> = {};
+          for (const [tag, value] of Object.entries(state.names)) {
+            if (!tag.startsWith("Ref-")) {
+              nextNames[tag] = value;
+            }
+          }
+          if (!refFileKey) {
+            return { refFileKey: null, names: nextNames };
+          }
+          const stored = readStoredNames();
+          for (const [tag, value] of Object.entries(stored[refFileKey] ?? {})) {
+            const refTag = tag.startsWith("Ref-")
+              ? tag
+              : `Ref-${tag.replace(/^Input\s+/i, "")}`;
+            nextNames[refTag] = value;
+          }
+          return {
+            refFileKey,
+            names: nextNames,
           };
         }),
       setName: (channel, raw) => {
         const amended = raw.trim().slice(0, CHANNEL_NAME_MAX_LENGTH);
+        const isRef = channel.startsWith("Ref-");
         set((state) => {
           const names = { ...state.names };
           if (amended) {
@@ -115,16 +163,17 @@ export function createChannelNamesStore() {
           }
           return { names };
         });
-        persistActive();
+        persistSlot(isRef);
       },
       clearName: (channel) => {
+        const isRef = channel.startsWith("Ref-");
         set((state) => {
           if (!(channel in state.names)) return state;
           const names = { ...state.names };
           delete names[channel];
           return { names };
         });
-        persistActive();
+        persistSlot(isRef);
       },
     };
   });

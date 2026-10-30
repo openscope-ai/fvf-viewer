@@ -14,6 +14,8 @@ import { create } from "zustand";
 import { parseCaptureBuffer, resampleToGrid } from "../workers/workerClient";
 import { buildDisplayData, yScaleKey } from "../capture/channelUnits";
 import { useCaptureStore, type CaptureError } from "./captureStore";
+import { captureFileKey, useChannelNamesStore } from "./channelNamesStore";
+import { useChannelDisplayStore } from "./channelDisplayStore";
 import type { ParseState, ParsedCapture } from "../types/capture";
 
 /** Display name of a File 2 channel: `Ref-` + its original tag. */
@@ -211,6 +213,12 @@ export function createReferenceStore() {
           }),
         );
         if (ticket !== referenceSequence) return; // superseded load
+        useChannelNamesStore
+          .getState()
+          .setRefFileKey(
+            captureFileKey(fileName, reference.metadata.timestamp14),
+          );
+        useChannelDisplayStore.getState().clearRefTransforms();
         set({
           capture: reference,
           fileName,
@@ -249,6 +257,8 @@ export function createReferenceStore() {
 
     clear: () => {
       referenceSequence += 1; // invalidate any in-flight load
+      useChannelNamesStore.getState().setRefFileKey(null);
+      useChannelDisplayStore.getState().clearRefTransforms();
       set({
         capture: null,
         fileName: null,

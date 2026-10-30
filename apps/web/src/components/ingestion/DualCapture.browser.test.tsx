@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
+import type uPlot from "uplot";
 import { createRoot, type Root } from "react-dom/client";
 import fourChUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-4ch-10000-10ms-div.fvf.bin?url";
 import twoChMinUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-2ch-10000-1min-div.fvf.bin?url";
@@ -9,6 +10,7 @@ import { useCaptureStore } from "../../state/captureStore";
 import { useReferenceStore } from "../../state/referenceStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { useCursorStore } from "../../state/cursorStore";
 
 /**
  * Issue #96 end-to-end: the 50/50 split drop overlay over an open
@@ -354,5 +356,182 @@ describe("Dual-file comparison (issue #96)", () => {
     expect(
       hostElement.querySelector("[data-testid='channel-badge-Ref-A']"),
     ).toBeNull();
+  });
+
+  it("issue #337: remove compare waveform and preserve primary view", async () => {
+    const file1 = await createFixtureFile(fourChUrl, "primary_capture.fvf");
+    const file2 = await createFixtureFile(
+      twoChMinUrl,
+      "very_long_secondary_comparison_waveform_capture_file_name.fvf",
+    );
+    await act(async () => {
+      root.render(<App />);
+    });
+    const container = hostElement.querySelector(
+      "[data-testid='ingestion-container']",
+    ) as HTMLElement;
+    await act(async () => {
+      container.dispatchEvent(
+        Object.assign(new Event("drop", { bubbles: true, cancelable: true }), {
+          dataTransfer: { files: [file1] },
+        }),
+      );
+      await waitForStoreCondition(
+        () => useCaptureStore.getState().parseState === "success",
+      );
+    });
+
+    // Before File 2 is loaded: + Compare is shown, no compare filename.
+    const compareBtnBefore = hostElement.querySelector(
+      "[data-testid='compare-file-button']",
+    ) as HTMLButtonElement;
+    expect(compareBtnBefore.textContent).toBe("+ Compare");
+    expect(
+      hostElement.querySelector("[data-testid='compare-file-name']"),
+    ).toBeNull();
+
+    // Load File 2.
+    await act(async () => {
+      simulateDropAt(container, file2, 1100);
+      await waitForStoreCondition(
+        () => useReferenceStore.getState().parseState === "success",
+      );
+    });
+
+    // AC1: Banner shows `- Compare` in red text instead of `+ Compare`.
+    const compareBtnActive = hostElement.querySelector(
+      "[data-testid='compare-file-button']",
+    ) as HTMLButtonElement;
+    expect(compareBtnActive.textContent).toBe("- Compare");
+    expect(compareBtnActive.className).toContain("banner-compare-remove-btn");
+    const btnColor = window.getComputedStyle(compareBtnActive).color;
+    // #ff5252 -> rgb(255, 82, 82)
+    expect(btnColor).toBe("rgb(255, 82, 82)");
+
+    // AC2: Second waveform's filename is visible next to - Compare, truncated with full name on hover (title).
+    const compareFileNameEl = hostElement.querySelector(
+      "[data-testid='compare-file-name']",
+    ) as HTMLElement;
+    expect(compareFileNameEl).not.toBeNull();
+    expect(compareBtnActive.nextElementSibling).toBe(compareFileNameEl);
+    expect(compareFileNameEl.textContent).toBe(
+      "very_long_secondary_comparison_waveform_capture_file_name.fvf",
+    );
+    expect(compareFileNameEl.getAttribute("title")).toBe(
+      "very_long_secondary_comparison_waveform_capture_file_name.fvf",
+    );
+    const fnStyle = window.getComputedStyle(compareFileNameEl);
+    expect(fnStyle.textOverflow).toBe("ellipsis");
+    expect(fnStyle.overflow).toBe("hidden");
+    expect(fnStyle.whiteSpace).toBe("nowrap");
+
+    // Mutate primary waveform state (zoom/pan, cursors, channel visibility) and compare-specific state (visibility, time slip, transform).
+    const oscContainer = hostElement.querySelector(
+      "[data-testid='oscilloscope-container']",
+    ) as HTMLElement & { __uplot?: uPlot };
+    expect(oscContainer.__uplot).toBeDefined();
+
+    await act(async () => {
+      // Zoom/pan primary X and Y0 scales
+      oscContainer.__uplot!.batch(() => {
+        oscContainer.__uplot!.setScale("x", { min: -0.01, max: 0.02 });
+        oscContainer.__uplot!.setScale("y0", { min: -2.5, max: 1.5 });
+      });
+      // Hide primary channel D, select channel B
+      useViewportStore.getState().setActiveChannels(["A", "B", "C"]);
+      useViewportStore.getState().setSelectedChannel("B");
+      // Activate C1 & C2 cursors at specific samples
+      useCursorStore.getState().setCursorActive("C1", true, 10000);
+      useCursorStore.getState().setCursorSample("C1", 1234, 10000);
+      useCursorStore.getState().setCursorActive("C2", true, 10000);
+      useCursorStore.getState().setCursorSample("C2", 5678, 10000);
+      // Modify compare-specific state: hide Ref-A, slip time, set Ref-B offset/scale
+      useReferenceStore.getState().toggleRefChannel("Ref-A");
+      useReferenceStore.getState().setTimeSlip(42);
+      useChannelDisplayStore.getState().setYScale("Ref-B", 200);
+      useChannelDisplayStore.getState().setOffset("Ref-B", 1.25);
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    expect(useReferenceStore.getState().refActiveChannels).toEqual(["Ref-B"]);
+    expect(useReferenceStore.getState().timeSlipSamples).toBe(42);
+    expect(useChannelDisplayStore.getState().keyConfigs["Ref-B"]).toEqual({
+      yScalePercent: 200,
+      offset: 1.25,
+    });
+
+    // AC3: Clicking `- Compare` removes the second waveform immediately, with no confirmation prompt.
+    await act(async () => {
+      compareBtnActive.click();
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    // AC4: Only primary waveform traces and legend remain, and `+ Compare` is shown again.
+    expect(useReferenceStore.getState().capture).toBeNull();
+    expect(useReferenceStore.getState().lanes).toBeNull();
+    expect(
+      hostElement.querySelector("[data-testid='channel-badge-Ref-A']"),
+    ).toBeNull();
+    expect(
+      hostElement.querySelector("[data-testid='channel-badge-Ref-B']"),
+    ).toBeNull();
+    expect(
+      hostElement.querySelector("[data-testid='compare-file-name']"),
+    ).toBeNull();
+    const compareBtnAfter = hostElement.querySelector(
+      "[data-testid='compare-file-button']",
+    ) as HTMLButtonElement;
+    expect(compareBtnAfter.textContent).toBe("+ Compare");
+    expect(compareBtnAfter.className).not.toContain(
+      "banner-compare-remove-btn",
+    );
+    // uPlot has only Time + 4 primary series (5 total)
+    expect(oscContainer.__uplot!.series.length).toBe(5);
+
+    // AC6: Compare-specific state is reset.
+    expect(useReferenceStore.getState().refActiveChannels).toEqual([]);
+    expect(useReferenceStore.getState().timeSlipSamples).toBe(0);
+    expect(
+      useChannelDisplayStore.getState().keyConfigs["Ref-B"],
+    ).toBeUndefined();
+
+    // AC7: Primary waveform's zoom, pan, cursors, and channel visibility are unchanged by removal.
+    expect(useViewportStore.getState().activeChannels).toEqual(["A", "B", "C"]);
+    expect(useViewportStore.getState().selectedChannel).toBe("B");
+    expect(oscContainer.__uplot!.scales.x?.min).toBeCloseTo(-0.01, 6);
+    expect(oscContainer.__uplot!.scales.x?.max).toBeCloseTo(0.02, 6);
+    expect(oscContainer.__uplot!.scales.y0?.min).toBeCloseTo(-2.5, 6);
+    expect(oscContainer.__uplot!.scales.y0?.max).toBeCloseTo(1.5, 6);
+    expect(useCursorStore.getState().c1Active).toBe(true);
+    expect(useCursorStore.getState().c1SampleIndex).toBe(1234);
+    expect(useCursorStore.getState().c2Active).toBe(true);
+    expect(useCursorStore.getState().c2SampleIndex).toBe(5678);
+
+    // AC5 + AC6: A different waveform can be loaded for comparison, starting fresh.
+    const file2Other = await createFixtureFile(
+      twoChMinUrl,
+      "other_compare.fvf",
+    );
+    await act(async () => {
+      simulateDropAt(container, file2Other, 1100);
+      await waitForStoreCondition(
+        () => useReferenceStore.getState().parseState === "success",
+      );
+    });
+    expect(useReferenceStore.getState().fileName).toBe("other_compare.fvf");
+    expect(useReferenceStore.getState().refActiveChannels).toEqual([
+      "Ref-A",
+      "Ref-B",
+    ]);
+    expect(useReferenceStore.getState().timeSlipSamples).toBe(0);
+    expect(
+      hostElement.querySelector("[data-testid='compare-file-name']")
+        ?.textContent,
+    ).toBe("other_compare.fvf");
+    // Primary zoom/pan is also preserved when loading the new File 2!
+    expect(oscContainer.__uplot!.scales.x?.min).toBeCloseTo(-0.01, 6);
+    expect(oscContainer.__uplot!.scales.x?.max).toBeCloseTo(0.02, 6);
+    expect(oscContainer.__uplot!.scales.y0?.min).toBeCloseTo(-2.5, 6);
+    expect(oscContainer.__uplot!.scales.y0?.max).toBeCloseTo(1.5, 6);
   });
 });
