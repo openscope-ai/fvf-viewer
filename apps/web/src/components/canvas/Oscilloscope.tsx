@@ -2070,13 +2070,16 @@ export default function Oscilloscope({
       )._yAxisSizeCache?.clear();
     }
 
-    if (axesReady) {
-      instance.batch(apply);
-      instance.redraw(true, true);
-    } else {
-      apply();
-      instance.redraw(true, true);
-    }
+    // Issue #350: Before the constructor's first paint pass, axis tick
+    // increments are not yet computed (axesReady is false). Calling
+    // setScale/redraw here interrupts uPlot's initial scale layout and
+    // clears scales.x to null, resulting in a blank canvas on compare
+    // remove/add transitions. Construction already configured opts.scales
+    // with lanedBounds, so skip until axes are ready.
+    if (!axesReady) return;
+
+    instance.batch(apply);
+    instance.redraw(true, true);
     if (!stackMode) preStackRef.current.clear();
   }, [
     stackMode,

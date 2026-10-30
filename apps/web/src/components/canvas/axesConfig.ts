@@ -10,7 +10,7 @@
  * with wide decimal ticks.
  */
 
-import type uPlot from "uplot";
+import uPlot from "uplot";
 
 export const AXIS_SIZE_X_PX = 30;
 /** Padding between tick marks and tick numbers (CSS px). */
@@ -43,6 +43,30 @@ export const AXIS_FONT = "11px system-ui, -apple-system, sans-serif";
 /** Canvas font string scaled by device-pixel ratio for unscaled 2D contexts (issue #270). */
 export function axisFont(pxRatio: number = 1): string {
   return `${11 * pxRatio}px system-ui, -apple-system, sans-serif`;
+}
+
+/**
+ * Resolves the effective device pixel ratio for a uPlot instance (issues #250, #349).
+ * Avoids uncommitted HTML5 canvas default 300px width blowing up offscreen ratios.
+ */
+export function cssPxRatio(u?: uPlot | null): number {
+  const uCtor = (u?.constructor as unknown as { pxRatio?: number }) ?? uPlot;
+  const fallback =
+    uCtor?.pxRatio ||
+    (typeof window !== "undefined" ? window.devicePixelRatio : 1) ||
+    1;
+  if (u && u.width > 0 && u.ctx?.canvas && u.ctx.canvas.width > 0) {
+    const canvas = u.ctx.canvas;
+    // An uncommitted HTML5 canvas has the default 300x150 dimensions.
+    const isUncommittedDefault =
+      canvas.width === 300 &&
+      canvas.height === 150 &&
+      (u.width !== 300 || u.height !== 150 || fallback !== 1);
+    if (!isUncommittedDefault && (canvas.width !== 300 || u.width === 300)) {
+      return canvas.width / u.width;
+    }
+  }
+  return fallback;
 }
 
 let measurementContext: CanvasRenderingContext2D | null = null;
@@ -219,7 +243,7 @@ export function computeYAxisSize(
  * adjacent to the graticule in Stack mode (issue #268).
  */
 export function syncUnifiedStackAxes(u: uPlot): void {
-  const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+  const pxRatio = cssPxRatio(u);
   const plotLeftCss = u.bbox.left / pxRatio;
   const cache = (u as unknown as { _yAxisSizeCache?: Map<string, number> })
     ._yAxisSizeCache;

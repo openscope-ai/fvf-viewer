@@ -38,7 +38,10 @@ import {
   AXIS_SIZE_X_PX,
   CANVAS_PADDING,
   axisFont,
+  cssPxRatio,
 } from "./axesConfig";
+
+export { cssPxRatio };
 import { yScaleKey } from "../../capture/channelUnits";
 import type { ParsedCapture } from "../../types/capture";
 
@@ -57,10 +60,6 @@ interface LaneAxis {
   _lpos?: number;
   label?: unknown;
   labelSize?: number;
-}
-
-function cssPxRatio(u: uPlot): number {
-  return u.width > 0 ? u.ctx.canvas.width / u.width : 1;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   AXIS_TICK_SIZE_PX,
   CANVAS_PADDING,
   computeYAxisSize,
+  cssPxRatio,
   syncUnifiedStackAxes,
 } from "../canvas/axesConfig";
 import { drawTriggerGlyph, drawTriggerLine } from "../canvas/triggerMarker";
@@ -628,9 +629,17 @@ export async function composePrintSnapshot(
     if (bounds?.min == null || bounds?.max == null) return;
     if (isStacked) {
       const liveBand = laneBandCss(liveUplot, capture, scaleKey);
-      const livePxRatio =
-        liveUplot.width > 0 ? liveUplot.ctx.canvas.width / liveUplot.width : 1;
-      const livePlotHgt = liveUplot.bbox.height / livePxRatio;
+      const livePxRatio = cssPxRatio(liveUplot);
+      const livePlotHgt =
+        liveUplot.bbox.height > 0
+          ? liveUplot.bbox.height / livePxRatio
+          : Math.max(
+              (liveUplot.height > 0 ? liveUplot.height : 400) -
+                CANVAS_PADDING[0] -
+                CANVAS_PADDING[2] -
+                AXIS_SIZE_X_PX,
+              100,
+            );
       if (liveBand && livePlotHgt > 0) {
         const bandFraction = (liveBand.bottom - liveBand.top) / livePlotHgt;
         const bandStart = liveBand.top / livePlotHgt;
@@ -875,9 +884,17 @@ export async function composePrintSnapshot(
               for (const adapter of printYAdapters.values()) {
                 if (isStacked) {
                   const band = laneBandCss(u, capture, adapter.scaleKey);
-                  const pxRatio =
-                    u.width > 0 ? u.ctx.canvas.width / u.width : 1;
-                  const plotHeight = u.bbox.height / pxRatio;
+                  const pxRatio = cssPxRatio(u);
+                  const plotHeight =
+                    u.bbox.height > 0
+                      ? u.bbox.height / pxRatio
+                      : Math.max(
+                          (u.height > 0 ? u.height : 400) -
+                            CANVAS_PADDING[0] -
+                            CANVAS_PADDING[2] -
+                            AXIS_SIZE_X_PX,
+                          100,
+                        );
                   if (band && plotHeight > 0) {
                     const bandFraction = (band.bottom - band.top) / plotHeight;
                     const bandStart = band.top / plotHeight;
@@ -938,9 +955,17 @@ export async function composePrintSnapshot(
               if (isStacked) {
                 for (const adapter of printYAdapters.values()) {
                   const band = laneBandCss(u, capture, adapter.scaleKey);
-                  const pxRatio =
-                    u.width > 0 ? u.ctx.canvas.width / u.width : 1;
-                  const plotHeight = u.bbox.height / pxRatio;
+                  const pxRatio = cssPxRatio(u);
+                  const plotHeight =
+                    u.bbox.height > 0
+                      ? u.bbox.height / pxRatio
+                      : Math.max(
+                          (u.height > 0 ? u.height : 400) -
+                            CANVAS_PADDING[0] -
+                            CANVAS_PADDING[2] -
+                            AXIS_SIZE_X_PX,
+                          100,
+                        );
                   if (band && plotHeight > 0) {
                     const bandFraction = (band.bottom - band.top) / plotHeight;
                     const bandStart = band.top / plotHeight;

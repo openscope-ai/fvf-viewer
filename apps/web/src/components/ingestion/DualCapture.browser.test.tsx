@@ -11,6 +11,8 @@ import { useReferenceStore } from "../../state/referenceStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useCursorStore } from "../../state/cursorStore";
+import { useThemeStore } from "../../state/themeStore";
+import { resolveThemePalette } from "../canvas/themePalette";
 
 /**
  * Issue #96 end-to-end: the 50/50 split drop overlay over an open
@@ -533,5 +535,144 @@ describe("Dual-file comparison (issue #96)", () => {
     expect(oscContainer.__uplot!.scales.x?.max).toBeCloseTo(0.02, 6);
     expect(oscContainer.__uplot!.scales.y0?.min).toBeCloseTo(-2.5, 6);
     expect(oscContainer.__uplot!.scales.y0?.max).toBeCloseTo(1.5, 6);
+  });
+
+  it("issue #350: pressing - Compare and + Compare preserves canvas waveform visibility without blanking in Stack and Overlay modes", async () => {
+    const file1 = await createFixtureFile(fourChUrl, "file1.fvf");
+    const file2 = await createFixtureFile(twoChMinUrl, "file2.fvf");
+
+    await act(async () => {
+      root.render(<App />);
+    });
+    const container = hostElement.querySelector(
+      "[data-testid='ingestion-container']",
+    ) as HTMLElement;
+
+    // 1. Ingest primary File 1
+    await act(async () => {
+      simulateDropAt(container, file1, 400);
+      await waitForStoreCondition(
+        () => useCaptureStore.getState().parseState === "success",
+      );
+    });
+
+    // 2. Switch to Stack mode
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(true);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    // 3. Load File 2 for comparison
+    await act(async () => {
+      simulateDropAt(container, file2, 1100);
+      await waitForStoreCondition(
+        () => useReferenceStore.getState().parseState === "success",
+      );
+    });
+
+    const oscContainer = hostElement.querySelector(
+      "[data-testid='oscilloscope-container']",
+    ) as HTMLElement & { __uplot?: uPlot };
+    expect(oscContainer.__uplot).toBeDefined();
+
+    const compareBtn = hostElement.querySelector(
+      "[data-testid='compare-file-button']",
+    ) as HTMLButtonElement;
+    expect(compareBtn.textContent).toBe("- Compare");
+
+    function countTracePixels(u: uPlot): number {
+      const canvas = u.ctx.canvas;
+      const ctx = canvas.getContext("2d")!;
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const bg = resolveThemePalette(useThemeStore.getState().theme).background;
+      const bgR = parseInt(bg.slice(1, 3), 16);
+      const bgG = parseInt(bg.slice(3, 5), 16);
+      const bgB = parseInt(bg.slice(5, 7), 16);
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]!;
+        const g = data[i + 1]!;
+        const b = data[i + 2]!;
+        const a = data[i + 3]!;
+        if (
+          a > 50 &&
+          (Math.abs(r - bgR) > 20 ||
+            Math.abs(g - bgG) > 20 ||
+            Math.abs(b - bgB) > 20)
+        ) {
+          count++;
+        }
+      }
+      return count;
+    }
+
+    const uplotBefore = oscContainer.__uplot!;
+    expect(uplotBefore.scales.x?.min).not.toBeNull();
+    expect(uplotBefore.scales.x?.max).not.toBeNull();
+    const tracePixelsBefore = countTracePixels(uplotBefore);
+    expect(tracePixelsBefore).toBeGreaterThan(10000);
+
+    // 4. Press - Compare: primary waveform immediately visible in Stack mode without blanking
+    await act(async () => {
+      compareBtn.click();
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const uplotAfterRemove = oscContainer.__uplot!;
+    expect(uplotAfterRemove.scales.x?.min).not.toBeNull();
+    expect(uplotAfterRemove.scales.x?.max).not.toBeNull();
+    const tracePixelsAfterRemove = countTracePixels(uplotAfterRemove);
+    expect(tracePixelsAfterRemove).toBeGreaterThan(10000);
+
+    // 5. Re-add File 2 for comparison: both waveforms immediately visible in Stack mode without blanking
+    const file2Again = await createFixtureFile(twoChMinUrl, "file2.fvf");
+    await act(async () => {
+      simulateDropAt(container, file2Again, 1100);
+      await waitForStoreCondition(
+        () => useReferenceStore.getState().parseState === "success",
+      );
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const uplotAfterReadd = oscContainer.__uplot!;
+    expect(uplotAfterReadd.scales.x?.min).not.toBeNull();
+    expect(uplotAfterReadd.scales.x?.max).not.toBeNull();
+    const tracePixelsAfterReadd = countTracePixels(uplotAfterReadd);
+    expect(tracePixelsAfterReadd).toBeGreaterThan(10000);
+
+    // 6. Switch to Overlay mode and verify - Compare and re-add in Overlay mode
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(false);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const compareBtnOverlay = hostElement.querySelector(
+      "[data-testid='compare-file-button']",
+    ) as HTMLButtonElement;
+    expect(compareBtnOverlay.textContent).toBe("- Compare");
+
+    await act(async () => {
+      compareBtnOverlay.click();
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const uplotAfterOverlayRemove = oscContainer.__uplot!;
+    expect(uplotAfterOverlayRemove.scales.x?.min).not.toBeNull();
+    expect(uplotAfterOverlayRemove.scales.x?.max).not.toBeNull();
+    expect(countTracePixels(uplotAfterOverlayRemove)).toBeGreaterThan(10000);
+
+    const file2Overlay = await createFixtureFile(twoChMinUrl, "file2.fvf");
+    await act(async () => {
+      simulateDropAt(container, file2Overlay, 1100);
+      await waitForStoreCondition(
+        () => useReferenceStore.getState().parseState === "success",
+      );
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const uplotAfterOverlayReadd = oscContainer.__uplot!;
+    expect(uplotAfterOverlayReadd.scales.x?.min).not.toBeNull();
+    expect(uplotAfterOverlayReadd.scales.x?.max).not.toBeNull();
+    expect(countTracePixels(uplotAfterOverlayReadd)).toBeGreaterThan(10000);
   });
 });

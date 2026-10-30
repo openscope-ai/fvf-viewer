@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.13.2] - 2026-10-30
+
+[v0.13.1...v0.13.2](https://github.com/openscope-ai/fvf-viewer/compare/v0.13.1...v0.13.2)
+
+### Fixed
+
+- Align and style Y-axis tick values in stacked PNG export (Ref #349):
+  - Fixed headless canvas export to correctly clip and align per-channel Y-axis ticks and labels strictly within each channel's partitioned lane bounds in Stacked mode when comparison waveforms are active.
+  - Applied matching channel trace colors to Y-axis tick values and labels, avoiding full-height single-channel spills.
+- Avoid wiping X scale on compare add and remove (Ref #350):
+  - Guarded stack mode effect against premature `setScale` and redraw executions before axis increments are computed on freshly mounted uPlot instances.
+  - Ensured `- Compare` removal and `+ Compare` re-addition immediately render waveforms with proper fitted scaling without blanking the canvas or requiring manual `Reset view`.
+
 ## [0.13.1] - 2026-10-30
 
 [v0.13.0...v0.13.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.13.0...v0.13.1)

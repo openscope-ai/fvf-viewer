@@ -23,6 +23,7 @@ import { usePngExportStore } from "../../state/pngExportStore";
 import PngSnapshotButton, { snapshotFileName } from "./PngSnapshotButton";
 import * as canvasPermission from "./canvasPermission";
 import type { ParsedCapture } from "../../types/capture";
+import { laneBandCss } from "../canvas/stackLaneDecorations";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -1305,6 +1306,220 @@ describe("PNG snapshot export (browser, issue #18)", () => {
       });
       btnHost.remove();
       vi.restoreAllMocks();
+    });
+
+    it("issue #349: Stack mode PNG export with comparison waveforms renders correct Y-axis values and colors for all channels", async () => {
+      // Load 2-channel capture as primary
+      const primaryBuf = await fixture(twoChMinUrl);
+      await useCaptureStore
+        .getState()
+        .parseBuffer(primaryBuf, "primary2ch.fvf");
+      const primaryCapture = useCaptureStore.getState().capture!;
+
+      await act(async () => {
+        root.render(
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              height: "600px",
+            }}
+          >
+            <Oscilloscope
+              capture={primaryCapture}
+              onUPlotInit={(u) => {
+                mountedUplot = u;
+              }}
+            />
+          </div>,
+        );
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+
+      // Load 2-channel capture as reference
+      await loadReference();
+
+      act(() => {
+        useViewportStore.getState().setActiveChannels(["A", "B"]);
+        useReferenceStore.getState().setRefActiveChannels(["Ref-A", "Ref-B"]);
+        useChannelDisplayStore.getState().setStackMode(true);
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+
+      const uplot = mountedUplot!;
+      const series = [
+        { label: "A", color: "#B8860B", show: true },
+        { label: "B", color: "#00838F", show: true },
+        { label: "Ref-A", color: "#C2185B", show: true },
+        { label: "Ref-B", color: "#2E7D32", show: true },
+      ];
+      const composite = await composePrintSnapshot(
+        uplot,
+        primaryCapture,
+        {
+          cursor1: "#6A1B9A",
+          cursor2: "#4B5563",
+          background: "#FFFFFF",
+          legend: [],
+          selected: null,
+        },
+        {
+          pixelRatio: 1,
+          series,
+          palette: "light",
+        },
+      );
+
+      const bbox = uplot.bbox;
+      const sLeft = bbox.left;
+      const sTop = bbox.top;
+      const sHgt = bbox.height;
+      const laneH = sHgt / 4;
+
+      const gold = hexToBytes("#B8860B");
+      const cyan = hexToBytes("#00838F");
+      const magenta = hexToBytes("#C2185B");
+      const green = hexToBytes("#2E7D32");
+
+      // Verify each channel's axis tick filter and formatted tick values (AC1, AC4)
+      const expectedLanes = [
+        { key: "y0", name: "A", idx: 0 },
+        { key: "y1", name: "B", idx: 1 },
+        { key: "y2", name: "Ref-A", idx: 2 },
+        { key: "y3", name: "Ref-B", idx: 3 },
+      ];
+
+      for (const lane of expectedLanes) {
+        const axis = uplot.axes.find((a) => a.scale === lane.key);
+        expect(axis, `axis for ${lane.key}`).toBeDefined();
+
+        const band = laneBandCss(uplot, primaryCapture, lane.key);
+        expect(band, `laneBandCss for ${lane.key}`).not.toBeNull();
+        expect(band!.top).toBeCloseTo(lane.idx * laneH, 1);
+        expect(band!.bottom).toBeCloseTo((lane.idx + 1) * laneH, 1);
+
+        // Sample splits spanning the full scale bounds
+        const scale = uplot.scales[lane.key]!;
+        expect(scale.min).toBeLessThan(scale.max!);
+        const step = (scale.max! - scale.min!) / 6;
+        const testSplits = Array.from(
+          { length: 7 },
+          (_, i) => scale.min! + i * step,
+        );
+
+        if (typeof axis!.filter === "function") {
+          const filtered = (
+            axis!.filter as (u: uPlot, splits: number[]) => Array<number | null>
+          )(uplot, testSplits);
+          // In Stack mode, splits whose Y position falls within this lane's band must be preserved
+          const kept = filtered.filter((v): v is number => v !== null);
+          expect(kept.length, `kept splits for ${lane.key}`).toBeGreaterThan(0);
+
+          for (const val of kept) {
+            const pos = uplot.valToPos(val, lane.key);
+            expect(pos).toBeGreaterThanOrEqual(band!.top - 1);
+            expect(pos).toBeLessThanOrEqual(band!.bottom + 1);
+          }
+
+          if (typeof axis!.values === "function") {
+            const formatted = (
+              axis!.values as (
+                u: uPlot,
+                splits: number[],
+              ) => Array<string | null>
+            )(uplot, kept);
+            expect(formatted.length).toBe(kept.length);
+            for (const str of formatted) {
+              expect(typeof str).toBe("string");
+              expect(str!.trim().length).toBeGreaterThan(0);
+              // Numeric tick value must parse as a valid number
+              expect(Number.isNaN(parseFloat(str!))).toBe(false);
+            }
+          }
+        }
+      }
+
+      // Check pixel presence in the tick number / mark strip (x between 25 and sLeft, excluding rotated title strip at x < 25)
+      function getTickStripYRange(
+        color: [number, number, number],
+        minX = 25,
+        maxX = sLeft,
+      ) {
+        const coords: number[] = [];
+        const ctx = composite.canvas.getContext("2d")!;
+        const imgData = ctx.getImageData(
+          0,
+          0,
+          composite.canvas.width,
+          composite.canvas.height,
+        ).data;
+        for (let y = 0; y < composite.canvas.height; y++) {
+          for (let x = minX; x < maxX; x++) {
+            const idx = (y * composite.canvas.width + x) * 4;
+            if (
+              Math.abs(imgData[idx]! - color[0]) <= 8 &&
+              Math.abs(imgData[idx + 1]! - color[1]) <= 8 &&
+              Math.abs(imgData[idx + 2]! - color[2]) <= 8
+            ) {
+              coords.push(y);
+            }
+          }
+        }
+        return {
+          minY: Math.min(...coords),
+          maxY: Math.max(...coords),
+          count: coords.length,
+        };
+      }
+
+      // 1. Ticks and tick numbers in the tick strip specifically (x in [25, sLeft])
+      const goldTickRange = getTickStripYRange(gold, 25, sLeft);
+      const cyanTickRange = getTickStripYRange(cyan, 25, sLeft);
+      const magentaTickRange = getTickStripYRange(magenta, 25, sLeft);
+      const greenTickRange = getTickStripYRange(green, 25, sLeft);
+
+      // Gold (Channel A) tick labels strictly in Lane 0
+      expect(goldTickRange.count).toBeGreaterThan(0);
+      expect(goldTickRange.minY).toBeGreaterThanOrEqual(sTop - 2);
+      expect(goldTickRange.maxY).toBeLessThanOrEqual(sTop + laneH + 2);
+
+      // Cyan (Channel B) tick labels strictly in Lane 1
+      expect(cyanTickRange.count).toBeGreaterThan(0);
+      expect(cyanTickRange.minY).toBeGreaterThanOrEqual(sTop + laneH - 2);
+      expect(cyanTickRange.maxY).toBeLessThanOrEqual(sTop + 2 * laneH + 2);
+
+      // Magenta (Ref-A) tick labels strictly in Lane 2
+      expect(magentaTickRange.count).toBeGreaterThan(0);
+      expect(magentaTickRange.minY).toBeGreaterThanOrEqual(
+        sTop + 2 * laneH - 2,
+      );
+      expect(magentaTickRange.maxY).toBeLessThanOrEqual(sTop + 3 * laneH + 2);
+
+      // Green (Ref-B) tick labels strictly in Lane 3
+      expect(greenTickRange.count).toBeGreaterThan(0);
+      expect(greenTickRange.minY).toBeGreaterThanOrEqual(sTop + 3 * laneH - 2);
+      expect(greenTickRange.maxY).toBeLessThanOrEqual(sTop + 4 * laneH + 2);
+
+      // 2. Full Y-axis strip (x in [0, sLeft]) including channel titles
+      const goldFullRange = getTickStripYRange(gold, 0, sLeft);
+      const cyanFullRange = getTickStripYRange(cyan, 0, sLeft);
+      const magentaFullRange = getTickStripYRange(magenta, 0, sLeft);
+      const greenFullRange = getTickStripYRange(green, 0, sLeft);
+
+      expect(goldFullRange.minY).toBeGreaterThanOrEqual(sTop - 2);
+      expect(goldFullRange.maxY).toBeLessThanOrEqual(sTop + laneH + 2);
+      expect(cyanFullRange.minY).toBeGreaterThanOrEqual(sTop + laneH - 2);
+      expect(cyanFullRange.maxY).toBeLessThanOrEqual(sTop + 2 * laneH + 2);
+      expect(magentaFullRange.minY).toBeGreaterThanOrEqual(
+        sTop + 2 * laneH - 2,
+      );
+      expect(magentaFullRange.maxY).toBeLessThanOrEqual(sTop + 3 * laneH + 2);
+      expect(greenFullRange.minY).toBeGreaterThanOrEqual(sTop + 3 * laneH - 2);
+      expect(greenFullRange.maxY).toBeLessThanOrEqual(sTop + 4 * laneH + 2);
     });
   });
 });
