@@ -36,15 +36,11 @@
  */
 
 import uPlot from "uplot";
-import {
-  displayKeyForChannel,
-  effectiveOffset,
-  type ChannelKey,
-} from "../channelDisplay";
+import { effectiveOffset, type ChannelKey } from "../channelDisplay";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 import { useReferenceStore } from "../../../state/referenceStore";
-import { refChannelName as toRefName } from "../../../state/referenceStore";
 import { useViewportStore } from "../../../state/viewportStore";
+import { getChannelCatalog } from "../../../capture/channelCatalog";
 import { resolveThemePalette } from "../themePalette";
 import { useThemeStore } from "../../../state/themeStore";
 import { usePaletteStore } from "../../../state/paletteStore";
@@ -54,6 +50,8 @@ import {
   MARKER_HIT_HALF_PX,
   type GroundFlag,
 } from "../groundFlags";
+import { cssPxRatio } from "../axesConfig";
+import { getLiveRenderState } from "../liveRenderState";
 import { useCursorStore } from "../../../state/cursorStore";
 import { findNearestSampleIndex } from "../../cursors/cursorPlugin";
 import { yScaleKey } from "../../../capture/channelUnits";
@@ -121,7 +119,6 @@ function nearestTrace(
   capture: ParsedCapture,
   point: { x: number; y: number },
 ): TraceHit | null {
-  const viewport = useViewportStore.getState();
   const reference = useReferenceStore.getState();
   const winner: { hit: TraceHit | null } = { hit: null };
   const consider = (hit: TraceHit | null): void => {
@@ -132,28 +129,12 @@ function nearestTrace(
       winner.hit = hit;
     }
   };
-  capture.channels.forEach((channel, index) => {
-    if (!viewport.activeChannels.includes(channel.name)) return;
-    const key = displayKeyForChannel(channel.name);
-    if (key) consider(nearestTraceProbe(u, capture, point, index + 1, key));
-  });
-  (reference.lanes ?? []).forEach((_lane, refIdx) => {
-    const raw = reference.capture?.channels[refIdx];
-    const name = raw ? toRefName(raw.name) : null;
-    if (!name || !reference.refActiveChannels.includes(name)) return;
-    const key = displayKeyForChannel(name);
-    if (key) {
-      consider(
-        nearestTraceProbe(
-          u,
-          capture,
-          point,
-          capture.channels.length + refIdx + 1,
-          key,
-        ),
-      );
-    }
-  });
+  const visible = getChannelCatalog(capture, {
+    referenceLaneCount: reference.lanes?.length ?? 0,
+  }).visibleLanes();
+  for (const ch of visible) {
+    consider(nearestTraceProbe(u, capture, point, ch.seriesIdx, ch.displayKey));
+  }
   const best = winner.hit;
   return best !== null && best.distance <= TRACE_SNAP_PX ? best : null;
 }
@@ -184,7 +165,7 @@ export function groundMarkerPlugin(
     if (!uplot) return 1;
     const scale = uplot.scales[scaleKey];
     if (!scale || scale.min == null || scale.max == null) return 1;
-    const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+    const pxRatio = cssPxRatio(uplot);
     const heightCss = uplot.bbox.height / pxRatio;
     const span = scale.max - scale.min;
     return heightCss > 0 && span > 0 ? span / heightCss : 1;
@@ -268,7 +249,7 @@ export function groundMarkerPlugin(
     if (!uplot) return [];
     const capture = options.getCapture();
     if (!capture) return [];
-    return computeGroundFlags(uplot, capture);
+    return computeGroundFlags(uplot, getLiveRenderState(capture));
   }
 
   /** Creates one interactive strip bound to a live scale key. */
@@ -382,7 +363,7 @@ export function groundMarkerPlugin(
 
   function syncStrips(): void {
     if (!uplot || !root) return;
-    const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+    const pxRatio = cssPxRatio(uplot);
     const plotTopCss = uplot.bbox.top / pxRatio;
     const markers = liveFlags();
     const live = new Set<ChannelKey>();

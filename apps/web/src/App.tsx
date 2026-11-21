@@ -13,6 +13,7 @@ import {
   useChannelNamesStore,
 } from "./state/channelNamesStore";
 import { useLaneLayoutStore } from "./state/laneLayoutStore";
+import { isReferenceChannelId } from "./capture/channelCatalog";
 import type { ChannelKey } from "./components/canvas/channelDisplay";
 import useNarrowViewport from "./hooks/useNarrowViewport";
 import { useDocumentTitle } from "./hooks/useDocumentTitle";
@@ -124,7 +125,7 @@ export default function App() {
   useEffect(() => {
     if (refCapture) return;
     const refKeys = Object.keys(useLaneLayoutStore.getState().weights).filter(
-      (key) => key.startsWith("Ref-"),
+      (key) => isReferenceChannelId(key),
     );
     if (refKeys.length > 0) {
       useLaneLayoutStore.getState().dropKeys(refKeys as ChannelKey[]);

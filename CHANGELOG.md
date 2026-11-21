@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.14.0] - 2026-11-21
+
+[v0.13.2...v0.14.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.13.2...v0.14.0)
+
+### Changed
+
+- Unify Primary and Reference channel identity behind `ChannelCatalog` (Ref #354):
+  - Introduced `ChannelCatalog` (`apps/web/src/capture/channelCatalog.ts`) as the single source of truth for primary and reference channel identity, `scaleKey`, `displayKey`, series indices, trace colors, visibility, and lane ordering.
+  - Replaced duplicated primary/reference branching and index arithmetic across canvas, export, toolbar, and popover modules with catalog lookups.
+- Unify live and PNG export uPlot chart specification and extract snapshot exporter (Ref #355):
+  - Unified live canvas and offscreen PNG export uPlot options, channel axes, adapter synchronization, and draw hooks behind a shared pure `buildChartSpec` / `ChartRenderState` seam with zero global store reads inside `axesConfig.ts`, `stackLaneDecorations.ts`, `groundFlags.ts`, and `pngSnapshot.ts`.
+  - Consolidated `cssPxRatio` into a single guarded shared helper and moved PNG snapshot assembly out of `Oscilloscope.tsx` into `apps/web/src/components/export/snapshotExporter.ts`.
+- Extract pure TypeScript `ViewportController` from `Oscilloscope` (Ref #356):
+  - Encapsulated the `uPlot` instance lifecycle, all private `uPlot` property mutations (`_pos`, `_size`, `_lpos`, `_found`, `_paths`, `_yAxisSizeCache`, and the `show: true` → hide initialization sequence), Quick-Stack transitions, remount view preservation, and display-lane buffers into a React-free `ViewportController` (`apps/web/src/components/canvas/viewportController.ts`).
+  - Absorbed `displayLaneCache.ts`, `seriesPathCache.ts`, and `channelLayout.ts`, removed obsolete `channelPalette.ts`, and reduced `Oscilloscope.tsx` to a thin React shell.
+
 ## [0.13.2] - 2026-10-30
 
 [v0.13.1...v0.13.2](https://github.com/openscope-ai/fvf-viewer/compare/v0.13.1...v0.13.2)

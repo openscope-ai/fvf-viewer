@@ -16,11 +16,13 @@ import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { laneBandCss, laneBandsCss } from "./stackLaneDecorations";
+import { getLiveRenderState } from "./liveRenderState";
 import {
   composePrintSnapshot,
   composeSnapshotCanvas,
   type PrintSeriesSpec,
 } from "../export/pngSnapshot";
+import { buildPrintRenderContext } from "../export/snapshotExporter";
 
 /**
  * Issue #250 acceptance: in Stack view each channel's y-axis column
@@ -249,7 +251,7 @@ describe("Stack-view lane-scoped axis columns + separators (issue #250)", () => 
     capture.channels.forEach((channel, index) => {
       const scaleKey = yScaleKey(index);
       const axis = axisOf(uplot, scaleKey);
-      const band = laneBandCss(uplot, capture, scaleKey);
+      const band = laneBandCss(uplot, getLiveRenderState(capture), scaleKey);
       expect(band, `band for ${channel.name}`).not.toBeNull();
 
       // Tick marks + labels: the axis filter nulls every split outside
@@ -343,7 +345,8 @@ describe("Stack-view lane-scoped axis columns + separators (issue #250)", () => 
     const uplot = await mountFullUi();
     const capture = useCaptureStore.getState().capture!;
     await enableStack();
-    const bandOf = (scaleKey: string) => laneBandCss(uplot, capture, scaleKey);
+    const bandOf = (scaleKey: string) =>
+      laneBandCss(uplot, getLiveRenderState(capture), scaleKey);
 
     const hideB = async (): Promise<void> => {
       act(() => {
@@ -378,7 +381,7 @@ describe("Stack-view lane-scoped axis columns + separators (issue #250)", () => 
       "[data-testid='oscilloscope-container']",
     ) as HTMLElement;
     const rect = container.getBoundingClientRect();
-    const bands = laneBandsCss(uplot, capture);
+    const bands = laneBandsCss(uplot, getLiveRenderState(capture));
     const bandA = bands.find((b) => b.key === "A")!;
     const pxRatio = pxRatioOf(uplot);
     const plotTop = uplot.bbox.top / pxRatio;
@@ -517,7 +520,10 @@ describe("Stack-view lane-scoped axis columns + separators (issue #250)", () => 
         legend: [],
         selected: null,
       },
-      { series },
+      {
+        series,
+        renderContext: buildPrintRenderContext(capture, series, "light"),
+      },
     );
     // Print path: light grid over the white composite background.
     expect(hasSeparator(print.canvas, print.pixelRatio, [230, 230, 230])).toBe(

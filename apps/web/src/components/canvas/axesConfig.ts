@@ -1,16 +1,42 @@
 /**
- * Shared uPlot axis geometry (issue #60, per-channel dynamic sizing: issue #119 / ADR 0011):
- * a single source of truth for axis sizes, paddings, and measured sizing used by
- * BOTH the live canvas (Oscilloscope.tsx) and the offscreen print render (pngSnapshot.ts),
- * so exported PNG snapshots share identical axis geometry with the live viewport by construction.
+ * Unified uPlot chart specification & shared axis geometry (issues #60, #119,
+ * #268, #355 / ADR 0010 Decision 5, ADR 0011 Decision 5):
  *
- * ADR 0011 Decision 5: The fixed 72px Y axis is replaced with a shared measured sizing
- * function (widest tick label + tight gaps + rotated title extent).
- * live canvas and PNG snapshot have zero dead space with short SI ticks and no overlap
- * with wide decimal ticks.
+ * Single source of truth consumed by BOTH the live canvas (`Oscilloscope.tsx`)
+ * and the offscreen PNG export (`pngSnapshot.ts`):
+ * - Shared geometry constants, guarded `cssPxRatio`, `plotHeightCss`,
+ *   `measureYAxisSize`, `computeYAxisSize`, and `syncUnifiedStackAxes`.
+ * - `syncChartAdapters`: single Quick-Stack lane-band → Y-axis adapter sync.
+ * - `buildChartSpec`: constructs uPlot scales, per-channel Y-axes, series with
+ *   `laneClippedPathBuilder`, and draw/setScale hooks from an explicit
+ *   `getRenderState()` getter (zero global Zustand store reads).
  */
 
 import uPlot from "uplot";
+import type { Options } from "uplot";
+import type { ChartRenderState } from "./chartRenderState";
+import {
+  drawStackLaneDecorations,
+  laneBandCss,
+  laneClippedPathBuilder,
+  laneTickFilter,
+  type LaneAxisTitle,
+} from "./stackLaneDecorations";
+import { computeGroundFlags, drawGroundFlags } from "./groundFlags";
+import {
+  drawT2Glyph,
+  drawTriggerGlyph,
+  drawTriggerLine,
+} from "./triggerMarker";
+import { slippedTriggerTime } from "./timeSlip";
+import type { TimeAxisAdapter } from "./timeAxis";
+import type { YAxisAdapter } from "./yAxis";
+import {
+  deleteYAxisSizeCacheEntry,
+  getYAxisSizeCache,
+  setUnifiedStackAxisGeometry,
+  setYAxisSizeCacheEntry,
+} from "./viewportController";
 
 export const AXIS_SIZE_X_PX = 30;
 /** Padding between tick marks and tick numbers (CSS px). */
@@ -46,8 +72,9 @@ export function axisFont(pxRatio: number = 1): string {
 }
 
 /**
- * Resolves the effective device pixel ratio for a uPlot instance (issues #250, #349).
- * Avoids uncommitted HTML5 canvas default 300px width blowing up offscreen ratios.
+ * Resolves the effective device pixel ratio for a uPlot instance (issues #250, #349, #355).
+ * Single guarded implementation shared across all renderers: avoids uncommitted
+ * HTML5 canvas default 300x150 dimensions blowing up offscreen ratios.
  */
 export function cssPxRatio(u?: uPlot | null): number {
   const uCtor = (u?.constructor as unknown as { pxRatio?: number }) ?? uPlot;
@@ -69,6 +96,20 @@ export function cssPxRatio(u?: uPlot | null): number {
   return fallback;
 }
 
+/** Effective plot-area height in CSS px, with a safe pre-layout fallback. */
+export function plotHeightCss(u: uPlot): number {
+  const pxRatio = cssPxRatio(u);
+  return u.bbox.height > 0
+    ? u.bbox.height / pxRatio
+    : Math.max(
+        (u.height > 0 ? u.height : 400) -
+          CANVAS_PADDING[0] -
+          CANVAS_PADDING[2] -
+          AXIS_SIZE_X_PX,
+        100,
+      );
+}
+
 let measurementContext: CanvasRenderingContext2D | null = null;
 function getMeasurementContext(): CanvasRenderingContext2D | null {
   if (!measurementContext && typeof document !== "undefined") {
@@ -80,15 +121,14 @@ function getMeasurementContext(): CanvasRenderingContext2D | null {
 
 /**
  * Shared measured sizing function for Y-axis columns:
- * computes width alloted for tick values, tick marks, and axis gap:
+ * computes width allotted for tick values, tick marks, and axis gap:
  *   size = ceil(widestTickWidth + tickSize + axisGap)
  * Combined with axis.labelSize (rotated title extent), total column width is:
  *   columnWidth = size + labelSize
- * Used by BOTH Oscilloscope.tsx and pngSnapshot.ts.
  */
 export function measureYAxisSize(
   values: (string | number | null)[] | null | undefined,
-  ctx?: CanvasRenderingContext2D | null,
+  _ctx?: CanvasRenderingContext2D | null,
   font: string = AXIS_FONT,
   tickSize: number = AXIS_TICK_SIZE_PX,
   gap: number = AXIS_GAP_PX,
@@ -123,73 +163,12 @@ export function measureYAxisSize(
   return Math.ceil(maxTickWidth + tickSize + gap);
 }
 
-export interface AxisColorSet {
-  axisText: string;
-  grid: string;
-  ticks: string;
-}
-
-export interface BuiltAxisOptions {
-  scale: string;
-  side?: number;
-  show?: boolean;
-  /** Optional tick formatter (uPlot axis `values`), e.g. time units. */
-  values?: (self: unknown, splits: number[]) => string[];
-  stroke: string | ((self: unknown, axisIdx: number) => string);
-  grid: {
-    show?: boolean;
-    stroke: string | ((self: unknown, axisIdx: number) => string);
-    width: number;
-  };
-  ticks: {
-    show?: boolean;
-    stroke: string | ((self: unknown, axisIdx: number) => string);
-    width: number;
-    size?: number;
-  };
-  font: string;
-  label:
-    | string
-    | ((
-        self: unknown,
-        axisIdx: number,
-        foundIncr: number,
-        foundSpace: number,
-      ) => string);
-  labelFont: string;
-  labelSize?: number;
-  size:
-    | number
-    | ((
-        self: unknown,
-        values: (string | number | null)[],
-        axisIdx?: number,
-        cycleNum?: number,
-      ) => number);
-  gap: number;
-  labelGap: number;
-}
-
-export interface YAxisSpec {
-  scaleKey: string;
-  label: string;
-  color: string;
-  show: boolean;
-  showGrid: boolean;
-  gridColor: string;
-  ticksColor: string;
-  values?: (self: unknown, splits: number[]) => string[];
-}
-
 /**
  * Dynamic sizing for Y-axis columns in both Overlay and Stack modes (issue #268):
  * - In Overlay mode: each visible channel has its own staggered column whose size
  *   is measured from its tick values.
  * - In Stack mode: all channel Y-axes horizontally align into a single column on
- *   the left edge of the canvas. To let uPlot allocate only a single column width
- *   (expanding the waveform plot area to the left) and align all axes to the graticule,
- *   the last active side-3 axis allocates the unified width (the widest active axis),
- *   while all earlier side-3 axes allocate size 0.
+ *   the left edge of the canvas.
  */
 export function computeYAxisSize(
   self: uPlot | null | undefined,
@@ -204,16 +183,11 @@ export function computeYAxisSize(
       if (ax) {
         ax.labelSize = AXIS_LABEL_SIZE_PX;
       }
-      (
-        self as unknown as { _yAxisSizeCache?: Map<string, number> }
-      )._yAxisSizeCache?.delete(scaleKey);
+      deleteYAxisSizeCacheEntry(self, scaleKey);
     }
     return measured;
   }
-  const cache = ((
-    self as unknown as { _yAxisSizeCache?: Map<string, number> }
-  )._yAxisSizeCache ??= new Map());
-  cache.set(scaleKey, measured);
+  const cache = setYAxisSizeCacheEntry(self, scaleKey, measured);
 
   // Stack mode: single column sized to the widest active lane axis.
   const unifiedSize = Math.max(
@@ -245,8 +219,7 @@ export function computeYAxisSize(
 export function syncUnifiedStackAxes(u: uPlot): void {
   const pxRatio = cssPxRatio(u);
   const plotLeftCss = u.bbox.left / pxRatio;
-  const cache = (u as unknown as { _yAxisSizeCache?: Map<string, number> })
-    ._yAxisSizeCache;
+  const cache = getYAxisSizeCache(u);
   const unifiedSize =
     cache && cache.size > 0
       ? Math.max(
@@ -255,105 +228,308 @@ export function syncUnifiedStackAxes(u: uPlot): void {
         )
       : Math.ceil(30 + AXIS_TICK_SIZE_PX + AXIS_GAP_PX);
 
-  for (let i = 1; i < u.axes.length; i++) {
-    const ax = u.axes[i] as
-      | {
-          side?: number;
-          show?: boolean;
-          _pos?: number;
-          _size?: number;
-          _lpos?: number;
-          labelSize?: number;
-        }
-      | undefined;
-    if (ax && ax.side === 3 && ax.show !== false) {
-      ax._pos = plotLeftCss;
-      ax._size = unifiedSize;
-      ax._lpos = plotLeftCss - unifiedSize;
-      ax.labelSize = AXIS_LABEL_SIZE_PX;
+  setUnifiedStackAxisGeometry(u, plotLeftCss, unifiedSize);
+}
+
+/**
+ * Syncs Y-axis SI unit adapters against the current uPlot instance, passing
+ * physical lane band fractions in Stack mode (issues #270, #355).
+ * Single source of truth shared by both live rendering and offscreen PNG export.
+ */
+export function syncChartAdapters(
+  u: uPlot,
+  state: ChartRenderState,
+  adapters: ReadonlyMap<number, YAxisAdapter>,
+): void {
+  const plotHeight = plotHeightCss(u);
+  for (const adapter of adapters.values()) {
+    if (state.stackMode) {
+      const band = laneBandCss(u, state, adapter.scaleKey);
+      if (band && plotHeight > 0) {
+        adapter.sync(u, {
+          laneFraction: (band.bottom - band.top) / plotHeight,
+          bandStart: band.top / plotHeight,
+        });
+        continue;
+      }
     }
+    adapter.sync(u);
   }
 }
 
 /**
- * Builds a per-channel Y axis option object with measured sizing.
+ * Syncs a single Y-axis adapter against an explicit bounds pair (pre-mount
+ * seeding before a uPlot instance exists).
  */
-export function buildYAxisOptions(
-  spec: YAxisSpec,
-  isStacked = false,
-): BuiltAxisOptions {
-  return {
-    scale: spec.scaleKey,
-    side: 3,
-    show: spec.show,
-    stroke: spec.color,
-    grid: {
-      show: spec.showGrid,
-      stroke: spec.gridColor,
-      width: 1,
-    },
-    ticks: {
-      show: true,
-      stroke: spec.ticksColor,
-      width: 1,
-      size: AXIS_TICK_SIZE_PX,
-    },
-    font: AXIS_FONT,
-    label: spec.label,
-    labelFont: AXIS_FONT,
-    labelSize: AXIS_LABEL_SIZE_PX,
-    gap: AXIS_GAP_PX,
-    labelGap: AXIS_LABEL_GAP_PX,
-    size: (self: unknown, values: (string | number | null)[]) =>
-      computeYAxisSize(self as uPlot, values, spec.scaleKey, isStacked),
-    values: spec.values,
+export function syncAdapterToBounds(
+  adapter: YAxisAdapter,
+  bounds: { min: number; max: number },
+  laneSpan?: { laneFraction: number; bandStart: number },
+): void {
+  const scaleLike = {
+    scales: { [adapter.scaleKey]: { min: bounds.min, max: bounds.max } },
+    axes: [],
   };
+  if (laneSpan) {
+    adapter.sync(scaleLike, laneSpan);
+  } else {
+    adapter.sync(scaleLike);
+  }
+}
+
+export interface BuildChartSpecInput {
+  readonly width: number;
+  readonly height: number;
+  readonly xBounds: { readonly min: number; readonly max: number };
+  readonly yBounds: ReadonlyMap<
+    string,
+    { readonly min: number; readonly max: number }
+  >;
+  readonly timeAxis: TimeAxisAdapter;
+  readonly yAdapters: ReadonlyMap<number, YAxisAdapter>;
+  readonly getRenderState: () => ChartRenderState;
+  /**
+   * When true (live canvas), every Y-axis is initialized with `show: true` so
+   * uPlot's `initAxis` configures default spacing/split functions (issue #338)
+   * and visibility is applied immediately after construction.
+   * When false (offscreen print), each axis's `show` mirrors `ch.visible`.
+   */
+  readonly initAllAxesShown?: boolean;
+  /** Scale key of the selected channel owning the horizontal graticule grid. */
+  readonly selectedScaleKey?: string | null;
+  /** Draw ground flags inside the chart-spec `draw` hook (offscreen print pass). */
+  readonly drawGroundFlagsInHook?: boolean;
+  /** Draw the File 2 T2 glyph inside the chart-spec `draw` hook (offscreen print pass). */
+  readonly drawT2InHook?: boolean;
+  readonly cursor?: Options["cursor"];
+  readonly legend?: Options["legend"];
+  readonly select?: Options["select"];
+  readonly plugins?: Options["plugins"];
+  readonly onSetScale?: (u: uPlot) => void;
+  readonly onSetSelect?: (u: uPlot) => void;
+  readonly onReady?: (u: uPlot) => void;
 }
 
 /**
- * Builds the X (time) and optional default Y axis options with shared geometry.
+ * Unified uPlot `Options` builder (issue #355, ADR 0010 Decision 5):
+ * constructs scales, X and per-channel Y axes, series with lane-clipped path
+ * builders, and shared draw/setScale hooks for both the live canvas and the
+ * offscreen PNG print renderer.
  */
-export function buildAxesOptions(
-  colors: AxisColorSet,
-  labels: { x: string; y: string },
-): [BuiltAxisOptions, BuiltAxisOptions] {
-  return [
-    {
-      scale: "x",
-      stroke: colors.axisText,
-      grid: { show: true, stroke: colors.grid, width: 1 },
-      ticks: {
-        show: true,
-        stroke: colors.ticks,
-        width: 1,
-        size: AXIS_TICK_SIZE_PX,
-      },
-      font: AXIS_FONT,
-      label: labels.x,
-      labelFont: AXIS_FONT,
-      size: AXIS_SIZE_X_PX,
-      gap: AXIS_GAP_PX,
-      labelGap: AXIS_LABEL_GAP_PX,
-    },
-    {
-      scale: "y",
-      side: 3,
-      stroke: colors.axisText,
-      grid: { show: true, stroke: colors.grid, width: 1 },
-      ticks: {
-        show: true,
-        stroke: colors.ticks,
-        width: 1,
-        size: AXIS_TICK_SIZE_PX,
-      },
-      font: AXIS_FONT,
-      label: labels.y,
-      labelFont: AXIS_FONT,
-      labelSize: AXIS_LABEL_SIZE_PX,
-      size: (_self: unknown, values: (string | number | null)[]) =>
-        measureYAxisSize(values),
-      gap: AXIS_GAP_PX,
-      labelGap: AXIS_LABEL_GAP_PX,
-    },
+export function buildChartSpec(input: BuildChartSpecInput): Options {
+  const {
+    width,
+    height,
+    xBounds,
+    yBounds,
+    timeAxis,
+    yAdapters,
+    getRenderState,
+    initAllAxesShown = false,
+    selectedScaleKey = null,
+    drawGroundFlagsInHook = false,
+    drawT2InHook = false,
+    cursor,
+    legend,
+    select,
+    plugins,
+    onSetScale,
+    onSetSelect,
+    onReady,
+  } = input;
+
+  const initialState = getRenderState();
+  const { catalog } = initialState;
+
+  // Left axes registered in reverse channel file order within each slot:
+  // primary channels innermost-to-outermost, then reference columns continuing leftward.
+  const orderedAxisChannels = [
+    ...[...catalog.primary].reverse(),
+    ...[...catalog.reference].reverse(),
   ];
+
+  return {
+    width,
+    height,
+    padding: CANVAS_PADDING,
+    ...(cursor !== undefined ? { cursor } : {}),
+    ...(legend !== undefined ? { legend } : {}),
+    ...(select !== undefined ? { select } : {}),
+    ...(plugins !== undefined ? { plugins } : {}),
+    scales: {
+      x: {
+        time: false,
+        auto: false,
+        min: xBounds.min,
+        max: xBounds.max,
+      },
+      ...Object.fromEntries(
+        catalog.channels.map((ch) => {
+          const bounds = yBounds.get(ch.scaleKey) ?? { min: -1, max: 1 };
+          return [
+            ch.scaleKey,
+            { auto: false, min: bounds.min, max: bounds.max },
+          ];
+        }),
+      ),
+    },
+    axes: [
+      {
+        scale: "x",
+        stroke: () => getRenderState().chrome.axisText,
+        grid: {
+          show: !initialState.chrome.omitGrid,
+          stroke: () => getRenderState().chrome.grid,
+          width: 1,
+        },
+        ticks: {
+          show: true,
+          stroke: () => getRenderState().chrome.ticks,
+          width: 1,
+          size: AXIS_TICK_SIZE_PX,
+        },
+        font: AXIS_FONT,
+        label: timeAxis.label,
+        labelFont: AXIS_FONT,
+        size: AXIS_SIZE_X_PX,
+        gap: AXIS_GAP_PX,
+        labelGap: AXIS_LABEL_GAP_PX,
+        values: timeAxis.values,
+      },
+      ...orderedAxisChannels.map((ch) => {
+        const adapter = yAdapters.get(ch.channelIndex);
+        const isSelected =
+          ch.slot === "primary" &&
+          (selectedScaleKey !== null
+            ? ch.scaleKey === selectedScaleKey
+            : ch.selected);
+        return {
+          scale: ch.scaleKey,
+          side: 3,
+          filter: (self: uPlot, splits: number[]) =>
+            laneTickFilter(self, getRenderState(), ch.scaleKey, splits),
+          show: initAllAxesShown ? true : ch.visible,
+          grid: {
+            show: isSelected && !initialState.chrome.omitGrid,
+            stroke: () => getRenderState().chrome.grid,
+            width: 1,
+            filter: (self: uPlot, splits: number[]) =>
+              laneTickFilter(self, getRenderState(), ch.scaleKey, splits),
+          },
+          ticks: {
+            show: true,
+            stroke: () => getRenderState().chrome.ticks,
+            width: 1,
+            size: AXIS_TICK_SIZE_PX,
+            filter: (self: uPlot, splits: number[]) =>
+              laneTickFilter(self, getRenderState(), ch.scaleKey, splits),
+          },
+          stroke: () => {
+            const state = getRenderState();
+            const liveCh = state.catalog.byScaleKey(ch.scaleKey) ?? ch;
+            return state.chrome.channelColor(liveCh);
+          },
+          font: AXIS_FONT,
+          label: adapter?.label ?? ch.axisQuantity,
+          labelFont: AXIS_FONT,
+          labelSize: AXIS_LABEL_SIZE_PX,
+          gap: AXIS_GAP_PX,
+          labelGap: AXIS_LABEL_GAP_PX,
+          size: (self: uPlot, values: (string | number | null)[]) =>
+            computeYAxisSize(
+              self,
+              values,
+              ch.scaleKey,
+              getRenderState().stackMode,
+            ),
+          values: (self: unknown, splits: number[]) =>
+            yAdapters.get(ch.channelIndex)?.values(self, splits) ??
+            splits.map((v) => (v == null ? null : String(v))),
+        };
+      }),
+    ],
+    series: [
+      { label: "Time" },
+      ...catalog.channels.map((ch) => ({
+        label: ch.displayName,
+        scale: ch.scaleKey,
+        stroke: initialState.chrome.channelStroke(ch),
+        width: 1.5,
+        points: { show: false },
+        show: ch.visible,
+        paths: laneClippedPathBuilder(ch.scaleKey, getRenderState),
+      })),
+    ],
+    hooks: {
+      drawClear: [
+        (u) => {
+          const state = getRenderState();
+          if (state.stackMode) {
+            syncUnifiedStackAxes(u);
+          }
+          if (state.chrome.fillBackground) {
+            u.ctx.save();
+            u.ctx.fillStyle = state.chrome.background;
+            u.ctx.fillRect(0, 0, u.bbox.width, u.bbox.height);
+            u.ctx.restore();
+          }
+        },
+      ],
+      drawAxes: [
+        (u) => {
+          const state = getRenderState();
+          drawTriggerLine(u, state.chrome.triggerAccent);
+        },
+      ],
+      draw: [
+        (u) => {
+          const state = getRenderState();
+          drawTriggerGlyph(
+            u,
+            state.chrome.triggerAccent,
+            state.chrome.triggerGlyphClear,
+          );
+          if (drawT2InHook && state.t2) {
+            drawT2Glyph(
+              u,
+              state.t2.accentColor,
+              state.chrome.triggerGlyphClear,
+              slippedTriggerTime(
+                state.capture.timestamps,
+                state.t2.timeSlipSamples,
+              ),
+            );
+          }
+          syncChartAdapters(u, state, yAdapters);
+          const laneTitles = new Map<string, LaneAxisTitle>();
+          state.catalog.channels.forEach((ch) => {
+            const adapter = yAdapters.get(ch.channelIndex);
+            if (!adapter) return;
+            laneTitles.set(ch.scaleKey, {
+              label: adapter.label,
+              color: state.chrome.channelColor(ch),
+            });
+          });
+          drawStackLaneDecorations(u, state, laneTitles);
+          if (drawGroundFlagsInHook) {
+            drawGroundFlags(
+              u,
+              computeGroundFlags(u, state),
+              state.chrome.groundFlagText,
+            );
+          }
+        },
+      ],
+      setScale: [
+        (u) => {
+          const state = getRenderState();
+          timeAxis.sync(u);
+          syncChartAdapters(u, state, yAdapters);
+          onSetScale?.(u);
+        },
+      ],
+      ...(onSetSelect ? { setSelect: [onSetSelect] } : {}),
+      ...(onReady ? { ready: [onReady] } : {}),
+    },
+  };
 }

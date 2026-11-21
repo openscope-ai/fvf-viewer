@@ -25,11 +25,10 @@ import {
   LANE_MIN_FRACTION,
   useLaneLayoutStore,
 } from "../../../state/laneLayoutStore";
-import {
-  LANE_HANDLE_HEIGHT_PX,
-  laneBandsCss,
-  visibleLaneChannels,
-} from "../stackLaneDecorations";
+import { LANE_HANDLE_HEIGHT_PX, laneBandsCss } from "../stackLaneDecorations";
+import { cssPxRatio } from "../axesConfig";
+import { getLiveRenderState } from "../liveRenderState";
+import { getChannelCatalog } from "../../../capture/channelCatalog";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 import { useViewportStore } from "../../../state/viewportStore";
 import { useReferenceStore } from "../../../state/referenceStore";
@@ -44,10 +43,14 @@ interface LaneKeyEntry {
 
 /** Maps the visible lanes to their channel keys (shared enumeration). */
 function laneChannelKeys(capture: ParsedCapture): LaneKeyEntry[] {
-  return visibleLaneChannels(capture).map(({ scaleKey, key }) => ({
-    scaleKey,
-    key,
-  }));
+  return getChannelCatalog(capture, {
+    referenceLaneCount: useReferenceStore.getState().lanes?.length ?? 0,
+  })
+    .visibleLanes()
+    .map(({ scaleKey, displayKey }) => ({
+      scaleKey,
+      key: displayKey,
+    }));
 }
 
 export function laneResizePlugin(options: {
@@ -144,7 +147,7 @@ export function laneResizePlugin(options: {
     const weights = useLaneLayoutStore.getState().weights;
     const effective = keys.map((key) => weights[key] ?? DEFAULT_LANE_WEIGHT);
     const totalWeight = effective.reduce((sum, weight) => sum + weight, 0);
-    const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+    const pxRatio = cssPxRatio(uplot);
     const plotHeightCss = uplot.bbox.height / pxRatio;
     // weightPerPx: moving 1 px shifts height fraction 1/plotHeight,
     // i.e. totalWeight/plotHeight weight units.
@@ -217,7 +220,7 @@ export function laneResizePlugin(options: {
     const capture = options.getCapture();
     if (!capture) return;
     const stacked = useChannelDisplayStore.getState().stackMode;
-    const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+    const pxRatio = cssPxRatio(uplot);
     const plotTopCss = uplot.bbox.top / pxRatio;
     const plotLeftCss = uplot.bbox.left / pxRatio;
     const plotWidthCss = uplot.bbox.width / pxRatio;
@@ -229,7 +232,7 @@ export function laneResizePlugin(options: {
     }
 
     const entries = laneChannelKeys(capture);
-    const bands = laneBandsCss(uplot, capture);
+    const bands = laneBandsCss(uplot, getLiveRenderState(capture));
     const live = new Set<number>();
     for (let i = 1; i < bands.length; i += 1) {
       live.add(i);

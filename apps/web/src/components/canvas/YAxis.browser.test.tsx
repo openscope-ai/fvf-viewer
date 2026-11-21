@@ -18,6 +18,7 @@ import { useViewportStore } from "../../state/viewportStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { drawStackLaneDecorations } from "./stackLaneDecorations";
+import { getLiveRenderState } from "./liveRenderState";
 import type { ParsedCapture } from "../../types/capture";
 
 (
@@ -527,7 +528,7 @@ describe("Stack mode Retina title rendering and physical lane SI unit derivation
       axes: uplot.axes,
     } as unknown as uPlot;
 
-    drawStackLaneDecorations(mockU, capture, titles);
+    drawStackLaneDecorations(mockU, getLiveRenderState(capture), titles);
     expect(fontDuringDraw).toBe("22px system-ui, -apple-system, sans-serif");
   });
 

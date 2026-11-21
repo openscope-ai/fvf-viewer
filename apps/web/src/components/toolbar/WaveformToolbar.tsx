@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
 import { useZoomHistoryStore } from "../../state/zoomHistoryStore";
-import { refChannelName, useReferenceStore } from "../../state/referenceStore";
+import { useReferenceStore } from "../../state/referenceStore";
 import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import {
@@ -33,6 +33,11 @@ import { useCursorStore } from "../../state/cursorStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useViewportStore, type ChannelTag } from "../../state/viewportStore";
+import {
+  getChannelCatalog,
+  useChannelCatalog,
+  type ChannelSlot,
+} from "../../capture/channelCatalog";
 import {
   effectiveColorForKey,
   effectiveTraceColor,
@@ -71,27 +76,8 @@ export default function WaveformToolbar({
   onResetView,
   className,
 }: WaveformToolbarProps) {
-  const captureChannels = useCaptureStore((state) => state.capture?.channels);
-  // Issue #96: File 2 reference channels render as Ref-A… badges with
-  // independent visibility and the full #204/#224 popover surface. The
-  // selector must return a stable reference (the capture object), with
-  // the name list memoized — a fresh array per notification would loop
-  // useSyncExternalStore re-renders.
-  const refCapture = useReferenceStore((state) => state.capture);
-  const refChannels = useMemo(
-    () =>
-      refCapture
-        ? refCapture.channels.map(
-            (c) => `Ref-${c.name.replace(/^Input\s+/i, "")}`,
-          )
-        : [],
-    [refCapture],
-  );
-  const refActiveChannels = useReferenceStore(
-    (state) => state.refActiveChannels,
-  );
+  const catalog = useChannelCatalog();
   const toggleRefChannel = useReferenceStore((state) => state.toggleRefChannel);
-  const refChannelGearRefs = useRef(new Map<string, HTMLButtonElement>());
   const activeChannels = useViewportStore((state) => state.activeChannels);
   const selectedChannel = useViewportStore((state) => state.selectedChannel);
   const cycleChannelBadge = useViewportStore(
@@ -130,11 +116,49 @@ export default function WaveformToolbar({
   const channelGearRefs = useRef(new Map<string, HTMLButtonElement>());
   const cursorGearRefs = useRef(new Map<string, HTMLButtonElement>());
 
-  const channelNames =
-    channelsOverride ?? captureChannels?.map((channel) => channel.name) ?? [];
   // Issue #64: per-file custom channel amendments + inline badge editing.
   const customNames = useChannelNamesStore((state) => state.names);
   const setName = useChannelNamesStore((state) => state.setName);
+
+  const badgeChannels = useMemo<
+    readonly {
+      id: string;
+      slot: ChannelSlot;
+      visible: boolean;
+      selected: boolean;
+      color: string;
+      customName: string | undefined;
+      badgeLabel: string;
+      paletteKey: PaletteKey | null;
+    }[]
+  >(() => {
+    if (!channelsOverride) {
+      return catalog.channels;
+    }
+    const overriddenPrimary = channelsOverride.map((name) => {
+      const visible = activeChannels.includes(name);
+      const customName = customNames[name];
+      return {
+        id: name,
+        slot: "primary" as const,
+        visible,
+        selected: visible && selectedChannel === name,
+        color: effectiveTraceColor(theme, customColors, name),
+        customName,
+        badgeLabel: customName ? `${name}: ${customName}` : name,
+        paletteKey: paletteKeyForChannel(name),
+      };
+    });
+    return [...overriddenPrimary, ...catalog.reference];
+  }, [
+    channelsOverride,
+    catalog,
+    activeChannels,
+    selectedChannel,
+    theme,
+    customColors,
+    customNames,
+  ]);
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
   const draftRef = useRef<string>("");
   const cancelledRef = useRef(false);
@@ -189,10 +213,10 @@ export default function WaveformToolbar({
     useChannelDisplayStore.getState().clearSolo();
 
     // Issue #263: Restore visibility for all channels in the loaded capture.
-    const capture = useCaptureStore.getState().capture;
+    const currentCatalog = getChannelCatalog();
     const allChannels =
-      channelsOverride ?? capture?.channels.map((channel) => channel.name);
-    if (allChannels && allChannels.length > 0) {
+      channelsOverride ?? currentCatalog.primary.map((ch) => ch.id);
+    if (allChannels.length > 0) {
       useViewportStore.getState().setActiveChannels(allChannels);
     }
 
@@ -202,7 +226,7 @@ export default function WaveformToolbar({
     if (refStore.capture) {
       refStore.setTimeSlip(0);
       refStore.setRefActiveChannels(
-        refStore.capture.channels.map((c) => refChannelName(c.name)),
+        currentCatalog.reference.map((ch) => ch.id),
       );
     }
 
@@ -227,16 +251,28 @@ export default function WaveformToolbar({
     >
       <div className="waveform-toolbar-channels">
         <span className="waveform-toolbar-label">Channels</span>
-        {channelNames.map((name) => {
-          const active = activeChannels.includes(name);
-          const selected = active && selectedChannel === name;
-          const color = effectiveTraceColor(theme, customColors, name);
-          const custom = customNames[name];
-          const displayLabel = custom ? `${name}: ${custom}` : name;
+        {badgeChannels.map((ch) => {
+          const name = ch.id;
+          const isRef = ch.slot === "reference";
+          const active = ch.visible;
+          const selected = ch.selected;
+          const color = ch.color;
+          const custom = ch.customName;
+          const displayLabel = ch.badgeLabel;
           const editing = editingChannel === name;
-          const paletteKey = paletteKeyForChannel(name);
+          const paletteKey = ch.paletteKey;
           const popoverKey = `channel:${name}`;
           const popoverOpen = openKey === popoverKey;
+
+          const groupAriaLabel = isRef
+            ? `Reference channel ${name}`
+            : `Channel ${name}`;
+          const toggleAriaLabel = isRef
+            ? `Toggle reference channel ${displayLabel} visibility (double-click to rename)`
+            : `Toggle channel ${displayLabel} visibility (double-click to rename)`;
+          const configureAriaLabel = isRef
+            ? `Configure reference channel ${name}`
+            : `Configure Channel ${name}`;
 
           const commitEdit = () => {
             // Escape cancels: the editor unmount fires a trailing blur,
@@ -289,15 +325,15 @@ export default function WaveformToolbar({
 
           // Non-palette channels (e.g. derived labels) keep a plain
           // toggle capsule: there is no per-key config to gear into.
-          if (!paletteKey) {
+          if (!isRef && !paletteKey) {
             return (
               <button
                 key={name}
                 type="button"
                 className="waveform-channel-badge waveform-channel-badge--plain"
                 aria-pressed={active}
-                aria-label={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
-                title={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
+                aria-label={toggleAriaLabel}
+                title={toggleAriaLabel}
                 data-testid={`channel-badge-${name}`}
                 onClick={() => cycleChannelBadge(name)}
               >
@@ -305,6 +341,8 @@ export default function WaveformToolbar({
               </button>
             );
           }
+
+          const effectivePaletteKey = (paletteKey ?? name) as PaletteKey;
 
           return (
             <span
@@ -315,7 +353,7 @@ export default function WaveformToolbar({
                 popoverOpen ? " waveform-channel-badge--open" : ""
               }`}
               role="group"
-              aria-label={`Channel ${name}`}
+              aria-label={groupAriaLabel}
               data-testid={`channel-badge-group-${name}`}
               style={{ "--badge-color": color } as React.CSSProperties}
             >
@@ -323,12 +361,13 @@ export default function WaveformToolbar({
                 type="button"
                 className="waveform-channel-badge-body"
                 aria-pressed={active}
-                aria-label={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
-                title={`Toggle channel ${displayLabel} visibility (double-click to rename)`}
+                aria-label={toggleAriaLabel}
+                title={toggleAriaLabel}
                 data-testid={`channel-badge-${name}`}
-                onClick={() => {
+                onClick={(event) => {
                   const now = Date.now();
                   if (
+                    (isRef && event.detail <= 1) ||
                     !preDoubleClickRef.current ||
                     preDoubleClickRef.current.channel !== name ||
                     now - preDoubleClickRef.current.timestamp > 400
@@ -348,7 +387,11 @@ export default function WaveformToolbar({
                   } else {
                     preDoubleClickRef.current.timestamp = now;
                   }
-                  cycleChannelBadge(name);
+                  if (isRef) {
+                    toggleRefChannel(name);
+                  } else {
+                    cycleChannelBadge(name);
+                  }
                 }}
                 onDoubleClick={() => {
                   // Restore the pre-double-click state so the 2 rapid clicks don't mutate state
@@ -356,11 +399,20 @@ export default function WaveformToolbar({
                     preDoubleClickRef.current &&
                     preDoubleClickRef.current.channel === name
                   ) {
-                    useViewportStore.setState({
-                      activeChannels: preDoubleClickRef.current.activeChannels,
-                      selectedChannel:
-                        preDoubleClickRef.current.selectedChannel,
-                    });
+                    if (isRef) {
+                      useReferenceStore
+                        .getState()
+                        .setRefActiveChannels(
+                          preDoubleClickRef.current.refActiveChannels,
+                        );
+                    } else {
+                      useViewportStore.setState({
+                        activeChannels:
+                          preDoubleClickRef.current.activeChannels,
+                        selectedChannel:
+                          preDoubleClickRef.current.selectedChannel,
+                      });
+                    }
                     preDoubleClickRef.current = null;
                   }
                   draftRef.current = custom ?? "";
@@ -384,8 +436,8 @@ export default function WaveformToolbar({
                 className="waveform-channel-badge-gear"
                 aria-haspopup="dialog"
                 aria-expanded={popoverOpen}
-                aria-label={`Configure Channel ${name}`}
-                title={`Configure Channel ${name}`}
+                aria-label={configureAriaLabel}
+                title={configureAriaLabel}
                 data-testid={`channel-gear-${name}`}
                 ref={(el) => {
                   if (el) channelGearRefs.current.set(name, el);
@@ -399,7 +451,7 @@ export default function WaveformToolbar({
                 <AnchoredPopover
                   openKey={popoverKey}
                   anchorEl={channelGearRefs.current.get(name) ?? null}
-                  ariaLabel={`Configure Channel ${name}`}
+                  ariaLabel={configureAriaLabel}
                   onClose={(refocusAnchor) => {
                     setOpenKey(null);
                     if (refocusAnchor) {
@@ -410,186 +462,12 @@ export default function WaveformToolbar({
                   <BadgeConfigPopover
                     target={{
                       kind: "channel",
-                      paletteKey,
+                      paletteKey: effectivePaletteKey,
                       channelName: name,
                     }}
                     onClose={() => {
                       setOpenKey(null);
                       channelGearRefs.current.get(name)?.focus();
-                    }}
-                  />
-                </AnchoredPopover>
-              )}
-            </span>
-          );
-        })}
-        {refChannels.map((name) => {
-          // Issue #96: reference badges reuse the #228 split-action chip
-          // chrome; visibility is independent from the primary set and
-          // selection stays a primary-channel concern.
-          const active = refActiveChannels.includes(name);
-          const color = effectiveTraceColor(theme, customColors, name);
-          const custom = customNames[name];
-          const displayLabel = custom ? `${name}: ${custom}` : name;
-          const editing = editingChannel === name;
-          const popoverKey = `channel:${name}`;
-          const popoverOpen = openKey === popoverKey;
-
-          const commitEdit = () => {
-            if (cancelledRef.current) {
-              cancelledRef.current = false;
-              setEditingChannel(null);
-              return;
-            }
-            setName(name, draftRef.current);
-            setEditingChannel(null);
-          };
-
-          if (editing) {
-            return (
-              <span
-                key={name}
-                className="waveform-channel-badge waveform-channel-badge--editing"
-                data-testid={`channel-badge-edit-${name}`}
-              >
-                <span className="waveform-channel-badge-prefix">{name}: </span>
-                <input
-                  type="text"
-                  autoFocus
-                  maxLength={CHANNEL_NAME_MAX_LENGTH}
-                  size={Math.max(6, CHANNEL_NAME_MAX_LENGTH - 8)}
-                  defaultValue={custom ?? ""}
-                  aria-label={`Custom name for channel ${name}`}
-                  data-testid={`channel-name-input-${name}`}
-                  onChange={(event) => {
-                    draftRef.current = event.target.value;
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitEdit();
-                    } else if (event.key === "Escape") {
-                      event.preventDefault();
-                      cancelledRef.current = true;
-                      setEditingChannel(null);
-                    }
-                    // Isolate keys so app-level handlers never fire.
-                    event.stopPropagation();
-                  }}
-                  onBlur={commitEdit}
-                />
-              </span>
-            );
-          }
-
-          return (
-            <span
-              key={name}
-              className={`waveform-channel-badge${
-                active ? " waveform-channel-badge--active" : ""
-              }${popoverOpen ? " waveform-channel-badge--open" : ""}`}
-              role="group"
-              aria-label={`Reference channel ${name}`}
-              data-testid={`channel-badge-group-${name}`}
-              style={{ "--badge-color": color } as React.CSSProperties}
-            >
-              <button
-                type="button"
-                className="waveform-channel-badge-body"
-                aria-pressed={active}
-                aria-label={`Toggle reference channel ${displayLabel} visibility (double-click to rename)`}
-                title={`Toggle reference channel ${displayLabel} visibility (double-click to rename)`}
-                data-testid={`channel-badge-${name}`}
-                onClick={(event) => {
-                  const now = Date.now();
-                  if (
-                    event.detail <= 1 ||
-                    !preDoubleClickRef.current ||
-                    preDoubleClickRef.current.channel !== name ||
-                    now - preDoubleClickRef.current.timestamp > 400
-                  ) {
-                    preDoubleClickRef.current = {
-                      channel: name,
-                      activeChannels: [
-                        ...useViewportStore.getState().activeChannels,
-                      ],
-                      selectedChannel:
-                        useViewportStore.getState().selectedChannel,
-                      refActiveChannels: [
-                        ...useReferenceStore.getState().refActiveChannels,
-                      ],
-                      timestamp: now,
-                    };
-                  } else {
-                    preDoubleClickRef.current.timestamp = now;
-                  }
-                  toggleRefChannel(name);
-                }}
-                onDoubleClick={() => {
-                  if (
-                    preDoubleClickRef.current &&
-                    preDoubleClickRef.current.channel === name
-                  ) {
-                    useReferenceStore
-                      .getState()
-                      .setRefActiveChannels(
-                        preDoubleClickRef.current.refActiveChannels,
-                      );
-                    preDoubleClickRef.current = null;
-                  }
-                  draftRef.current = custom ?? "";
-                  cancelledRef.current = false;
-                  setEditingChannel(name);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    draftRef.current = custom ?? "";
-                    cancelledRef.current = false;
-                    setEditingChannel(name);
-                  }
-                }}
-              >
-                {displayLabel}
-              </button>
-              <span className="badge-split-divider" aria-hidden="true" />
-              <button
-                type="button"
-                className="waveform-channel-badge-gear"
-                aria-haspopup="dialog"
-                aria-expanded={popoverOpen}
-                aria-label={`Configure reference channel ${name}`}
-                title={`Configure reference channel ${name}`}
-                data-testid={`channel-gear-${name}`}
-                ref={(el) => {
-                  if (el) refChannelGearRefs.current.set(name, el);
-                  else refChannelGearRefs.current.delete(name);
-                }}
-                onClick={() => setOpenKey(popoverOpen ? null : popoverKey)}
-              >
-                <GearIcon />
-              </button>
-              {popoverOpen && (
-                <AnchoredPopover
-                  openKey={popoverKey}
-                  anchorEl={refChannelGearRefs.current.get(name) ?? null}
-                  ariaLabel={`Configure reference channel ${name}`}
-                  onClose={(refocusAnchor) => {
-                    setOpenKey(null);
-                    if (refocusAnchor) {
-                      refChannelGearRefs.current.get(name)?.focus();
-                    }
-                  }}
-                >
-                  <BadgeConfigPopover
-                    target={{
-                      kind: "channel",
-                      paletteKey: name as PaletteKey,
-                      channelName: name,
-                    }}
-                    onClose={() => {
-                      setOpenKey(null);
-                      refChannelGearRefs.current.get(name)?.focus();
                     }}
                   />
                 </AnchoredPopover>

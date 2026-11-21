@@ -12,6 +12,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
 import { useReferenceStore } from "../../state/referenceStore";
+import { parseChannelId } from "../../capture/channelCatalog";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useCsvExportStore } from "../../state/csvExportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
@@ -66,8 +67,9 @@ export default function CsvExportButton() {
         } else if (settings.dataset === "reference") {
           const refCustomNames: Record<string, string> = {};
           for (const [tag, value] of Object.entries(customNames)) {
-            if (tag.startsWith("Ref-")) {
-              refCustomNames[tag.slice("Ref-".length)] = value;
+            const parsed = parseChannelId(tag);
+            if (parsed.slot === "reference") {
+              refCustomNames[parsed.rawTag] = value;
             }
           }
           blob = await exportCaptureCsv(

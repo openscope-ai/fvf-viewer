@@ -110,7 +110,7 @@ export function resolveTraceColor(
   channelName: string,
 ): string {
   const palette = resolveThemePalette(theme);
-  const clean = channelName.replace(/^Input\s+/i, "");
+  const clean = channelTag(channelName);
   return palette.traces[clean] ?? palette.traceFallback;
 }
 

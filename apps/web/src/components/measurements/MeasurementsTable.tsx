@@ -222,14 +222,9 @@ export default function MeasurementsTable({ capture }: MeasurementsTableProps) {
 
     for (const row of stats) {
       let ampSig: string;
-      const isRef = row.channelKey.startsWith("Ref-");
-      const isDerived = capture.derivedChannels.some(
-        (d) => d.label === row.channelKey,
-      );
-
-      if (isDerived) {
+      if (row.slot === "derived") {
         ampSig = `${capId}:${row.channelKey}:${gatingMode}:${effXMin}:${effXMax}:derived`;
-      } else if (isRef) {
+      } else if (row.slot === "reference") {
         const dispKey = displayKeyForChannel(row.channelKey);
         const inv = effectiveInverted(displayConfigs, dispKey);
         const scale = effectiveYScale(displayConfigs, dispKey);

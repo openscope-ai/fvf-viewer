@@ -17,7 +17,7 @@ import { useReferenceStore } from "../../state/referenceStore";
 import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
-import { stackLaneBoundsWeighted } from "./channelLayout";
+import { stackLaneBoundsWeighted } from "./viewportController";
 import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 
 /**

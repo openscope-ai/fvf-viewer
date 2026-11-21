@@ -45,9 +45,16 @@ export const CHANNEL_DISPLAY_KEYS: readonly ChannelKey[] = [
   "Ref-D",
 ];
 
+const REF_CHANNEL_KEY_SET: ReadonlySet<ChannelKey> = new Set([
+  "Ref-A",
+  "Ref-B",
+  "Ref-C",
+  "Ref-D",
+]);
+
 /** True for the File 2 reference channel keys (issue #96). */
 export function isRefChannelKey(key: ChannelKey): boolean {
-  return key.startsWith("Ref-");
+  return REF_CHANNEL_KEY_SET.has(key);
 }
 
 /** Persisted per-channel display record (absent field = default). */

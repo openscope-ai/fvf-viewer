@@ -19,7 +19,9 @@ import type { ParsedCapture } from "../../../types/capture";
 import { useViewportStore } from "../../../state/viewportStore";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 import { laneBandsCss } from "../stackLaneDecorations";
-import { stackLaneBoundsWeighted } from "../channelLayout";
+import { cssPxRatio } from "../axesConfig";
+import { getLiveRenderState } from "../liveRenderState";
+import { stackLaneBoundsWeighted } from "../viewportController";
 
 export interface PanZoomPluginOptions {
   /** Supplier for the parsed capture backing the plot. */
@@ -304,7 +306,7 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
     const factor = 0.15;
 
     if (isStacked) {
-      const bands = laneBandsCss(uplot, capture);
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
       const targetBand =
         bands.find((b) => yPx >= b.top && yPx <= b.bottom) ??
         bands[bands.length - 1];
@@ -321,8 +323,7 @@ export function panZoomPlugin(options: PanZoomPluginOptions): uPlot.Plugin {
       const nextMin = curVal - frac * nextSpan;
       const nextMax = curVal + (1 - frac) * nextSpan;
 
-      const pxRatio =
-        uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+      const pxRatio = cssPxRatio(uplot);
       const plotHeight = uplot.bbox.height / pxRatio;
       const bandStart = targetBand.top / plotHeight;
       const bandFraction = (targetBand.bottom - targetBand.top) / plotHeight;

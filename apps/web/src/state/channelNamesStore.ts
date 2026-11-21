@@ -6,6 +6,12 @@
  */
 
 import { create } from "zustand";
+import {
+  isReferenceChannelId,
+  makeChannelId,
+  normalizeChannelTag,
+  parseChannelId,
+} from "../capture/channelCatalog";
 
 export const CHANNEL_NAMES_STORAGE_KEY = "fvf.channel-names";
 
@@ -89,9 +95,10 @@ export function createChannelNamesStore() {
       const stored = readStoredNames();
       const slotNames: Record<string, string> = {};
       for (const [tag, value] of Object.entries(names)) {
-        if (isRef && tag.startsWith("Ref-")) {
-          slotNames[tag.slice("Ref-".length)] = value;
-        } else if (!isRef && !tag.startsWith("Ref-")) {
+        const parsed = parseChannelId(tag);
+        if (isRef && parsed.slot === "reference") {
+          slotNames[parsed.rawTag] = value;
+        } else if (!isRef && parsed.slot === "primary") {
           slotNames[tag] = value;
         }
       }
@@ -110,7 +117,7 @@ export function createChannelNamesStore() {
         set((state) => {
           const nextNames: Record<string, string> = {};
           for (const [tag, value] of Object.entries(state.names)) {
-            if (tag.startsWith("Ref-")) {
+            if (isReferenceChannelId(tag)) {
               nextNames[tag] = value;
             }
           }
@@ -119,7 +126,7 @@ export function createChannelNamesStore() {
           }
           const stored = readStoredNames();
           for (const [tag, value] of Object.entries(stored[fileKey] ?? {})) {
-            if (!tag.startsWith("Ref-")) {
+            if (!isReferenceChannelId(tag)) {
               nextNames[tag] = value;
             }
           }
@@ -132,7 +139,7 @@ export function createChannelNamesStore() {
         set((state) => {
           const nextNames: Record<string, string> = {};
           for (const [tag, value] of Object.entries(state.names)) {
-            if (!tag.startsWith("Ref-")) {
+            if (!isReferenceChannelId(tag)) {
               nextNames[tag] = value;
             }
           }
@@ -141,9 +148,9 @@ export function createChannelNamesStore() {
           }
           const stored = readStoredNames();
           for (const [tag, value] of Object.entries(stored[refFileKey] ?? {})) {
-            const refTag = tag.startsWith("Ref-")
+            const refTag = isReferenceChannelId(tag)
               ? tag
-              : `Ref-${tag.replace(/^Input\s+/i, "")}`;
+              : makeChannelId("reference", tag);
             nextNames[refTag] = value;
           }
           return {
@@ -153,7 +160,7 @@ export function createChannelNamesStore() {
         }),
       setName: (channel, raw) => {
         const amended = raw.trim().slice(0, CHANNEL_NAME_MAX_LENGTH);
-        const isRef = channel.startsWith("Ref-");
+        const isRef = isReferenceChannelId(channel);
         set((state) => {
           const names = { ...state.names };
           if (amended) {
@@ -166,7 +173,7 @@ export function createChannelNamesStore() {
         persistSlot(isRef);
       },
       clearName: (channel) => {
-        const isRef = channel.startsWith("Ref-");
+        const isRef = isReferenceChannelId(channel);
         set((state) => {
           if (!(channel in state.names)) return state;
           const names = { ...state.names };
@@ -208,7 +215,7 @@ export function formatReadoutChannelName(
   customName: string | null | undefined,
 ): string {
   const name = channelDisplayName(channel, label, customName);
-  return name.replace(/^Input\s+/i, "").trim();
+  return normalizeChannelTag(name);
 }
 
 /** Capture identity used for per-file persistence. */

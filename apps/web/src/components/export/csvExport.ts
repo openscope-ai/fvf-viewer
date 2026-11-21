@@ -17,6 +17,7 @@ import {
   normalizeUnit,
   splitUnit,
 } from "../../capture/channelUnits";
+import { makeChannelId } from "../../capture/channelCatalog";
 import { slipSeconds, slippedRefDisplayLane } from "../canvas/timeSlip";
 
 /** Rows materialized per synchronous chunk; bounded to keep the main thread responsive. */
@@ -321,7 +322,7 @@ export async function* generateCompositeCsvChunks(
   );
 
   const refCols = referenceCapture.channels.map((channel, idx) => {
-    const refTag = `Ref-${channel.name.replace(/^Input\s+/i, "")}`;
+    const refTag = makeChannelId("reference", channel.name);
     return {
       channel,
       header: `[File 2] ${channelDisplayName(channel.name, channel.label, customNames?.[refTag])}`,

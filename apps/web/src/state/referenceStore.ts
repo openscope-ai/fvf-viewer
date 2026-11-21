@@ -12,71 +12,12 @@
 
 import { create } from "zustand";
 import { parseCaptureBuffer, resampleToGrid } from "../workers/workerClient";
-import { buildDisplayData, yScaleKey } from "../capture/channelUnits";
+import { buildDisplayData } from "../capture/channelUnits";
+import { makeChannelId } from "../capture/channelCatalog";
 import { useCaptureStore, type CaptureError } from "./captureStore";
 import { captureFileKey, useChannelNamesStore } from "./channelNamesStore";
 import { useChannelDisplayStore } from "./channelDisplayStore";
 import type { ParseState, ParsedCapture } from "../types/capture";
-
-/** Display name of a File 2 channel: `Ref-` + its original tag. */
-export function refChannelName(channelName: string): string {
-  return `Ref-${channelName.replace(/^Input\s+/i, "")}`;
-}
-
-/**
- * Resolves a display channel name to its WaveformChannel across both
- * slots: primary names ("A"…"D") check File 1 first; `Ref-X` names strip
- * the prefix and resolve against File 2 (issue #96 — the popover stats
- * and display-unit lookups use this).
- */
-export function findChannelByName(name: string): {
-  channel: import("../types/capture").WaveformChannel;
-  index: number;
-  /** The capture owning the channel (File 1 or the File 2 reference). */
-  capture: ParsedCapture;
-} | null {
-  const primary = useCaptureStore.getState().capture;
-  if (primary) {
-    const index = primary.channels.findIndex((c) => c.name === name);
-    if (index >= 0) {
-      return { channel: primary.channels[index]!, index, capture: primary };
-    }
-  }
-  if (name.startsWith("Ref-")) {
-    const raw = name.slice("Ref-".length);
-    const reference = useReferenceStore.getState().capture;
-    if (reference) {
-      const index = reference.channels.findIndex(
-        (c) => c.name === raw || c.name.replace(/^Input\s+/i, "") === raw,
-      );
-      if (index >= 0) {
-        return {
-          channel: reference.channels[index]!,
-          index,
-          capture: reference,
-        };
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * The live uPlot scale key for a display channel name: `yN` for primary
- * channels and `y(base+N)` for reference channels, which render as
- * trailing series after the full primary set (issue #96).
- */
-export function channelScaleKeyFor(name: string): string | null {
-  const primary = useCaptureStore.getState().capture;
-  const base = primary ? primary.channels.length : 0;
-  if (name.startsWith("Ref-")) {
-    const resolved = findChannelByName(name);
-    if (!resolved || resolved.capture === primary) return null;
-    return yScaleKey(base + resolved.index);
-  }
-  const index = primary?.channels.findIndex((c) => c.name === name) ?? -1;
-  return index >= 0 ? yScaleKey(index) : null;
-}
 
 export interface ReferenceStoreState {
   /** Raw parsed File 2 capture (physical buffers, own time axis). */
@@ -224,7 +165,7 @@ export function createReferenceStore() {
           fileName,
           lanes,
           refActiveChannels: reference.channels.map((channel) =>
-            refChannelName(channel.name),
+            makeChannelId("reference", channel.name),
           ),
           parseState: "success",
           error: null,

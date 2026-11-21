@@ -26,15 +26,9 @@ import {
   effectivePerDiv,
 } from "../../canvas/channelDisplay";
 import type { PaletteKey } from "../../canvas/themePalette";
+import { cssPxRatio } from "../../canvas/axesConfig";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
-import {
-  channelScaleKeyFor,
-  findChannelByName,
-} from "../../../state/referenceStore";
-import {
-  getPhysicalChannelUnit,
-  splitUnit,
-} from "../../../capture/channelUnits";
+import { getChannelCatalog } from "../../../capture/channelCatalog";
 
 /** Drag distance (px) before a press becomes a scrub. */
 const SCRUB_ACTIVATION_PX = 3;
@@ -222,7 +216,7 @@ function liveUplot(): uPlot | null {
 
 /** Plot height in CSS px (u.bbox is device px). */
 function plotHeightCss(u: uPlot): number {
-  const instancePxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+  const instancePxRatio = cssPxRatio(u);
   return u.bbox.height / instancePxRatio;
 }
 
@@ -249,12 +243,10 @@ export function ChannelDisplaySection({
 
   // The offset is expressed in the channel's own axis unit (volts for the
   // volt channels; "V readout" in the issue text is the volt-channel
-  // case), resolved across both slots (issue #96: Ref-X reads File 2).
-  const resolved = findChannelByName(channelName);
-  const scaleKey = channelScaleKeyFor(channelName);
-  const unit = resolved
-    ? splitUnit(getPhysicalChannelUnit(resolved.capture, resolved.index)).base
-    : "V";
+  // case), resolved across both slots via ChannelCatalog.
+  const resolved = getChannelCatalog().byId(channelName);
+  const scaleKey = resolved?.scaleKey ?? null;
+  const unit = resolved ? resolved.baseUnit : "V";
 
   // Derived read-only ≈ unit/Div readout: recomputed on render (scale%
   // changes re-render) and re-read from the live plot on a short interval

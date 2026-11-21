@@ -25,20 +25,23 @@
 import uPlot from "uplot";
 import { slippedTriggerTime, slippedRefDisplayLane } from "../timeSlip";
 import {
-  displayKeyForChannel,
   effectiveInverted,
   effectiveOffset,
   effectiveYScale,
 } from "../channelDisplay";
-import { refChannelName as toRefName } from "../../../state/referenceStore";
+import { getChannelCatalog } from "../../../capture/channelCatalog";
 import { useReferenceStore } from "../../../state/referenceStore";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 import { effectiveTraceColor, resolveThemePalette } from "../themePalette";
 import { useThemeStore } from "../../../state/themeStore";
 import { usePaletteStore } from "../../../state/paletteStore";
 import { findNearestSampleIndex } from "../../cursors/cursorPlugin";
-import { invalidateSeriesPaths } from "../seriesPathCache";
+import { areAxesReady, invalidateSeriesPaths } from "../viewportController";
+import { cssPxRatio } from "../axesConfig";
+import { drawT2Glyph } from "../triggerMarker";
 import type { ParsedCapture } from "../../../types/capture";
+
+export { drawT2Glyph };
 
 export interface TimeSlipPluginOptions {
   getCapture: () => ParsedCapture | null;
@@ -55,76 +58,9 @@ function t2XDev(u: uPlot, t2Time: number): number | null {
   if (xMin == null || xMax == null || t2Time < xMin || t2Time > xMax) {
     return null;
   }
-  const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+  const pxRatio = cssPxRatio(u);
   const plotLeftCss = u.bbox.left / pxRatio;
   return plotLeftCss + u.valToPos(t2Time, "x");
-}
-
-/**
- * Falling-edge T₂ glyph (issue #97): the distinct secondary trigger —
- * a high-to-low step with a downward arrow — riding the top graticule
- * border immediately above u.bbox.top, stroked in the given accent.
- * Mirrors drawTriggerGlyph's #85 geometry with the edge inverted.
- */
-export function drawT2Glyph(
-  u: uPlot,
-  accentColor: string,
-  backgroundColor: string,
-  t2Time: number,
-): void {
-  const xCss = t2XDev(u, t2Time);
-  if (xCss == null) return;
-
-  const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
-  const cx = Math.round(xCss * pxRatio - 0.5) + 0.5;
-  const topDev = u.bbox.top;
-  const baseY = topDev;
-  const midY = topDev - 6 * pxRatio;
-  const arrowTipY = topDev - 12 * pxRatio;
-  const step = 1.75 * pxRatio;
-  const halfWidth = 12 * pxRatio;
-
-  u.ctx.save();
-  u.ctx.strokeStyle = accentColor;
-  u.ctx.fillStyle = accentColor;
-  u.ctx.lineWidth = step;
-  u.ctx.lineJoin = "miter";
-
-  // Clear zone strictly above the top graticule border (#85 rule).
-  const pad = 2.5 * pxRatio;
-  const zoneHalf = halfWidth + pad;
-  const zoneL = Math.round(cx - zoneHalf);
-  const zoneR = Math.round(cx + zoneHalf);
-  const zoneT = Math.max(0, Math.round(arrowTipY - pad));
-  const zoneB = Math.round(topDev - pxRatio);
-  if (zoneB > zoneT) {
-    u.ctx.fillStyle = backgroundColor;
-    u.ctx.fillRect(zoneL, zoneT, zoneR - zoneL, zoneB - zoneT);
-    u.ctx.fillStyle = accentColor;
-  }
-
-  // High-to-low falling step: high level, falling edge, low level.
-  u.ctx.beginPath();
-  u.ctx.moveTo(cx - halfWidth, midY);
-  u.ctx.lineTo(cx, midY);
-  u.ctx.lineTo(cx, baseY);
-  u.ctx.lineTo(cx + halfWidth, baseY);
-  u.ctx.stroke();
-
-  // Downward arrow riding the falling edge, collinearly aligned at cx.
-  const headWidth = 3.5 * pxRatio;
-  u.ctx.beginPath();
-  u.ctx.moveTo(cx, baseY);
-  u.ctx.lineTo(cx, arrowTipY + headWidth);
-  u.ctx.stroke();
-  u.ctx.beginPath();
-  u.ctx.moveTo(cx, arrowTipY);
-  u.ctx.lineTo(cx - headWidth, arrowTipY + headWidth);
-  u.ctx.lineTo(cx + headWidth, arrowTipY + headWidth);
-  u.ctx.closePath();
-  u.ctx.fill();
-
-  u.ctx.restore();
 }
 
 /** Resolves the T₂ accent: the Ref-A secondary palette identity. */
@@ -212,38 +148,35 @@ export function timeSlipPlugin(options: TimeSlipPluginOptions): uPlot.Plugin {
     const reference = useReferenceStore.getState();
     const lanes = reference.lanes;
     if (!lanes) return;
-    const refNames = reference.capture
-      ? reference.capture.channels.map((c) => toRefName(c.name))
-      : [];
+    const catalog = getChannelCatalog(capture, {
+      referenceLaneCount: lanes.length,
+    });
     const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
     const instance = uplot;
     const writeLanes = () => {
-      lanes.forEach((lane, refIdx) => {
-        const refKey = displayKeyForChannel(refNames[refIdx] ?? "");
-        let buffer = scratch.get(refIdx);
+      catalog.reference.forEach((ch) => {
+        const lane = lanes[ch.slotIndex];
+        if (!lane) return;
+        let buffer = scratch.get(ch.slotIndex);
         if (!buffer || buffer.length !== lane.length) {
           buffer = new Float32Array(lane.length);
-          scratch.set(refIdx, buffer);
+          scratch.set(ch.slotIndex, buffer);
         }
-        const seriesIdx = capture.channels.length + refIdx + 1;
         // Issue #245: clear the stale Path2D cache so each drag frame
         // repaints the slipped reference geometry (uPlot only rebuilds
         // paths whose cache is null; the lane swap alone is invisible).
-        invalidateSeriesPaths(instance, seriesIdx);
-        instance.data[seriesIdx] = slippedRefDisplayLane(
+        invalidateSeriesPaths(instance, ch.seriesIdx);
+        instance.data[ch.seriesIdx] = slippedRefDisplayLane(
           lane,
           reference.timeSlipSamples,
-          effectiveYScale(displayConfigs, refKey),
-          effectiveOffset(displayConfigs, refKey),
-          effectiveInverted(displayConfigs, refKey),
+          effectiveYScale(displayConfigs, ch.displayKey),
+          effectiveOffset(displayConfigs, ch.displayKey),
+          effectiveInverted(displayConfigs, ch.displayKey),
           buffer,
         );
       });
     };
-    const axesReady = instance.axes.every(
-      (axis) => (axis as unknown as { _found?: unknown })._found != null,
-    );
-    if (axesReady) {
+    if (areAxesReady(instance)) {
       instance.batch(writeLanes);
     } else {
       writeLanes();
@@ -268,7 +201,7 @@ export function timeSlipPlugin(options: TimeSlipPluginOptions): uPlot.Plugin {
       hitStrip.style.display = "none";
       return;
     }
-    const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+    const pxRatio = cssPxRatio(uplot);
     const topCss = uplot.bbox.top / pxRatio;
     hitStrip.style.display = "block";
     hitStrip.style.left = `${Math.round(xCss - T2_HIT_WIDTH_PX / 2)}px`;

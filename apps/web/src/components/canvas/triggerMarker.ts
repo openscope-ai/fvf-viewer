@@ -25,6 +25,7 @@
  */
 
 import type uPlot from "uplot";
+import { cssPxRatio } from "./axesConfig";
 
 /** Glyph geometry in CSS px (drawn in the top margin above the plot area). */
 export const GLYPH_HALF_WIDTH_PX = 12;
@@ -41,7 +42,7 @@ function triggerXDev(u: uPlot): number | null {
   if (xMin == null || xMax == null || 0 < xMin || 0 > xMax) {
     return null; // t = 0 outside the visible window: hide cleanly
   }
-  const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+  const pxRatio = cssPxRatio(u);
   const plotLeftCss = u.bbox.left / pxRatio;
   // Snap to the device-pixel grid (0.5 offset centers a 1px stroke on one
   // pixel column) so the line renders crisp instead of antialiasing across
@@ -59,7 +60,7 @@ export function drawTriggerLine(u: uPlot, accentColor: string): void {
   const xDev = triggerXDev(u);
   if (xDev == null) return;
 
-  const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+  const pxRatio = cssPxRatio(u);
   const topDev = u.bbox.top;
   const bottomDev = u.bbox.top + u.bbox.height;
 
@@ -92,7 +93,7 @@ export function drawTriggerGlyph(
   const xDev = triggerXDev(u);
   if (xDev == null) return;
 
-  const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+  const pxRatio = cssPxRatio(u);
   const topDev = u.bbox.top;
   const cx = xDev;
   const baseY = topDev;
@@ -141,6 +142,78 @@ export function drawTriggerGlyph(
   u.ctx.moveTo(arrowX, arrowTipY);
   u.ctx.lineTo(arrowX - headWidth, arrowTipY + headWidth);
   u.ctx.lineTo(arrowX + headWidth, arrowTipY + headWidth);
+  u.ctx.closePath();
+  u.ctx.fill();
+
+  u.ctx.restore();
+}
+
+/**
+ * Falling-edge T₂ glyph (issue #97): the distinct secondary trigger —
+ * a high-to-low step with a downward arrow — riding the top graticule
+ * border immediately above u.bbox.top, stroked in the given accent.
+ * Mirrors drawTriggerGlyph's #85 geometry with the edge inverted.
+ */
+export function drawT2Glyph(
+  u: uPlot,
+  accentColor: string,
+  backgroundColor: string,
+  t2Time: number,
+): void {
+  const xMin = u.scales.x?.min;
+  const xMax = u.scales.x?.max;
+  if (xMin == null || xMax == null || t2Time < xMin || t2Time > xMax) {
+    return;
+  }
+
+  const pxRatio = cssPxRatio(u);
+  const plotLeftCss = u.bbox.left / pxRatio;
+  const xCss = plotLeftCss + u.valToPos(t2Time, "x");
+  const cx = Math.round(xCss * pxRatio - 0.5) + 0.5;
+  const topDev = u.bbox.top;
+  const baseY = topDev;
+  const midY = topDev - 6 * pxRatio;
+  const arrowTipY = topDev - 12 * pxRatio;
+  const step = GLYPH_STROKE_PX * pxRatio;
+  const halfWidth = GLYPH_HALF_WIDTH_PX * pxRatio;
+
+  u.ctx.save();
+  u.ctx.strokeStyle = accentColor;
+  u.ctx.fillStyle = accentColor;
+  u.ctx.lineWidth = step;
+  u.ctx.lineJoin = "miter";
+
+  // Clear zone strictly above the top graticule border (#85 rule).
+  const pad = CLEAR_PAD_PX * pxRatio;
+  const zoneHalf = halfWidth + pad;
+  const zoneL = Math.round(cx - zoneHalf);
+  const zoneR = Math.round(cx + zoneHalf);
+  const zoneT = Math.max(0, Math.round(arrowTipY - pad));
+  const zoneB = Math.round(topDev - pxRatio);
+  if (zoneB > zoneT) {
+    u.ctx.fillStyle = backgroundColor;
+    u.ctx.fillRect(zoneL, zoneT, zoneR - zoneL, zoneB - zoneT);
+    u.ctx.fillStyle = accentColor;
+  }
+
+  // High-to-low falling step: high level, falling edge, low level.
+  u.ctx.beginPath();
+  u.ctx.moveTo(cx - halfWidth, midY);
+  u.ctx.lineTo(cx, midY);
+  u.ctx.lineTo(cx, baseY);
+  u.ctx.lineTo(cx + halfWidth, baseY);
+  u.ctx.stroke();
+
+  // Downward arrow riding the falling edge, collinearly aligned at cx.
+  const headWidth = 3.5 * pxRatio;
+  u.ctx.beginPath();
+  u.ctx.moveTo(cx, baseY);
+  u.ctx.lineTo(cx, arrowTipY + headWidth);
+  u.ctx.stroke();
+  u.ctx.beginPath();
+  u.ctx.moveTo(cx, arrowTipY);
+  u.ctx.lineTo(cx - headWidth, arrowTipY + headWidth);
+  u.ctx.lineTo(cx + headWidth, arrowTipY + headWidth);
   u.ctx.closePath();
   u.ctx.fill();
 

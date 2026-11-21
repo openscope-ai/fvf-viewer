@@ -14,52 +14,23 @@ import type {
   ReadoutSnapshotRow,
 } from "../cursors/readoutSnapshot";
 import {
-  AXIS_FONT,
-  AXIS_GAP_PX,
-  AXIS_LABEL_GAP_PX,
-  AXIS_LABEL_SIZE_PX,
-  AXIS_SIZE_X_PX,
-  AXIS_TICK_SIZE_PX,
-  CANVAS_PADDING,
-  computeYAxisSize,
+  buildChartSpec,
   cssPxRatio,
-  syncUnifiedStackAxes,
+  syncChartAdapters,
 } from "../canvas/axesConfig";
-import { drawTriggerGlyph, drawTriggerLine } from "../canvas/triggerMarker";
-import { computeGroundFlags, drawGroundFlags } from "../canvas/groundFlags";
-import {
-  drawStackLaneDecorations,
-  laneBandCss,
-  laneClippedPathBuilder,
-  laneTickFilter,
-  type LaneAxisTitle,
-} from "../canvas/stackLaneDecorations";
-import {
-  displayKeyForChannel,
-  type ChannelKey,
-} from "../canvas/channelDisplay";
+import type { ChartRenderState, LaneWeights } from "../canvas/chartRenderState";
+import type { ChannelDisplayConfigs } from "../canvas/channelDisplay";
 import {
   createTimeAxisAdapter,
   type TimeAxisUnitKey,
 } from "../canvas/timeAxis";
 import type { LineStyle } from "../../state/cursorDisplayStore";
-import { useChannelDisplayStore } from "../../state/channelDisplayStore";
-import { useChannelNamesStore } from "../../state/channelNamesStore";
-import {
-  refChannelName as toRefName,
-  useReferenceStore,
-} from "../../state/referenceStore";
-import { usePaletteStore } from "../../state/paletteStore";
-import { effectiveTraceColor } from "../canvas/themePalette";
-import { drawT2Glyph } from "../canvas/plugins/timeSlipPlugin";
-import { slippedTriggerTime } from "../canvas/timeSlip";
 import { createYAxisAdapter, type YAxisAdapter } from "../canvas/yAxis";
+import { buildDisplayData, yScaleKey } from "../../capture/channelUnits";
 import {
-  buildDisplayData,
-  getPhysicalChannelUnit,
-  splitUnit,
-  yScaleKey,
-} from "../../capture/channelUnits";
+  buildChannelCatalog,
+  type ChannelCatalog,
+} from "../../capture/channelCatalog";
 
 export interface SnapshotOverlayState {
   /** Effective (theme + user override) cursor colors. */
@@ -217,8 +188,7 @@ export function composeSnapshotCanvas(
   // so it converts back to CSS px using the instance's own ratio — not the
   // export pixelRatio (they differ when exporting above the live dpr).
   const bbox = uplot.bbox;
-  const instancePxRatio =
-    uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+  const instancePxRatio = cssPxRatio(uplot);
   const plotLeft = bbox.left / instancePxRatio;
   const plotTop = bbox.top / instancePxRatio;
   const plotWidth = bbox.width / instancePxRatio;
@@ -545,27 +515,37 @@ const RENDER_CHROME = {
 
 export type RenderPalette = keyof typeof RENDER_CHROME;
 
+/** Frozen render context injected by the caller so `pngSnapshot.ts` reads zero Zustand stores. */
+export interface PrintRenderContext {
+  readonly catalog: ChannelCatalog;
+  readonly stackMode: boolean;
+  readonly laneWeights: LaneWeights;
+  readonly displayConfigs: ChannelDisplayConfigs;
+  readonly refLanes?: readonly Float32Array[];
+  readonly t2?: {
+    readonly timeSlipSamples: number;
+    readonly accentColor: string;
+  } | null;
+}
+
 export interface PrintComposeOptions extends SnapshotOptions {
   /** Per-channel strokes for the render (theme-resolved by the caller). */
   series: PrintSeriesSpec[];
   /**
    * Issue #252: render palette — "light" keeps the historical print
-   * pass verbatim; "dark" renders the dark screen palette offscreen
-   * (needed for transparent backgrounds and grid-excluded dark
-   * exports, whose pixels cannot come from the baked live raster).
+   * pass verbatim; "dark" renders the dark screen palette offscreen.
    */
   palette?: RenderPalette;
   /** Issue #252: omit the graticule grid (on-screen view untouched). */
   omitGrid?: boolean;
+  /** Explicit frozen render context (falls back to a pure Overlay primary/series catalog). */
+  renderContext?: PrintRenderContext;
 }
 
 /**
- * Issue #39: composes a print-friendly (white background, dark graticule,
- * contrast-adapted traces) snapshot WITHOUT touching the live viewport. A
- * temporary offscreen uPlot instance renders the same data at the same
- * viewport bounds with the light palette; the standard compositing pass then
- * re-draws cursor/badge/legend overlays on top at the requested pixel ratio.
- * The temporary instance is destroyed even on failure.
+ * Issue #39/#355: composes a print-friendly (or dark/transparent/gridless)
+ * offscreen snapshot WITHOUT touching the live viewport, using the same
+ * `buildChartSpec` and `syncChartAdapters` module as `Oscilloscope.tsx`.
  */
 export async function composePrintSnapshot(
   liveUplot: uPlot,
@@ -574,8 +554,6 @@ export async function composePrintSnapshot(
   options: PrintComposeOptions,
 ): Promise<ComposedSnapshot> {
   const uPlotCtor = (await import("uplot")).default;
-  // Issue #63: the print render adopts the live viewport's time unit so
-  // exported PNGs match the on-screen axis scaling.
   const printTimeAxis = createTimeAxisAdapter();
 
   const liveX = liveUplot.scales.x;
@@ -583,20 +561,39 @@ export async function composePrintSnapshot(
     throw new Error("live viewport scales are not initialized");
   }
 
-  const refState = useReferenceStore.getState();
-  const refLanes = refState.lanes ?? [];
-  // Issue #333: include File 2 reference channels and their Y-axis columns
-  // in offscreen print/light/transparent/gridless exports. Also honor any
-  // trailing reference series passed explicitly via options.series even when
-  // useReferenceStore is empty (direct unit/browser callers).
+  const refLanes = options.renderContext?.refLanes ?? [];
   const trailingSeriesCount = Math.max(
     refLanes.length,
     Math.max(0, options.series.length - capture.channels.length),
   );
-  const totalChannelCount = capture.channels.length + trailingSeriesCount;
-  const liveBounds = Array.from({ length: totalChannelCount }, (_, index) => {
-    const scale = liveUplot.scales[yScaleKey(index)];
-    return { min: scale?.min ?? -1, max: scale?.max ?? 1 };
+  const catalog =
+    options.renderContext?.catalog ??
+    buildChannelCatalog({
+      primaryCapture: capture,
+      referenceCapture: null,
+      referenceLaneCount: trailingSeriesCount,
+      activeChannels: capture.channels
+        .filter((_, idx) => options.series[idx]?.show ?? true)
+        .map((c) => c.name),
+      selectedChannel: null,
+      refActiveChannels: Array.from(
+        { length: trailingSeriesCount },
+        (_, refIdx) => ({
+          id: `Ref-${String.fromCharCode(65 + refIdx)}`,
+          show: options.series[capture.channels.length + refIdx]?.show ?? true,
+        }),
+      )
+        .filter((e) => e.show)
+        .map((e) => e.id),
+    });
+
+  const liveBoundsMap = new Map<string, { min: number; max: number }>();
+  catalog.channels.forEach((ch) => {
+    const scale = liveUplot.scales[ch.scaleKey];
+    liveBoundsMap.set(ch.scaleKey, {
+      min: scale?.min ?? -1,
+      max: scale?.max ?? 1,
+    });
   });
 
   printTimeAxis.sync({
@@ -604,9 +601,6 @@ export async function composePrintSnapshot(
     axes: [{ label: undefined }],
   });
 
-  // Issue #119: per-channel vertical Y axes matching live Oscilloscope layout.
-  // Left axes registered in REVERSE channel file order:
-  // outermost = first visible channel, innermost = last visible channel.
   const liveSelectedAxis = (
     liveUplot.axes as
       | Array<{ scale?: string; grid?: { show?: boolean } } | undefined>
@@ -619,48 +613,36 @@ export async function composePrintSnapshot(
     liveSelectedAxis?.scale ??
     (capture.channels.length > 0 ? yScaleKey(0) : null);
 
-  const isStacked = useChannelDisplayStore.getState().stackMode;
-  const printYAdapters = new Map<number, YAxisAdapter>();
-  const syncPrintAdapter = (
-    adapter: YAxisAdapter,
-    scaleKey: string,
-    bounds: { min: number; max: number } | undefined,
-  ): void => {
-    if (bounds?.min == null || bounds?.max == null) return;
-    if (isStacked) {
-      const liveBand = laneBandCss(liveUplot, capture, scaleKey);
-      const livePxRatio = cssPxRatio(liveUplot);
-      const livePlotHgt =
-        liveUplot.bbox.height > 0
-          ? liveUplot.bbox.height / livePxRatio
-          : Math.max(
-              (liveUplot.height > 0 ? liveUplot.height : 400) -
-                CANVAS_PADDING[0] -
-                CANVAS_PADDING[2] -
-                AXIS_SIZE_X_PX,
-              100,
-            );
-      if (liveBand && livePlotHgt > 0) {
-        const bandFraction = (liveBand.bottom - liveBand.top) / livePlotHgt;
-        const bandStart = liveBand.top / livePlotHgt;
-        adapter.sync(
-          {
-            scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
-            axes: [],
-          },
-          { laneFraction: bandFraction, bandStart },
-        );
-        return;
-      }
-    }
-    adapter.sync({
-      scales: { [scaleKey]: { min: bounds.min, max: bounds.max } },
-      axes: [],
-    });
+  const palette = options.palette ?? "light";
+  const chrome = RENDER_CHROME[palette];
+  const staticRenderState: ChartRenderState = {
+    capture,
+    catalog,
+    stackMode: options.renderContext?.stackMode ?? false,
+    laneWeights: options.renderContext?.laneWeights ?? {},
+    displayConfigs: options.renderContext?.displayConfigs ?? {},
+    t2: options.renderContext?.t2 ?? null,
+    chrome: {
+      background: overlay.background,
+      grid: chrome.grid,
+      ticks: chrome.ticks,
+      axisText: chrome.axisText,
+      triggerAccent: chrome.trigger,
+      triggerGlyphClear: chrome.triggerGlyphClear,
+      separatorColor: chrome.separator,
+      drawLaneHandles: false,
+      fillBackground: !options.transparent,
+      omitGrid: Boolean(options.omitGrid),
+      groundFlagText: "#555555",
+      channelColor: (ch) =>
+        options.series[ch.channelIndex]?.color ?? chrome.axisText,
+      channelStroke: (ch) =>
+        options.series[ch.channelIndex]?.color ?? chrome.axisText,
+    },
   };
 
-  capture.channels.forEach((channel, origIdx) => {
-    const scaleKey = yScaleKey(origIdx);
+  const printYAdapters = new Map<number, YAxisAdapter>();
+  catalog.channels.forEach((ch) => {
     const liveAxis = (
       liveUplot.axes as
         | Array<
@@ -668,7 +650,7 @@ export async function composePrintSnapshot(
             | undefined
           >
         | undefined
-    )?.find((a) => a?.scale === scaleKey);
+    )?.find((a) => a?.scale === ch.scaleKey);
     const liveLabel = liveAxis?.label;
     const initialUnit =
       typeof liveLabel === "string"
@@ -676,380 +658,70 @@ export async function composePrintSnapshot(
         : typeof liveLabel === "function"
           ? (liveLabel as (u: unknown) => string)(liveUplot)
           : undefined;
-    const { base } = splitUnit(getPhysicalChannelUnit(capture, origIdx));
-    const custom = useChannelNamesStore.getState().names[channel.name];
-    const label = custom || channel.name;
     const adapter = createYAxisAdapter({
-      quantity: label,
-      unit: base,
-      scaleKey,
+      quantity: ch.axisQuantity,
+      unit: ch.baseUnit,
+      scaleKey: ch.scaleKey,
       initialUnit,
     });
-    syncPrintAdapter(adapter, scaleKey, liveBounds[origIdx]);
-    printYAdapters.set(origIdx, adapter);
+    printYAdapters.set(ch.channelIndex, adapter);
+  });
+  syncChartAdapters(liveUplot, staticRenderState, printYAdapters);
+
+  const chartOpts = buildChartSpec({
+    width: liveUplot.width,
+    height: liveUplot.height,
+    xBounds: { min: liveX.min, max: liveX.max },
+    yBounds: liveBoundsMap,
+    timeAxis: printTimeAxis,
+    yAdapters: printYAdapters,
+    getRenderState: () => staticRenderState,
+    initAllAxesShown: false,
+    selectedScaleKey,
+    drawGroundFlagsInHook: true,
+    drawT2InHook: true,
+    cursor: { show: false },
   });
 
-  // Issue #333: include File 2 reference channels and their Y-axis columns
-  // in offscreen print/light/transparent/gridless exports.
-  const refColumns = Array.from(
-    { length: trailingSeriesCount },
-    (_, refIdx) => {
-      const seriesIdx = capture.channels.length + refIdx;
-      const scaleKey = yScaleKey(seriesIdx);
-      const raw = refState.capture?.channels[refIdx];
-      const name = raw
-        ? toRefName(raw.name)
-        : `Ref-${String.fromCharCode(65 + refIdx)}`;
-      const liveAxis = (
-        liveUplot.axes as
-          | Array<
-              | { scale?: string; label?: string | ((u: unknown) => string) }
-              | undefined
-            >
-          | undefined
-      )?.find((a) => a?.scale === scaleKey);
-      const liveLabel = liveAxis?.label;
-      const initialUnit =
-        typeof liveLabel === "string"
-          ? liveLabel
-          : typeof liveLabel === "function"
-            ? (liveLabel as (u: unknown) => string)(liveUplot)
-            : undefined;
-      const { base } =
-        raw && refState.capture
-          ? splitUnit(getPhysicalChannelUnit(refState.capture, refIdx))
-          : { base: "V" };
-      const custom = useChannelNamesStore.getState().names[name];
-      const label = custom || name;
-      const adapter = createYAxisAdapter({
-        quantity: label,
-        unit: base,
-        scaleKey,
-        initialUnit,
-      });
-      syncPrintAdapter(adapter, scaleKey, liveBounds[seriesIdx]);
-      printYAdapters.set(seriesIdx, adapter);
-      return { name, refIdx, seriesIdx, scaleKey };
-    },
-  );
+  // Honor explicit `options.series[i].show` / `label` overrides from direct callers.
+  catalog.channels.forEach((ch) => {
+    const spec = options.series[ch.channelIndex];
+    if (!spec) return;
+    const seriesEntry = chartOpts.series[ch.seriesIdx];
+    if (seriesEntry) {
+      seriesEntry.label = spec.label;
+      seriesEntry.show = spec.show;
+      seriesEntry.stroke = spec.color;
+    }
+    const axisEntry = chartOpts.axes?.find((a) => a.scale === ch.scaleKey);
+    if (axisEntry) {
+      axisEntry.show = spec.show;
+    }
+  });
 
-  const reversedChannels = capture.channels
-    .map((channel, origIdx) => ({ channel, origIdx }))
-    .reverse();
-  const reversedRefColumns = [...refColumns].reverse();
-  const palette = options.palette ?? "light";
-  const chrome = RENDER_CHROME[palette];
   const host = document.createElement("div");
   let print: uPlot | null = null;
   try {
     print = new uPlotCtor(
-      {
-        width: liveUplot.width,
-        height: liveUplot.height,
-        padding: CANVAS_PADDING,
-        cursor: { show: false },
-        scales: {
-          x: {
-            time: false,
-            auto: false,
-            min: liveX.min,
-            max: liveX.max,
-          },
-          ...Object.fromEntries(
-            liveBounds.map((bounds, index) => [
-              yScaleKey(index),
-              { auto: false, min: bounds.min, max: bounds.max },
-            ]),
-          ),
-        },
-        axes: [
-          {
-            scale: "x",
-            stroke: chrome.axisText,
-            grid: {
-              show: !options.omitGrid,
-              stroke: chrome.grid,
-              width: 1,
-            },
-            ticks: {
-              show: true,
-              stroke: chrome.ticks,
-              width: 1,
-              size: AXIS_TICK_SIZE_PX,
-            },
-            font: AXIS_FONT,
-            label: printTimeAxis.label,
-            labelFont: AXIS_FONT,
-            size: AXIS_SIZE_X_PX,
-            gap: AXIS_GAP_PX,
-            labelGap: AXIS_LABEL_GAP_PX,
-            values: printTimeAxis.values,
-          },
-          ...reversedChannels.map(({ origIdx }) => {
-            const scaleKey = yScaleKey(origIdx);
-            const adapter = printYAdapters.get(origIdx)!;
-            const seriesSpec = options.series[origIdx];
-            const isSelected = selectedScaleKey === scaleKey;
-            return {
-              scale: scaleKey,
-              side: 3,
-              // Issue #250: parity with the live Stack-mode banding —
-              // ticks/labels confined to the channel's lane band.
-              filter: (self: uPlot, splits: number[]) =>
-                laneTickFilter(self, capture, scaleKey, splits),
-              show: seriesSpec?.show ?? false,
-              stroke: seriesSpec?.color ?? chrome.axisText,
-              grid: {
-                show: isSelected && !options.omitGrid,
-                stroke: chrome.grid,
-                width: 1,
-                filter: (self: uPlot, splits: number[]) =>
-                  laneTickFilter(self, capture, scaleKey, splits),
-              },
-              ticks: {
-                show: true,
-                stroke: chrome.ticks,
-                width: 1,
-                size: AXIS_TICK_SIZE_PX,
-                filter: (self: uPlot, splits: number[]) =>
-                  laneTickFilter(self, capture, scaleKey, splits),
-              },
-              font: AXIS_FONT,
-              label: () => adapter.label,
-              labelFont: AXIS_FONT,
-              labelSize: AXIS_LABEL_SIZE_PX,
-              gap: AXIS_GAP_PX,
-              labelGap: AXIS_LABEL_GAP_PX,
-              size: (self: unknown, values: (string | number | null)[]) =>
-                computeYAxisSize(self as uPlot, values, scaleKey, isStacked),
-              values: (_self: unknown, splits: number[]) =>
-                adapter.values(_self, splits),
-            };
-          }),
-          ...reversedRefColumns.map(({ seriesIdx, scaleKey }) => {
-            const adapter = printYAdapters.get(seriesIdx)!;
-            const seriesSpec = options.series[seriesIdx];
-            return {
-              scale: scaleKey,
-              side: 3,
-              filter: (self: uPlot, splits: number[]) =>
-                laneTickFilter(self, capture, scaleKey, splits),
-              show: seriesSpec?.show ?? false,
-              stroke: seriesSpec?.color ?? chrome.axisText,
-              grid: {
-                show: false,
-                stroke: chrome.grid,
-                width: 1,
-                filter: (self: uPlot, splits: number[]) =>
-                  laneTickFilter(self, capture, scaleKey, splits),
-              },
-              ticks: {
-                show: true,
-                stroke: chrome.ticks,
-                width: 1,
-                size: AXIS_TICK_SIZE_PX,
-                filter: (self: uPlot, splits: number[]) =>
-                  laneTickFilter(self, capture, scaleKey, splits),
-              },
-              font: AXIS_FONT,
-              label: () => adapter.label,
-              labelFont: AXIS_FONT,
-              labelSize: AXIS_LABEL_SIZE_PX,
-              gap: AXIS_GAP_PX,
-              labelGap: AXIS_LABEL_GAP_PX,
-              size: (self: unknown, values: (string | number | null)[]) =>
-                computeYAxisSize(self as uPlot, values, scaleKey, isStacked),
-              values: (_self: unknown, splits: number[]) =>
-                adapter.values(_self, splits),
-            };
-          }),
-        ],
-
-        series: [
-          { label: "Time" },
-          ...options.series.map((entry, index) => ({
-            label: entry.label,
-            scale: yScaleKey(index),
-            stroke: entry.color,
-            width: 1.5,
-            points: { show: false },
-            show: entry.show,
-            paths: laneClippedPathBuilder(yScaleKey(index), () => capture),
-          })),
-        ],
-        hooks: {
-          setScale: [
-            (u) => {
-              printTimeAxis.sync(u);
-              for (const adapter of printYAdapters.values()) {
-                if (isStacked) {
-                  const band = laneBandCss(u, capture, adapter.scaleKey);
-                  const pxRatio = cssPxRatio(u);
-                  const plotHeight =
-                    u.bbox.height > 0
-                      ? u.bbox.height / pxRatio
-                      : Math.max(
-                          (u.height > 0 ? u.height : 400) -
-                            CANVAS_PADDING[0] -
-                            CANVAS_PADDING[2] -
-                            AXIS_SIZE_X_PX,
-                          100,
-                        );
-                  if (band && plotHeight > 0) {
-                    const bandFraction = (band.bottom - band.top) / plotHeight;
-                    const bandStart = band.top / plotHeight;
-                    adapter.sync(u, { laneFraction: bandFraction, bandStart });
-                    continue;
-                  }
-                }
-                adapter.sync(u);
-              }
-            },
-          ],
-          drawClear: [
-            (u) => {
-              if (isStacked) {
-                syncUnifiedStackAxes(u);
-              }
-              if (options.transparent) return;
-              u.ctx.save();
-              u.ctx.fillStyle = overlay.background;
-              u.ctx.fillRect(0, 0, u.bbox.width, u.bbox.height);
-              u.ctx.restore();
-            },
-          ],
-          drawAxes: [
-            (u) => {
-              // Issue #61/#77: print export parity for the t=0 trigger
-              // line, in the light palette's accent tone.
-              drawTriggerLine(u, chrome.trigger);
-            },
-          ],
-          draw: [
-            (u) => {
-              // Issue #77: glyph + clear zone above the traces, matching
-              // the live canvas layering for exact parity.
-              drawTriggerGlyph(u, chrome.trigger, chrome.triggerGlyphClear);
-              if (refState.capture && refState.lanes) {
-                const t2Color =
-                  options.series[capture.channels.length]?.color ??
-                  effectiveTraceColor(
-                    palette,
-                    usePaletteStore.getState().customColors,
-                    "Ref-A",
-                  );
-                drawT2Glyph(
-                  u,
-                  t2Color,
-                  chrome.triggerGlyphClear,
-                  slippedTriggerTime(
-                    capture.timestamps,
-                    refState.timeSlipSamples,
-                  ),
-                );
-              }
-              // Issue #250/#333: Stack-mode lane banding with print parity —
-              // band-scoped titles/borders + separators, drawn with the
-              // print pass's contrast-adapted colors across both primary
-              // and reference channels.
-              if (isStacked) {
-                for (const adapter of printYAdapters.values()) {
-                  const band = laneBandCss(u, capture, adapter.scaleKey);
-                  const pxRatio = cssPxRatio(u);
-                  const plotHeight =
-                    u.bbox.height > 0
-                      ? u.bbox.height / pxRatio
-                      : Math.max(
-                          (u.height > 0 ? u.height : 400) -
-                            CANVAS_PADDING[0] -
-                            CANVAS_PADDING[2] -
-                            AXIS_SIZE_X_PX,
-                          100,
-                        );
-                  if (band && plotHeight > 0) {
-                    const bandFraction = (band.bottom - band.top) / plotHeight;
-                    const bandStart = band.top / plotHeight;
-                    adapter.sync(u, { laneFraction: bandFraction, bandStart });
-                  }
-                }
-              }
-              const laneTitles = new Map<string, LaneAxisTitle>();
-              capture.channels.forEach((_channel, origIdx) => {
-                const adapter = printYAdapters.get(origIdx);
-                if (!adapter) return;
-                laneTitles.set(yScaleKey(origIdx), {
-                  label: adapter.label,
-                  color: options.series[origIdx]?.color ?? "#555555",
-                });
-              });
-              refColumns.forEach(({ seriesIdx, scaleKey }) => {
-                const adapter = printYAdapters.get(seriesIdx);
-                if (!adapter) return;
-                laneTitles.set(scaleKey, {
-                  label: adapter.label,
-                  color: options.series[seriesIdx]?.color ?? "#555555",
-                });
-              });
-              drawStackLaneDecorations(
-                u,
-                capture,
-                laneTitles,
-                chrome.separator,
-              );
-              // Issue #249/#333: ground flags composite on the print render
-              // too — same shared geometry/drawing as the live draw
-              // hook, with the print pass's contrast-adapted strokes for
-              // both primary and reference channels.
-              const printColorFor = (key: ChannelKey): string => {
-                const origIdx = capture.channels.findIndex(
-                  (channel) => displayKeyForChannel(channel.name) === key,
-                );
-                if (origIdx >= 0) {
-                  return options.series[origIdx]?.color ?? "#555555";
-                }
-                const refMatch = refColumns.find(
-                  (col) => displayKeyForChannel(col.name) === key,
-                );
-                if (refMatch) {
-                  return options.series[refMatch.seriesIdx]?.color ?? "#555555";
-                }
-                return "#555555";
-              };
-              drawGroundFlags(
-                u,
-                computeGroundFlags(u, capture, printColorFor),
-                "#555555",
-              );
-            },
-          ],
-        },
-      },
+      chartOpts,
       [
         capture.timestamps,
-        // Issue #106: the print render plots the same NaN edge-clipped
-        // display lanes as the live canvas, never the raw NaN buffers.
-        // Issue #224: the live lanes already carry the per-channel display
-        // transform (Y-scale %, offset, invert), so the print export stays
-        // pixel-consistent with the dark-path snapshot of the live raster.
-        ...capture.channels.map((channel, index) => {
-          const liveLane = liveUplot.data[index + 1];
+        // Issue #106/#224: reuse the live canvas's clipped/transformed display lanes.
+        ...catalog.channels.map((ch) => {
+          const liveLane = liveUplot.data[ch.seriesIdx];
           if (liveLane) return liveLane;
-          const info = capture.metadata.channels[index];
-          const physical = info && !info.derived ? info : undefined;
-          return buildDisplayData(
-            channel.data,
-            channel.rawCounts,
-            physical?.windowMin,
-            physical?.windowMax,
-          );
-        }),
-        // Issue #333: include File 2 reference lanes from the live canvas
-        // (or fallback to the reference store's resampled lanes).
-        ...Array.from({ length: trailingSeriesCount }, (_, refIdx) => {
-          const liveLane = liveUplot.data[capture.channels.length + refIdx + 1];
+          if (ch.slot === "primary" && ch.channel) {
+            const info = capture.metadata.channels[ch.slotIndex];
+            const physical = info && !info.derived ? info : undefined;
+            return buildDisplayData(
+              ch.channel.data,
+              ch.channel.rawCounts,
+              physical?.windowMin,
+              physical?.windowMax,
+            );
+          }
           return (
-            liveLane ??
-            refLanes[refIdx] ??
+            refLanes[ch.slotIndex] ??
             new Float32Array(capture.timestamps.length)
           );
         }),
@@ -1058,14 +730,14 @@ export async function composePrintSnapshot(
     );
 
     print.setScale("x", { min: liveX.min, max: liveX.max });
-    liveBounds.forEach((bounds, index) => {
+    for (const [scaleKey, bounds] of liveBoundsMap) {
       if (bounds.min != null && bounds.max != null) {
-        print!.setScale(yScaleKey(index), {
+        print.setScale(scaleKey, {
           min: bounds.min,
           max: bounds.max,
         });
       }
-    });
+    }
     // uPlot defers scale commits/draws to a scheduled task — let it flush,
     // then force a full layout + draw pass so unified Stack axes and multi-column
     // Overlay axes have settled bbox.left before composeSnapshotCanvas reads it.

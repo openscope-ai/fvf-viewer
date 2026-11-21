@@ -18,8 +18,9 @@ import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { laneBandsCss } from "./stackLaneDecorations";
+import { getLiveRenderState } from "./liveRenderState";
 import { useLaneLayoutStore, laneFractions } from "../../state/laneLayoutStore";
-import { visibleLaneChannels } from "./stackLaneDecorations";
+import { getChannelCatalog } from "../../capture/channelCatalog";
 
 /**
  * Issue #251 acceptance: Stack-view lanes are vertically resizable by
@@ -128,7 +129,10 @@ describe("Stack-view lane resizing (issue #251)", () => {
   };
 
   const bandsOf = (uplot: uPlot) =>
-    laneBandsCss(uplot, useCaptureStore.getState().capture!);
+    laneBandsCss(
+      uplot,
+      getLiveRenderState(useCaptureStore.getState().capture!),
+    );
 
   /**
    * Bands read once the layout has settled: the ResizeObserver can land
@@ -154,7 +158,11 @@ describe("Stack-view lane resizing (issue #251)", () => {
   const fractionsOf = (): number[] => {
     const capture = useCaptureStore.getState().capture!;
     return laneFractions(
-      visibleLaneChannels(capture).map((lane) => lane.key),
+      getChannelCatalog(capture, {
+        referenceLaneCount: useReferenceStore.getState().lanes?.length ?? 0,
+      })
+        .visibleLanes()
+        .map((lane) => lane.displayKey),
       useLaneLayoutStore.getState().weights,
     );
   };

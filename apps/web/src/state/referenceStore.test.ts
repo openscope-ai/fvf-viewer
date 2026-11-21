@@ -191,27 +191,4 @@ describe("referenceStore (issue #96)", () => {
       [],
     );
   });
-
-  it("resolves display names across both slots (findChannelByName)", async () => {
-    const { reference, capture } = await importStores();
-    const primary = makeCapture(["A", "B"], 10);
-    const fileTwo = makeCapture(["C"], 10);
-    capture.useCaptureStore.setState({ capture: primary });
-    reference.useReferenceStore.setState({
-      capture: fileTwo,
-      lanes: [new Float32Array(10)],
-      refActiveChannels: ["Ref-C"],
-    });
-
-    const primaryHit = reference.findChannelByName("A");
-    expect(primaryHit?.capture).toBe(primary);
-    const refHit = reference.findChannelByName("Ref-C");
-    expect(refHit?.capture).toBe(fileTwo);
-    expect(refHit?.channel.name).toBe("C");
-    expect(reference.findChannelByName("Ref-D")).toBeNull();
-
-    // Scale keys: primary y0…, reference trails after the primary count.
-    expect(reference.channelScaleKeyFor("A")).toBe("y0");
-    expect(reference.channelScaleKeyFor("Ref-C")).toBe("y2");
-  });
 });

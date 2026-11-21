@@ -25,7 +25,9 @@ import uPlot from "uplot";
 import type { ParsedCapture } from "../../../types/capture";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 import { laneBandsCss } from "../stackLaneDecorations";
-import { stackLaneBoundsWeighted } from "../channelLayout";
+import { cssPxRatio } from "../axesConfig";
+import { getLiveRenderState } from "../liveRenderState";
+import { stackLaneBoundsWeighted } from "../viewportController";
 
 /** Minimum drag extent (CSS px) required on each axis before a zoom commits. */
 export const BOX_ZOOM_MIN_DRAG_PX = 8;
@@ -211,7 +213,7 @@ export function boxZoomPlugin(
     const capture = options.getCapture?.() ?? null;
 
     if (isStacked && capture) {
-      const bands = laneBandsCss(u, capture);
+      const bands = laneBandsCss(u, getLiveRenderState(capture));
       const dragCenterY = (startY + end.y) / 2;
       const targetBand =
         bands.find((b) => startY >= b.top && startY <= b.bottom) ??
@@ -236,7 +238,7 @@ export function boxZoomPlugin(
             Number.isFinite(baseMax) &&
             baseMax > baseMin
           ) {
-            const pxRatio = u.width > 0 ? u.ctx.canvas.width / u.width : 1;
+            const pxRatio = cssPxRatio(u);
             const plotHeight = u.bbox.height / pxRatio;
             const bandStart = targetBand.top / plotHeight;
             const bandFraction =

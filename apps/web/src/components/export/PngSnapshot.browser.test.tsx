@@ -24,6 +24,8 @@ import PngSnapshotButton, { snapshotFileName } from "./PngSnapshotButton";
 import * as canvasPermission from "./canvasPermission";
 import type { ParsedCapture } from "../../types/capture";
 import { laneBandCss } from "../canvas/stackLaneDecorations";
+import { getLiveRenderState } from "../canvas/liveRenderState";
+import { buildPrintRenderContext } from "./snapshotExporter";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -1371,6 +1373,11 @@ describe("PNG snapshot export (browser, issue #18)", () => {
           pixelRatio: 1,
           series,
           palette: "light",
+          renderContext: buildPrintRenderContext(
+            primaryCapture,
+            series,
+            "light",
+          ),
         },
       );
 
@@ -1397,7 +1404,11 @@ describe("PNG snapshot export (browser, issue #18)", () => {
         const axis = uplot.axes.find((a) => a.scale === lane.key);
         expect(axis, `axis for ${lane.key}`).toBeDefined();
 
-        const band = laneBandCss(uplot, primaryCapture, lane.key);
+        const band = laneBandCss(
+          uplot,
+          getLiveRenderState(primaryCapture),
+          lane.key,
+        );
         expect(band, `laneBandCss for ${lane.key}`).not.toBeNull();
         expect(band!.top).toBeCloseTo(lane.idx * laneH, 1);
         expect(band!.bottom).toBeCloseTo((lane.idx + 1) * laneH, 1);

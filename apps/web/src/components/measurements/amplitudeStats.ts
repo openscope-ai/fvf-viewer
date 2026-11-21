@@ -13,11 +13,10 @@
 import type { ParsedCapture } from "../../types/capture";
 import {
   getDerivedChannelUnit,
-  getPhysicalChannelUnit,
   formatChannelValue,
 } from "../../capture/channelUnits";
+import { buildChannelCatalog } from "../../capture/channelCatalog";
 import {
-  displayKeyForChannel,
   effectiveInverted,
   effectiveOffset,
   effectiveYScale,
@@ -27,13 +26,13 @@ import {
   effectiveTraceColor,
   type ViewportTheme,
 } from "../canvas/themePalette";
-import { channelDisplayName } from "../../state/channelNamesStore";
 import { slippedRefDisplayLane } from "../canvas/timeSlip";
 
 export interface ChannelAmplitudeStats {
   channelKey: string;
   channelName: string;
   displayName: string;
+  slot: "primary" | "reference" | "derived";
   color: string;
   unit: string;
   count: number;
@@ -176,25 +175,28 @@ export function computeAllVisibleChannelStats(
 
   const results: ChannelAmplitudeStats[] = [];
 
-  // 1. Primary physical channels
-  for (let index = 0; index < capture.channels.length; index += 1) {
-    const channel = capture.channels[index]!;
-    if (!activeChannels.includes(channel.name)) continue;
+  const catalog = buildChannelCatalog({
+    primaryCapture: capture,
+    referenceCapture:
+      refCapture && refLanes && refLanes.length > 0 ? refCapture : null,
+    activeChannels,
+    selectedChannel: null,
+    refActiveChannels,
+    customNames,
+    theme,
+    customColors,
+  });
 
-    const key = displayKeyForChannel(channel.name);
-    const yScale = effectiveYScale(displayConfigs, key);
-    const offset = effectiveOffset(displayConfigs, key);
-    const inverted = effectiveInverted(displayConfigs, key);
-    const unit = getPhysicalChannelUnit(capture, index);
-    const color = effectiveTraceColor(theme, customColors, channel.name);
-    const displayName = channelDisplayName(
-      channel.name,
-      channel.label,
-      customNames?.[channel.name],
-    );
+  // 1. Primary physical channels
+  for (const ch of catalog.primary) {
+    if (!ch.visible || !ch.channel) continue;
+
+    const yScale = effectiveYScale(displayConfigs, ch.displayKey);
+    const offset = effectiveOffset(displayConfigs, ch.displayKey);
+    const inverted = effectiveInverted(displayConfigs, ch.displayKey);
 
     const stats = computeChannelStats(
-      channel.data,
+      ch.channel.data,
       startIndex,
       endIndex,
       yScale,
@@ -203,11 +205,12 @@ export function computeAllVisibleChannelStats(
     );
 
     results.push({
-      channelKey: channel.name,
-      channelName: channel.name,
-      displayName,
-      color,
-      unit,
+      channelKey: ch.id,
+      channelName: ch.id,
+      displayName: ch.displayName,
+      slot: "primary",
+      color: ch.color,
+      unit: ch.unit,
       ...stats,
     });
   }
@@ -237,6 +240,7 @@ export function computeAllVisibleChannelStats(
       channelKey: derived.label,
       channelName: derived.label,
       displayName: derived.label,
+      slot: "derived",
       color,
       unit,
       ...stats,
@@ -245,19 +249,14 @@ export function computeAllVisibleChannelStats(
 
   // 3. File 2 Reference channels (compare mode)
   if (refCapture && refLanes && refLanes.length > 0) {
-    for (let refIdx = 0; refIdx < refCapture.channels.length; refIdx += 1) {
-      const refChannel = refCapture.channels[refIdx]!;
-      const refName = `Ref-${refChannel.name.replace(/^Input\s+/i, "")}`;
-      if (!refActiveChannels?.includes(refName)) continue;
+    for (const ch of catalog.reference) {
+      if (!ch.visible) continue;
 
-      const refKey = displayKeyForChannel(refName);
-      const yScale = effectiveYScale(displayConfigs, refKey);
-      const offset = effectiveOffset(displayConfigs, refKey);
-      const inverted = effectiveInverted(displayConfigs, refKey);
-      const unit = getPhysicalChannelUnit(refCapture, refIdx);
-      const color = effectiveTraceColor(theme, customColors, refName);
+      const yScale = effectiveYScale(displayConfigs, ch.displayKey);
+      const offset = effectiveOffset(displayConfigs, ch.displayKey);
+      const inverted = effectiveInverted(displayConfigs, ch.displayKey);
 
-      const baseLane = refLanes[refIdx];
+      const baseLane = refLanes[ch.slotIndex];
       if (!baseLane) continue;
 
       const displayLane = slippedRefDisplayLane(
@@ -277,18 +276,13 @@ export function computeAllVisibleChannelStats(
         false,
       );
 
-      const displayName = channelDisplayName(
-        refName,
-        undefined,
-        customNames?.[refName],
-      );
-
       results.push({
-        channelKey: refName,
-        channelName: refName,
-        displayName,
-        color,
-        unit,
+        channelKey: ch.id,
+        channelName: ch.id,
+        displayName: ch.displayName,
+        slot: "reference",
+        color: ch.color,
+        unit: ch.unit,
         ...stats,
       });
     }

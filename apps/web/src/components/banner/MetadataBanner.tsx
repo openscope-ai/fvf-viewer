@@ -27,6 +27,7 @@ import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useReferenceStore } from "../../state/referenceStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
+import { isReferenceChannelId } from "../../capture/channelCatalog";
 import { effectiveTraceColor } from "../canvas/themePalette";
 import {
   GITHUB_REPOSITORY_URL,
@@ -94,7 +95,10 @@ export default function MetadataBanner({
                 className="banner-open-btn banner-compare-remove-btn"
                 onClick={() => {
                   const openKey = useBadgePopoverStore.getState().openKey;
-                  if (openKey?.startsWith("channel:Ref-")) {
+                  const openChannelId = openKey?.startsWith("channel:")
+                    ? openKey.slice("channel:".length)
+                    : null;
+                  if (openChannelId && isReferenceChannelId(openChannelId)) {
                     useBadgePopoverStore.getState().setOpen(null);
                   }
                   clearReference();

@@ -23,7 +23,7 @@ import {
 import { rgbaFromHex } from "../../canvas/themePalette";
 import { PencilIcon } from "./icons";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
-import { findChannelByName } from "../../../state/referenceStore";
+import { getChannelCatalog } from "../../../capture/channelCatalog";
 
 export interface HeroIdentityProps {
   kind: "channel" | "cursor";
@@ -110,12 +110,13 @@ export function HeroIdentity({
 
   let stats: string;
   if (kind === "channel") {
-    // Issue #96: reference channels (Ref-A…) resolve against File 2.
-    const resolved = findChannelByName(channelName ?? "");
-    const channel = resolved?.channel;
-    const unit = resolved
-      ? resolved.capture.metadata.channels[resolved.index]?.unit
-      : undefined;
+    // Issue #96/#354: both primary and reference channels resolve via ChannelCatalog.
+    const resolved = getChannelCatalog().byId(channelName ?? "");
+    const channel = resolved?.channel ?? undefined;
+    const unit =
+      resolved?.capture && resolved.slotIndex >= 0
+        ? resolved.capture.metadata.channels[resolved.slotIndex]?.unit
+        : undefined;
     void displayRevision; // re-render trigger for the inverted extents
     stats = channelStatsLine(channel, unit);
   } else {

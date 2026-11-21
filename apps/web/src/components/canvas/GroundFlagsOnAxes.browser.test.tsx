@@ -21,6 +21,7 @@ import {
   composeSnapshotCanvas,
   type PrintSeriesSpec,
 } from "../export/pngSnapshot";
+import { buildPrintRenderContext } from "../export/snapshotExporter";
 
 /**
  * Issue #249 acceptance: the draggable ground-marker flags live on each
@@ -270,7 +271,10 @@ describe("Ground flags on per-channel y-axis columns (issue #249)", () => {
         legend: [],
         selected: null,
       },
-      { series },
+      {
+        series,
+        renderContext: buildPrintRenderContext(capture, series, "light"),
+      },
     );
     expect(
       compositeHasColor(print.canvas, print.pixelRatio, "#FFD700", flagRect),

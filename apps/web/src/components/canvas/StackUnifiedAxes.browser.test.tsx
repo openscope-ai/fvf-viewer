@@ -17,6 +17,7 @@ import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { laneBandsCss } from "./stackLaneDecorations";
 import { computeGroundFlags } from "./groundFlags";
+import { getLiveRenderState } from "./liveRenderState";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -157,7 +158,7 @@ describe("Issue #268: Stack view horizontally aligned Y-axes single column & rec
 
     // Ground flags align with the unified column
     const capture = useCaptureStore.getState().capture!;
-    const flags = computeGroundFlags(uplot, capture);
+    const flags = computeGroundFlags(uplot, getLiveRenderState(capture));
     expect(flags).toHaveLength(4);
     for (const flag of flags) {
       expect(flag.colRight).toBe(stackLeftCss);
@@ -208,7 +209,7 @@ describe("Issue #268: Stack view horizontally aligned Y-axes single column & rec
     const rect = container.getBoundingClientRect();
     const pxRatio = pxRatioOf(uplot);
     const plotTop = uplot.bbox.top / pxRatio;
-    const bands = laneBandsCss(uplot, capture);
+    const bands = laneBandsCss(uplot, getLiveRenderState(capture));
     expect(bands).toHaveLength(4);
 
     const colX = Math.round(rect.left + uplot.bbox.left / pxRatio - 20);

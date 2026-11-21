@@ -4,14 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import uPlot from "uplot";
 import fourChUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-4ch-10000-10ms-div.fvf.bin?url";
 import mixedCurrentUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/accepted-en-2ch-current-offcenter-1s-div.fvf.bin?url";
-import Oscilloscope, {
-  CHANNEL_PALETTE,
-  THEME_COLORS,
-  computeCaptureFit,
-  getChannelColor,
-} from "./Oscilloscope";
+import Oscilloscope, { THEME_COLORS, computeCaptureFit } from "./Oscilloscope";
 import { yScaleKey } from "../../capture/channelUnits";
-import { LIGHT_THEME } from "./themePalette";
+import { DARK_THEME, LIGHT_THEME, resolveTraceColor } from "./themePalette";
 import {
   useThemeStore,
   VIEWPORT_THEME_STORAGE_KEY,
@@ -23,6 +18,7 @@ import {
 import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { BOX_ZOOM_MIN_DRAG_PX } from "./plugins/boxZoomPlugin";
 import { laneBandsCss, laneTickFilter } from "./stackLaneDecorations";
+import { getLiveRenderState } from "./liveRenderState";
 import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
 import {
@@ -102,18 +98,18 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
 
   it("AC-2: Theme and trace colors match the architecture.md palette exactly", async () => {
     // 1. Static palette checks matching architecture.md §4.1
-    expect(CHANNEL_PALETTE["A"]).toBe("#FFD700");
-    expect(CHANNEL_PALETTE["B"]).toBe("#00BFFF");
-    expect(CHANNEL_PALETTE["C"]).toBe("#FF4500");
-    expect(CHANNEL_PALETTE["D"]).toBe("#00FF7F");
-    expect(getChannelColor("A")).toBe("#FFD700");
-    expect(getChannelColor("Input A")).toBe("#FFD700");
-    expect(getChannelColor("B")).toBe("#00BFFF");
-    expect(getChannelColor("Input B")).toBe("#00BFFF");
-    expect(getChannelColor("C")).toBe("#FF4500");
-    expect(getChannelColor("Input C")).toBe("#FF4500");
-    expect(getChannelColor("D")).toBe("#00FF7F");
-    expect(getChannelColor("Input D")).toBe("#00FF7F");
+    expect(DARK_THEME.traces["A"]).toBe("#FFD700");
+    expect(DARK_THEME.traces["B"]).toBe("#00BFFF");
+    expect(DARK_THEME.traces["C"]).toBe("#FF4500");
+    expect(DARK_THEME.traces["D"]).toBe("#00FF7F");
+    expect(resolveTraceColor("dark", "A")).toBe("#FFD700");
+    expect(resolveTraceColor("dark", "Input A")).toBe("#FFD700");
+    expect(resolveTraceColor("dark", "B")).toBe("#00BFFF");
+    expect(resolveTraceColor("dark", "Input B")).toBe("#00BFFF");
+    expect(resolveTraceColor("dark", "C")).toBe("#FF4500");
+    expect(resolveTraceColor("dark", "Input C")).toBe("#FF4500");
+    expect(resolveTraceColor("dark", "D")).toBe("#00FF7F");
+    expect(resolveTraceColor("dark", "Input D")).toBe("#00FF7F");
 
     // Dark OLED theme constants
     expect(THEME_COLORS.background).toBe("#000000");
@@ -1877,7 +1873,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
         await new Promise((r) => setTimeout(r, 60));
       });
 
-      const bands = laneBandsCss(uplot, capture);
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
       expect(bands.length).toBe(4);
 
       const xMinBefore = uplot.scales.x!.min!;
@@ -1902,7 +1898,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
         await new Promise((r) => setTimeout(r, 60));
       });
 
-      const bands = laneBandsCss(uplot, capture);
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
       const y0Before = { ...uplot.scales[yScaleKey(0)]! };
       const y1Before = { ...uplot.scales[yScaleKey(1)]! };
       const y2Before = { ...uplot.scales[yScaleKey(2)]! };
@@ -1948,7 +1944,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
       }
 
       // laneTickFilter filters splits strictly to the lane band
-      const bands = laneBandsCss(uplot, capture);
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
       const lane0Band = bands[0]!;
       // A split that maps way outside lane 0's band returns null
       const outsideVal = uplot.posToVal(
@@ -1959,10 +1955,12 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
         (lane0Band.top + lane0Band.bottom) / 2,
         lane0Band.scaleKey,
       );
-      const filtered = laneTickFilter(uplot, capture, lane0Band.scaleKey, [
-        outsideVal,
-        insideVal,
-      ]);
+      const filtered = laneTickFilter(
+        uplot,
+        getLiveRenderState(capture),
+        lane0Band.scaleKey,
+        [outsideVal, insideVal],
+      );
       expect(filtered[0]).toBeNull();
       expect(filtered[1]).toBe(insideVal);
     });
@@ -1979,7 +1977,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
       const initialY0Min = uplot.scales[yScaleKey(0)]!.min!;
       const initialY0Max = uplot.scales[yScaleKey(0)]!.max!;
 
-      const bands = laneBandsCss(uplot, capture);
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
       // Zoom Lane A
       await dragBox(
         uplot,
@@ -2010,7 +2008,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
         await new Promise((r) => setTimeout(r, 60));
       });
 
-      const bands = laneBandsCss(uplot, capture);
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
       const y2Initial = { ...uplot.scales[yScaleKey(2)]! };
       const y3Initial = { ...uplot.scales[yScaleKey(3)]! };
 
@@ -2213,7 +2211,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
 
       // AC4: Channel A does not stretch across the whole vertical canvas;
       // laneBandsCss computes 4 distinct non-collapsed lane bands
-      const bands = laneBandsCss(uplot, capture);
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
       expect(bands.length).toBe(4);
       for (let i = 0; i < 4; i++) {
         expect(bands[i]!.bottom).toBeGreaterThan(bands[i]!.top);
@@ -2227,10 +2225,12 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
         const insideVal = uplot.posToVal(insidePos, scaleKey);
         const outsideVal = uplot.posToVal(band.bottom + 50, scaleKey);
 
-        const filtered = laneTickFilter(uplot, capture, scaleKey, [
-          outsideVal,
-          insideVal,
-        ]);
+        const filtered = laneTickFilter(
+          uplot,
+          getLiveRenderState(capture),
+          scaleKey,
+          [outsideVal, insideVal],
+        );
         // Outside split is filtered to null
         expect(filtered[0]).toBeNull();
         // Inside split is retained
