@@ -5,7 +5,7 @@
  * Rows are plain data (text + color cells) with no DOM or canvas coupling.
  */
 
-import { formatReadoutChannelName } from "../../state/channelNamesStore";
+import { normalizeChannelTag } from "../../capture/channelCatalog";
 import {
   formatVoltageWithUnit,
   formatFrequencyWithUnit,
@@ -19,8 +19,20 @@ import type {
 } from "../../state/cursorDisplayStore";
 import { getPhysicalChannelUnit, splitUnit } from "../../capture/channelUnits";
 import type { ParsedCapture } from "../../types/capture";
-import { invertSign } from "../canvas/channelDisplay";
-import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import {
+  invertSign,
+  type ChannelDisplayConfigs,
+} from "../canvas/channelDisplay";
+
+function formatReadoutChannelName(
+  channel: string,
+  label: string | null | undefined,
+  customName: string | null | undefined,
+): string {
+  const trimmed = customName?.trim();
+  const display = trimmed ? `${channel}: ${trimmed}` : label || channel;
+  return normalizeChannelTag(display);
+}
 
 /** Display-unit selections for one card render (issue #226). */
 export interface ReadoutDisplayUnits {
@@ -92,25 +104,39 @@ function clampIndex(index: number, totalSamples: number): number {
   return Math.max(0, Math.min(index, totalSamples - 1));
 }
 
+export interface ReadoutInput {
+  capture: ParsedCapture;
+  cursors: ReadoutCursorSnapshotState;
+  activeChannels: readonly string[];
+  xMin: number | null;
+  xMax: number | null;
+  colors: ReadoutRowColors;
+  customNames?: Record<string, string>;
+  units?: ReadoutDisplayUnits;
+  semantics?: ReadoutCursorSemantics;
+  /** Per-channel display configs (used for invert ± sign flipping; scale/offset ignored). */
+  displayConfigs?: ChannelDisplayConfigs;
+}
+
 /**
  * Builds the readout rows shown inside the card body for the given cursor
  * state: one header row per active cursor (badge, sample index, time),
  * the per-visible-channel value rows (each in its channel's base-SI unit),
- * one per-channel context row (verbatim file unit, per-division, window,
- * saturated count), and — when both cursors are active — the differential
- * Δt / 1/Δt / Δ<unit> rows.
+ * and — when both cursors are active — the differential Δt / 1/Δt / Δ<unit> rows.
  */
-export function buildReadoutRows(
-  capture: ParsedCapture,
-  cursors: ReadoutCursorSnapshotState,
-  activeChannels: readonly string[],
-  xMin: number | null,
-  xMax: number | null,
-  colors: ReadoutRowColors,
-  customNames?: Record<string, string>,
-  units: ReadoutDisplayUnits = AUTO_DISPLAY_UNITS,
-  semantics: ReadoutCursorSemantics = UNBOUND_CURSOR_SEMANTICS,
-): ReadoutSnapshotRow[] {
+export function buildReadoutRows(input: ReadoutInput): ReadoutSnapshotRow[] {
+  const {
+    capture,
+    cursors,
+    activeChannels,
+    xMin,
+    xMax,
+    colors,
+    customNames,
+    units = AUTO_DISPLAY_UNITS,
+    semantics = UNBOUND_CURSOR_SEMANTICS,
+    displayConfigs = {},
+  } = input;
   const { timestamps, channels } = capture;
   const totalSamples = timestamps.length;
   // No active cursors, no card — mirrors the DOM card's null render.
@@ -140,9 +166,6 @@ export function buildReadoutRows(
   const c2Channels = boundList(semantics.c2Binding);
 
   const rows: ReadoutSnapshotRow[] = [];
-  // Issue #224: invert ± flips the embedded card's readouts exactly like
-  // the live card (scale/offset never alter them).
-  const displayConfigs = useChannelDisplayStore.getState().keyConfigs;
 
   const renderCursor = (
     id: "C1" | "C2",

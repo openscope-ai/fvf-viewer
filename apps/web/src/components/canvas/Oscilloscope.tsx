@@ -92,23 +92,26 @@ export default function Oscilloscope({
     };
   }, []);
 
-  // Ingesting a new capture initializes cursors, selection defaults, and resets zoom history
+  // Standalone Oscilloscope renders with an explicit capture prop (outside
+  // CaptureSession.ingestPrimary) still initialize cursors and selection.
   useEffect(() => {
+    if (explicitCapture === undefined) return;
     useZoomHistoryStore.getState().reset();
-    if (capture) {
-      useChannelDisplayStore.getState().clearSolo();
-      useCursorStore.getState().initForCapture(capture.timestamps.length);
+    if (explicitCapture) {
+      useCursorStore
+        .getState()
+        .initForCapture(explicitCapture.timestamps.length);
       const curSelected = useViewportStore.getState().selectedChannel;
       const isValid =
         curSelected != null &&
-        capture.channels.some((c) => c.name === curSelected);
-      if (!isValid && capture.channels.length > 0) {
+        explicitCapture.channels.some((c) => c.name === curSelected);
+      if (!isValid && explicitCapture.channels.length > 0) {
         useViewportStore
           .getState()
-          .setSelectedChannel(capture.channels[0]!.name);
+          .setSelectedChannel(explicitCapture.channels[0]!.name);
       }
     }
-  }, [capture]);
+  }, [explicitCapture]);
 
   // Mount / remount uPlot when capture or reference lanes change
   useEffect(() => {

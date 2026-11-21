@@ -8,6 +8,11 @@ import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import {
+  ingestPrimary,
+  toggleSolo,
+  resetSession,
+} from "../../state/captureSession";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 
@@ -51,8 +56,7 @@ describe("Channel display transforms on canvas (issue #224)", () => {
   };
 
   beforeEach(async () => {
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     useChannelDisplayStore.getState().reset();
     window.localStorage.clear();
@@ -74,9 +78,7 @@ describe("Channel display transforms on canvas (issue #224)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
   });
@@ -142,16 +144,14 @@ describe("Channel display transforms on canvas (issue #224)", () => {
   it("capture ingestion clears solo state and restores the visibility set", async () => {
     await mountOscilloscope();
     await act(async () => {
-      useChannelDisplayStore.getState().toggleSolo("B");
+      toggleSolo("B");
     });
     expect(useViewportStore.getState().activeChannels).toEqual(["B"]);
     expect(useChannelDisplayStore.getState().solo).not.toBeNull();
 
     // Ingesting a replacement capture clears solo (issue #224).
     await act(async () => {
-      await useCaptureStore
-        .getState()
-        .parseBuffer(await fixture(fourChUrl), "four.fvf");
+      await ingestPrimary(await fixture(fourChUrl), "four.fvf");
       await new Promise((r) => setTimeout(r, 60));
     });
     expect(useChannelDisplayStore.getState().solo).toBeNull();

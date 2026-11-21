@@ -14,6 +14,7 @@ import { usePaletteStore } from "../../state/paletteStore";
 import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
+import { resetSession } from "../../state/captureSession";
 
 /**
  * Issue #98 acceptance: colored ground flags (A▶, B▶…) on the left
@@ -93,10 +94,7 @@ describe("Ground markers, vertical offset & quick-stack (issue #98)", () => {
   beforeEach(async () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

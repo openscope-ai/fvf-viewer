@@ -13,6 +13,7 @@ import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { useThemeStore } from "../../state/themeStore";
 import { resolveThemePalette } from "../canvas/themePalette";
+import { resetSession } from "../../state/captureSession";
 
 /**
  * Issue #96 end-to-end: the 50/50 split drop overlay over an open
@@ -83,10 +84,7 @@ describe("Dual-file comparison (issue #96)", () => {
   let root: Root;
 
   beforeEach(() => {
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     window.localStorage.clear();
     hostElement = document.createElement("div");
     hostElement.style.width = "1200px";
@@ -100,10 +98,7 @@ describe("Dual-file comparison (issue #96)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     window.localStorage.clear();
   });
 

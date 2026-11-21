@@ -4,9 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import uPlot from "uplot";
 import Oscilloscope from "./Oscilloscope";
 import "../../index.css";
-import { useCaptureStore } from "../../state/captureStore";
-import { useViewportStore } from "../../state/viewportStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -53,8 +52,7 @@ describe("Zoom-adaptive X-axis time units (Issue #63)", () => {
   let root: Root;
 
   beforeEach(() => {
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
     hostElement = document.createElement("div");
     hostElement.style.width = "800px";
     hostElement.style.height = "600px";
@@ -67,8 +65,7 @@ describe("Zoom-adaptive X-axis time units (Issue #63)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
   });
 
   async function mount(spanSeconds = 0.01): Promise<uPlot> {

@@ -91,7 +91,7 @@ describe("channelNamesStore (issue #64)", () => {
   });
 
   it("captureFileKey builds the identity and refuses empty captures", async () => {
-    const { captureFileKey } = await importStore();
+    const { captureFileKey } = await import("./storage");
     expect(captureFileKey("scope.fvf", "12300020260912")).toBe(
       "scope.fvf::12300020260912",
     );

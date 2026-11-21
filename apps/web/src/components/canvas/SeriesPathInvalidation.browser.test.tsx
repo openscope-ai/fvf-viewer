@@ -10,12 +10,11 @@ import { yScaleKey } from "../../capture/channelUnits";
 import { useCaptureStore } from "../../state/captureStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
-import { useCursorStore } from "../../state/cursorStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useReferenceStore } from "../../state/referenceStore";
 import { useThemeStore } from "../../state/themeStore";
-import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
+import { resetSession } from "../../state/captureSession";
 
 /**
  * Issue #245 acceptance: every surface that rewrites a display lane in
@@ -179,11 +178,7 @@ describe("Series path invalidation on in-place lane rewrites (issue #245)", () =
   beforeEach(async () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

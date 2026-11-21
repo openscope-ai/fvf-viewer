@@ -7,11 +7,11 @@ import twoChMinUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic
 import Oscilloscope from "./Oscilloscope";
 import { useCaptureStore } from "../../state/captureStore";
 import { useReferenceStore } from "../../state/referenceStore";
-import { useViewportStore } from "../../state/viewportStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
+import { resetSession } from "../../state/captureSession";
 
 /**
  * Issue #96 canvas rendering: reference lanes append as trailing series
@@ -62,10 +62,7 @@ describe("Reference lanes on canvas (issue #96)", () => {
   };
 
   beforeEach(async () => {
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
@@ -83,10 +80,7 @@ describe("Reference lanes on canvas (issue #96)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
   });

@@ -6,13 +6,11 @@ import fourChUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/a
 import Oscilloscope from "./Oscilloscope";
 import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { useCaptureStore } from "../../state/captureStore";
-import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
-import { useCursorStore } from "../../state/cursorStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useThemeStore } from "../../state/themeStore";
-import { useViewportStore } from "../../state/viewportStore";
 import { NAVIGATION_HELP_SUMMARY } from "./navigationHelp";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -51,10 +49,7 @@ describe("Wheel zoom and drag pan navigation (Issue #286)", () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

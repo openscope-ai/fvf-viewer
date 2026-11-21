@@ -26,6 +26,7 @@ import type { ParsedCapture } from "../../types/capture";
 import { laneBandCss } from "../canvas/stackLaneDecorations";
 import { getLiveRenderState } from "../canvas/liveRenderState";
 import { buildPrintRenderContext } from "./snapshotExporter";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -93,12 +94,9 @@ describe("PNG snapshot export (browser, issue #18)", () => {
   let mountedUplot: uPlot | null;
 
   beforeEach(async () => {
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useSnapshotStore.getState().registerExporter(null);
     window.localStorage.clear();
     // Review F2: reset every settings field — non-default values written
@@ -147,12 +145,9 @@ describe("PNG snapshot export (browser, issue #18)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useSnapshotStore.getState().registerExporter(null);
   });
 

@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { readJson, writeJson } from "./storage";
 import {
   PALETTE_KEYS,
   isHexColor,
@@ -53,50 +54,39 @@ function normalizeOpacity(value: number): number {
  * `{ key: "#rrggbb" }` payloads; invalid entries drop silently.
  */
 function readStoredKeyConfigs(): PaletteKeyConfigs {
-  try {
-    const raw = window.localStorage.getItem(CHANNEL_PALETTE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const cleaned: PaletteKeyConfigs = {};
-    for (const [key, value] of Object.entries(
-      parsed as Record<string, unknown>,
-    )) {
-      if (!isPaletteKey(key)) continue;
-      if (typeof value === "string") {
-        // Legacy flat color override (issue #40 storage).
-        if (isHexColor(value)) cleaned[key] = { color: value.toLowerCase() };
-        continue;
+  return readJson<PaletteKeyConfigs>(
+    CHANNEL_PALETTE_STORAGE_KEY,
+    {},
+    (parsed) => {
+      if (typeof parsed !== "object" || parsed === null) return {};
+      const cleaned: PaletteKeyConfigs = {};
+      for (const [key, value] of Object.entries(
+        parsed as Record<string, unknown>,
+      )) {
+        if (!isPaletteKey(key)) continue;
+        if (typeof value === "string") {
+          // Legacy flat color override (issue #40 storage).
+          if (isHexColor(value)) cleaned[key] = { color: value.toLowerCase() };
+          continue;
+        }
+        if (typeof value !== "object" || value === null) continue;
+        const record: PaletteKeyConfig = {};
+        const { color, opacity } = value as Record<string, unknown>;
+        if (isHexColor(color)) record.color = color.toLowerCase();
+        if (isOpacity(opacity)) record.opacity = normalizeOpacity(opacity);
+        if (record.color !== undefined || record.opacity !== undefined) {
+          cleaned[key] = record;
+        }
       }
-      if (typeof value !== "object" || value === null) continue;
-      const record: PaletteKeyConfig = {};
-      const { color, opacity } = value as Record<string, unknown>;
-      if (isHexColor(color)) record.color = color.toLowerCase();
-      if (isOpacity(opacity)) record.opacity = normalizeOpacity(opacity);
-      if (record.color !== undefined || record.opacity !== undefined) {
-        cleaned[key] = record;
-      }
-    }
-    return cleaned;
-  } catch {
-    return {};
-  }
+      return cleaned;
+    },
+  );
 }
 
 function writeStoredKeyConfigs(keyConfigs: PaletteKeyConfigs): void {
-  try {
-    if (Object.keys(keyConfigs).length === 0) {
-      window.localStorage.removeItem(CHANNEL_PALETTE_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(
-        CHANNEL_PALETTE_STORAGE_KEY,
-        JSON.stringify(keyConfigs),
-      );
-    }
-  } catch {
-    // Persistence is best-effort (private mode, disabled storage): the
-    // in-session palette still applies.
-  }
+  writeJson(CHANNEL_PALETTE_STORAGE_KEY, keyConfigs, {
+    isEmpty: (configs) => Object.keys(configs).length === 0,
+  });
 }
 
 /** Color-only projection of the per-key records (existing consumers). */

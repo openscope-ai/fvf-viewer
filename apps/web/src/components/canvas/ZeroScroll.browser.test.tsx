@@ -6,12 +6,10 @@ import Oscilloscope from "./Oscilloscope";
 import MetadataBanner from "../banner/MetadataBanner";
 import WaveformToolbar from "../toolbar/WaveformToolbar";
 import SiteFooter from "../footer/SiteFooter";
-import { useCaptureStore } from "../../state/captureStore";
-import { useViewportStore } from "../../state/viewportStore";
-import { useCursorStore } from "../../state/cursorStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -63,9 +61,7 @@ describe("Zero-scroll viewport layout (Issue #62)", () => {
   let root: Root;
 
   beforeEach(() => {
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     hostElement = document.createElement("div");
@@ -78,9 +74,7 @@ describe("Zero-scroll viewport layout (Issue #62)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
   });

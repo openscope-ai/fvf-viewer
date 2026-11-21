@@ -8,10 +8,8 @@ import WaveformToolbar from "./WaveformToolbar";
 import MetadataBanner from "../banner/MetadataBanner";
 import MeasurementsTable from "../measurements/MeasurementsTable";
 import { CursorReadoutCard } from "../cursors/CursorReadoutCard";
-import {
-  captureFileKey,
-  useChannelNamesStore,
-} from "../../state/channelNamesStore";
+import { useChannelNamesStore } from "../../state/channelNamesStore";
+import { captureFileKey } from "../../state/storage";
 import {
   alignedChannels,
   buildCsvHeaderLines,
@@ -24,8 +22,8 @@ import { useCursorStore } from "../../state/cursorStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
-import { useBadgePopoverStore } from "./badgeConfig/anchoredPopover";
 import type { ParsedCapture } from "../../types/capture";
+import { clearReference, resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -104,10 +102,7 @@ describe("Channel name inline editing (Issue #64)", () => {
 
   beforeEach(() => {
     localStorage.clear();
-    useChannelNamesStore.getState().setFileKey(null);
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     capture = createTestCapture();
@@ -127,10 +122,7 @@ describe("Channel name inline editing (Issue #64)", () => {
   afterEach(() => {
     await_unmount();
     localStorage.clear();
-    useChannelNamesStore.getState().setFileKey(null);
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
   });
@@ -339,8 +331,7 @@ describe("Channel name inline editing (Issue #64)", () => {
     }
 
     beforeEach(() => {
-      useBadgePopoverStore.getState().setOpen(null);
-      useReferenceStore.getState().clear();
+      clearReference();
       useMeasurementsStore.setState({ isOpen: false });
       refCapture = createRefCapture();
       act(() => {
@@ -362,8 +353,7 @@ describe("Channel name inline editing (Issue #64)", () => {
     });
 
     afterEach(() => {
-      useBadgePopoverStore.getState().setOpen(null);
-      useReferenceStore.getState().clear();
+      clearReference();
       useMeasurementsStore.setState({ isOpen: false });
     });
 

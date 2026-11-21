@@ -9,15 +9,14 @@ import { yScaleKey } from "../../capture/channelUnits";
 import { useCaptureStore } from "../../state/captureStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
-import { useCursorStore } from "../../state/cursorStore";
 import { usePaletteStore } from "../../state/paletteStore";
-import { useReferenceStore } from "../../state/referenceStore";
 import { useThemeStore } from "../../state/themeStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { laneBandsCss } from "./stackLaneDecorations";
 import { computeGroundFlags } from "./groundFlags";
 import { getLiveRenderState } from "./liveRenderState";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -85,11 +84,7 @@ describe("Issue #268: Stack view horizontally aligned Y-axes single column & rec
   beforeEach(async () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

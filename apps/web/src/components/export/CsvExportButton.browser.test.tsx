@@ -10,6 +10,7 @@ import { useCsvExportStore } from "../../state/csvExportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { useSnapshotStore } from "./snapshotStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 import "../../index.css";
 
 (
@@ -84,8 +85,7 @@ describe("CsvExportButton (browser)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
+    resetSession();
     useCsvExportStore.getState().reset();
     useBadgePopoverStore.getState().setOpen(null);
     if (createdUrl) URL.revokeObjectURL(createdUrl);

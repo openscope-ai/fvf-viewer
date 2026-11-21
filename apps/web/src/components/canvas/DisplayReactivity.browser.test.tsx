@@ -8,11 +8,10 @@ import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { useCaptureStore } from "../../state/captureStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
-import { useCursorStore } from "../../state/cursorStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useThemeStore } from "../../state/themeStore";
-import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
+import { resetSession } from "../../state/captureSession";
 
 /**
  * Issue #238 regression coverage: the popover's Y-scale / offset fields
@@ -94,10 +93,7 @@ describe("Popover display transforms apply to the canvas (issue #238)", () => {
   beforeEach(async () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

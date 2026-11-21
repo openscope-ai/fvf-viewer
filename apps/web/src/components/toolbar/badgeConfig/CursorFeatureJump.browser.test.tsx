@@ -19,6 +19,7 @@ import {
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
 import { CURSOR_MOVEMENT_SUMMARY } from "../../cursors/cursorHelp";
 import type { ParsedCapture } from "../../../types/capture";
+import { resetSession } from "../../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -105,10 +106,7 @@ describe("CursorFeatureJumpSection (issue #314)", () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
     useCursorDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
-    useZoomHistoryStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
@@ -140,10 +138,7 @@ describe("CursorFeatureJumpSection (issue #314)", () => {
     });
     hostElement.remove();
     window.localStorage.clear();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
-    useZoomHistoryStore.getState().reset();
+    resetSession();
   });
 
   it("WaveformToolbar line 2 contains no feature search elements; FindNavControls and CSS rules removed", () => {

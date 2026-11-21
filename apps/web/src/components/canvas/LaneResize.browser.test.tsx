@@ -9,6 +9,12 @@ import App from "../../App";
 import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { yScaleKey } from "../../capture/channelUnits";
 import { useCaptureStore } from "../../state/captureStore";
+import {
+  clearReference,
+  ingestPrimary,
+  ingestReference,
+  resetSession,
+} from "../../state/captureSession";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useCursorStore } from "../../state/cursorStore";
@@ -170,18 +176,12 @@ describe("Stack-view lane resizing (issue #251)", () => {
   beforeEach(async () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     useLaneLayoutStore.getState().setFileKey(null);
-    await useCaptureStore
-      .getState()
-      .parseBuffer(await fixture(fourChUrlQ), "four.fvf");
+    await ingestPrimary(await fixture(fourChUrlQ), "four.fvf");
     host = document.createElement("div");
     host.style.width = "900px";
     host.style.height = "640px";
@@ -409,18 +409,14 @@ describe("Stack-view lane resizing (issue #251)", () => {
 
     // Reload the SAME file (same name + timestamp -> same file key).
     await act(async () => {
-      await useCaptureStore
-        .getState()
-        .parseBuffer(await fixture(fourChUrlQ), "four.fvf");
+      await ingestPrimary(await fixture(fourChUrlQ), "four.fvf");
     });
     await settle(300);
     expect(useLaneLayoutStore.getState().weights).toEqual(weightsBefore);
 
     // A DIFFERENT file starts from equal lanes.
     await act(async () => {
-      await useCaptureStore
-        .getState()
-        .parseBuffer(await fixture(twoChMinUrlQ), "two.fvf");
+      await ingestPrimary(await fixture(twoChMinUrlQ), "two.fvf");
     });
     await settle(300);
     expect(useLaneLayoutStore.getState().weights).toEqual({});
@@ -480,9 +476,7 @@ describe("Stack-view lane resizing (issue #251)", () => {
       await new Promise((r) => setTimeout(r, 200));
     });
     await act(async () => {
-      await useReferenceStore
-        .getState()
-        .parseReferenceBuffer(await fixture(twoChMinUrlQ), "file2.fvf");
+      await ingestReference(await fixture(twoChMinUrlQ), "file2.fvf");
     });
     await settle(300);
     await enableStack();
@@ -509,7 +503,7 @@ describe("Stack-view lane resizing (issue #251)", () => {
 
     // Teardown drops the reference weights with the lanes.
     await act(async () => {
-      useReferenceStore.getState().clear();
+      clearReference();
       await new Promise((r) => setTimeout(r, 300));
     });
     expect(useLaneLayoutStore.getState().weights["Ref-A"]).toBeUndefined();

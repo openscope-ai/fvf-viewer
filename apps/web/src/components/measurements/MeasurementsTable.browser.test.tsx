@@ -11,6 +11,7 @@ import { useCursorStore } from "../../state/cursorStore";
 import { useReferenceStore } from "../../state/referenceStore";
 import { useThemeStore } from "../../state/themeStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -103,9 +104,7 @@ describe("MeasurementsTable (browser) - Issue #278", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useReferenceStore.getState().clear();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     useMeasurementsStore.getState().reset();
   });

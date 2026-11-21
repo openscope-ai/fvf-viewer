@@ -16,11 +16,10 @@ import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { usePaletteStore } from "../../state/paletteStore";
-import { useReferenceStore } from "../../state/referenceStore";
 import { useThemeStore } from "../../state/themeStore";
-import { useViewportStore } from "../../state/viewportStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { useSnapshotStore } from "./snapshotStore";
+import { resetSession } from "../../state/captureSession";
 
 /**
  * Issue #252 acceptance: the PNG export options popover on a split-action
@@ -128,11 +127,7 @@ describe("PNG export options popover (issue #252)", () => {
     usePngExportStore.getState().setCursors(true);
     usePngExportStore.getState().setGrid(true);
     usePngExportStore.getState().setFileName("");
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

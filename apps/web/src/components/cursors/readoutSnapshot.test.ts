@@ -63,26 +63,36 @@ const COLORS = {
 
 describe("buildReadoutRows (issue #58 snapshot compositing)", () => {
   it("returns no rows when both cursors are inactive", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      { c1Active: false, c1SampleIndex: 0, c2Active: false, c2SampleIndex: 0 },
-      ["A", "B"],
-      0,
-      0.1,
-      COLORS,
-    );
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
+        c1Active: false,
+        c1SampleIndex: 0,
+        c2Active: false,
+        c2SampleIndex: 0,
+      },
+      activeChannels: ["A", "B"],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+    });
     expect(rows).toEqual([]);
   });
 
   it("renders an active cursor header plus per-channel unit-aware rows", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      { c1Active: true, c1SampleIndex: 10, c2Active: false, c2SampleIndex: 0 },
-      ["A", "B"],
-      0,
-      0.1,
-      COLORS,
-    );
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
+        c1Active: true,
+        c1SampleIndex: 10,
+        c2Active: false,
+        c2SampleIndex: 0,
+      },
+      activeChannels: ["A", "B"],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+    });
     // Header + 2 value rows (channel context rows removed per AC2/AC4).
     expect(rows).toHaveLength(3);
     expect(rows[0]!.cells[0]).toMatchObject({
@@ -101,28 +111,38 @@ describe("buildReadoutRows (issue #58 snapshot compositing)", () => {
   });
 
   it("suppresses hidden channels", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      { c1Active: true, c1SampleIndex: 5, c2Active: false, c2SampleIndex: 0 },
-      ["A"],
-      0,
-      0.1,
-      COLORS,
-    );
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
+        c1Active: true,
+        c1SampleIndex: 5,
+        c2Active: false,
+        c2SampleIndex: 0,
+      },
+      activeChannels: ["A"],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+    });
     expect(rows).toHaveLength(2);
     expect(rows[1]!.cells[0]!.text).toBe("A:");
     expect(rows[1]!.cells[1]!.text).toBe("1.050 V");
   });
 
   it("labels differential rows with each channel's base unit and stripped channel names", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      { c1Active: true, c1SampleIndex: 10, c2Active: true, c2SampleIndex: 40 },
-      ["A", "B"],
-      0,
-      0.1,
-      COLORS,
-    );
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
+        c1Active: true,
+        c1SampleIndex: 10,
+        c2Active: true,
+        c2SampleIndex: 40,
+      },
+      activeChannels: ["A", "B"],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+    });
     const labels = rows.map((row) => row.cells[0]!.text);
     expect(labels).toEqual([
       "C1",
@@ -142,15 +162,20 @@ describe("buildReadoutRows (issue #58 snapshot compositing)", () => {
   });
 
   it("honors custom channel names in readout rows (AC1)", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      { c1Active: true, c1SampleIndex: 10, c2Active: true, c2SampleIndex: 40 },
-      ["A", "B"],
-      0,
-      0.1,
-      COLORS,
-      { A: "V_grid" },
-    );
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
+        c1Active: true,
+        c1SampleIndex: 10,
+        c2Active: true,
+        c2SampleIndex: 40,
+      },
+      activeChannels: ["A", "B"],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+      customNames: { A: "V_grid" },
+    });
     const labels = rows.map((row) => row.cells[0]!.text);
     expect(labels).toEqual([
       "C1",
@@ -167,28 +192,38 @@ describe("buildReadoutRows (issue #58 snapshot compositing)", () => {
   });
 
   it("marks out-of-view cursor times without the bright value tone", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      { c1Active: true, c1SampleIndex: 5, c2Active: false, c2SampleIndex: 0 },
-      ["A"],
-      0.05,
-      0.1,
-      COLORS,
-    );
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
+        c1Active: true,
+        c1SampleIndex: 5,
+        c2Active: false,
+        c2SampleIndex: 0,
+      },
+      activeChannels: ["A"],
+      xMin: 0.05,
+      xMax: 0.1,
+      colors: COLORS,
+    });
     // t = 0.005 s is left of xMin = 0.05 s: header time cell loses #FFFFFF.
     expect(rows[0]!.cells[2]).toMatchObject({ alignRight: true });
     expect(rows[0]!.cells[2]!.color).toBeUndefined();
   });
 
   it("appends differential rows only when both cursors are active", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      { c1Active: true, c1SampleIndex: 10, c2Active: true, c2SampleIndex: 40 },
-      [],
-      0,
-      0.1,
-      COLORS,
-    );
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
+        c1Active: true,
+        c1SampleIndex: 10,
+        c2Active: true,
+        c2SampleIndex: 40,
+      },
+      activeChannels: [],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+    });
     const labels = rows.map((row) => row.cells[0]!.text);
     expect(labels).toEqual(["C1", "C2", "Δt:", "1/Δt:"]);
     expect(rows[2]!.cells[1]!.text).toBe("30.00 ms");
@@ -196,20 +231,70 @@ describe("buildReadoutRows (issue #58 snapshot compositing)", () => {
   });
 
   it("clamps sample indices into the valid range", () => {
-    const rows = buildReadoutRows(
-      createCapture(),
-      {
+    const rows = buildReadoutRows({
+      capture: createCapture(),
+      cursors: {
         c1Active: true,
         c1SampleIndex: 9_999,
         c2Active: false,
         c2SampleIndex: 0,
       },
-      [],
-      0,
-      0.1,
-      COLORS,
-    );
+      activeChannels: [],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+    });
     expect(rows[0]!.cells[1]!.text).toBe("#99");
+  });
+});
+
+describe("buildReadoutRows display invert transforms (issue #359)", () => {
+  it("flips absolute and differential values for inverted channels purely via ReadoutInput", () => {
+    const capture = createCapture();
+    const cursors = {
+      c1Active: true,
+      c1SampleIndex: 10,
+      c2Active: true,
+      c2SampleIndex: 40,
+    };
+
+    const nonInverted = buildReadoutRows({
+      capture,
+      cursors,
+      activeChannels: ["A", "B"],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+      displayConfigs: {
+        A: { yScalePercent: 200, offset: 5, inverted: false },
+      },
+    });
+    // Non-inverted: scale & offset never alter cursor readouts.
+    expect(nonInverted[1]!.cells[1]!.text).toBe("1.100 V");
+    expect(nonInverted[2]!.cells[1]!.text).toBe("-1.800 A");
+    expect(nonInverted[4]!.cells[1]!.text).toBe("1.400 V");
+    expect(nonInverted[5]!.cells[1]!.text).toBe("-1.200 A");
+    expect(nonInverted[8]!.cells[1]!.text).toBe("300.0 mV");
+    expect(nonInverted[9]!.cells[1]!.text).toBe("600.0 mA");
+
+    const inverted = buildReadoutRows({
+      capture,
+      cursors,
+      activeChannels: ["A", "B"],
+      xMin: 0,
+      xMax: 0.1,
+      colors: COLORS,
+      displayConfigs: {
+        A: { inverted: true, yScalePercent: 200, offset: 5 },
+      },
+    });
+    // Channel A is inverted (-1.100 V, -1.400 V, Δ = -300.0 mV); Channel B is unchanged.
+    expect(inverted[1]!.cells[1]!.text).toBe("-1.100 V");
+    expect(inverted[2]!.cells[1]!.text).toBe("-1.800 A");
+    expect(inverted[4]!.cells[1]!.text).toBe("-1.400 V");
+    expect(inverted[5]!.cells[1]!.text).toBe("-1.200 A");
+    expect(inverted[8]!.cells[1]!.text).toBe("-300.0 mV");
+    expect(inverted[9]!.cells[1]!.text).toBe("600.0 mA");
   });
 });
 
@@ -231,17 +316,15 @@ describe("buildReadoutRows cursor semantics (issue #225)", () => {
     rows.map((row) => row.cells.map((cell) => cell.text).join(" "));
 
   it("filters a bound cursor to its bound channel; differential rows keep the intersection", () => {
-    const rows = buildReadoutRows(
+    const rows = buildReadoutRows({
       capture,
       cursors,
-      active,
-      null,
-      null,
+      activeChannels: active,
+      xMin: null,
+      xMax: null,
       colors,
-      undefined,
-      undefined,
-      { c1Binding: "A", c2Binding: "all", deltaLocked: false },
-    );
+      semantics: { c1Binding: "A", c2Binding: "all", deltaLocked: false },
+    });
     const lines = texts(rows);
     // C1 rows show only A; C2 rows show A and B.
     expect(lines.some((l) => l.includes("A: 1.100 V"))).toBe(true);
@@ -254,17 +337,15 @@ describe("buildReadoutRows cursor semantics (issue #225)", () => {
   });
 
   it("falls back to all visible channels with a hint when the bound channel is hidden", () => {
-    const rows = buildReadoutRows(
+    const rows = buildReadoutRows({
       capture,
       cursors,
-      ["B"], // A hidden
-      null,
-      null,
+      activeChannels: ["B"], // A hidden
+      xMin: null,
+      xMax: null,
       colors,
-      undefined,
-      undefined,
-      { c1Binding: "A", c2Binding: "all", deltaLocked: false },
-    );
+      semantics: { c1Binding: "A", c2Binding: "all", deltaLocked: false },
+    });
     const lines = texts(rows);
     expect(
       lines.some((l) => l.includes("A hidden — showing all visible channels")),
@@ -274,17 +355,15 @@ describe("buildReadoutRows cursor semantics (issue #225)", () => {
   });
 
   it("marks the Δt row locked while the pair lock is on", () => {
-    const rows = buildReadoutRows(
+    const rows = buildReadoutRows({
       capture,
       cursors,
-      active,
-      null,
-      null,
+      activeChannels: active,
+      xMin: null,
+      xMax: null,
       colors,
-      undefined,
-      undefined,
-      { c1Binding: "all", c2Binding: "all", deltaLocked: true },
-    );
+      semantics: { c1Binding: "all", c2Binding: "all", deltaLocked: true },
+    });
     expect(texts(rows).some((l) => l.startsWith("Δt (locked):"))).toBe(true);
   });
 });

@@ -23,12 +23,8 @@ import {
   useZoomHistoryStore,
   type ViewportSnapshot,
 } from "../../state/zoomHistoryStore";
-import { useCaptureStore } from "../../state/captureStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
-import {
-  captureFileKey,
-  useChannelNamesStore,
-} from "../../state/channelNamesStore";
+import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { laneFractions, useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import {
@@ -593,27 +589,6 @@ export class ViewportController {
       this.mountedCapture = null;
       this.mountedRefLanes = null;
       return;
-    }
-
-    // Issue #271: synchronize per-file store state on mount before creating uPlot options
-    const fileName = useCaptureStore.getState().fileName;
-    if (fileName) {
-      const currentFileKey = captureFileKey(
-        fileName,
-        capture.metadata.timestamp14,
-      );
-      if (
-        currentFileKey &&
-        useChannelDisplayStore.getState().fileKey !== currentFileKey
-      ) {
-        useChannelDisplayStore.getState().setFileKey(currentFileKey);
-      }
-      if (
-        currentFileKey &&
-        useLaneLayoutStore.getState().fileKey !== currentFileKey
-      ) {
-        useLaneLayoutStore.getState().setFileKey(currentFileKey);
-      }
     }
 
     const alignedData = this.buildAlignedData(capture, refLanes);

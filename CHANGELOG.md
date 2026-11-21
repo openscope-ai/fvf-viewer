@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.14.1] - 2026-11-21
+
+[v0.14.0...v0.14.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.14.0...v0.14.1)
+
+### Changed
+
+- Consolidate capture lifecycle into `CaptureSession` coordinator (Ref #357):
+  - Introduced `CaptureSession` (`apps/web/src/state/captureSession.ts`) owning atomic multi-store capture lifecycle transitions (`beginPrimaryIngestion`, `ingestPrimary`, `ingestReference`, `clearReference`, `resetView`, `returnToLanding`, `resetSession`) and unified Primary/Reference solo coordination (`toggleSolo`, `clearSolo`).
+  - Eliminated the circular import between `referenceStore.ts` and `channelDisplayStore.ts`, removed lifecycle `useEffect` chains and inline multi-store orchestration from `App.tsx`, `Oscilloscope.tsx`, `ViewportController`, `WaveformToolbar.tsx`, and `MetadataBanner.tsx`, deleted dead `apps/web/src/stores/viewportStore.ts`, and migrated existing tests to `resetSession()`.
+- Replace hand-rolled `localStorage` persistence across stores with a shared storage adapter (Ref #358):
+  - Added `apps/web/src/state/storage.ts` providing `StorageAdapter` (browser `localStorage` + in-memory test adapter), uniform JSON and per-file map helpers with empty-record cleanup, and the neutral `captureFileKey` helper moved out of `channelNamesStore.ts`.
+  - Migrated all 10 persisted stores in `apps/web/src/state/` to delegate storage I/O to the shared adapter with zero duplicated `try/catch` `localStorage` boilerplate.
+- Make `readoutSnapshot` pure by passing display transforms across its seam (Ref #359):
+  - Collapsed `buildReadoutRows` in `apps/web/src/components/cursors/readoutSnapshot.ts` from 9 positional arguments into a single structured `ReadoutInput` object carrying `displayConfigs`, removing its hidden `useChannelDisplayStore.getState()` read and all runtime store imports.
+  - Updated PNG snapshot assembly (`snapshotExporter.ts`) to pass `displayConfigs` explicitly and added pure inverted/non-inverted unit tests in `readoutSnapshot.test.ts`.
+
 ## [0.14.0] - 2026-11-21
 
 [v0.13.2...v0.14.0](https://github.com/openscope-ai/fvf-viewer/compare/v0.13.2...v0.14.0)

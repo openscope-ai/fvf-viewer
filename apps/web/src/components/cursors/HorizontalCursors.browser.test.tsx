@@ -8,8 +8,8 @@ import { useCaptureStore } from "../../state/captureStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
-import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -72,9 +72,7 @@ describe("Horizontal (Y) Measurement Cursors (Issue #281)", () => {
   let capture: ParsedCapture;
 
   beforeEach(() => {
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
+    resetSession();
 
     capture = createTestCapture(1000);
     useCaptureStore.setState({ capture });
@@ -91,11 +89,7 @@ describe("Horizontal (Y) Measurement Cursors (Issue #281)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
-    useBadgePopoverStore.getState().setOpen(null);
+    resetSession();
   });
 
   it("AC1: Y1 and Y2 toggle on/off via toolbar buttons", () => {

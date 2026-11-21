@@ -33,7 +33,8 @@ const STACK_KEY = "fvf.stack-mode";
 async function importStores() {
   const display = await import("./channelDisplayStore");
   const viewport = await import("./viewportStore");
-  return { display, viewport };
+  const session = await import("./captureSession");
+  return { display, viewport, session };
 }
 
 function storedConfigs(backing: Map<string, string>): ChannelDisplayConfigs {
@@ -264,7 +265,7 @@ describe("channelDisplayStore (issue #224)", () => {
   });
 
   it("solo saves the visibility set, isolates, and restores on second click", async () => {
-    const { display, viewport } = await importStores();
+    const { display, viewport, session } = await importStores();
     expect(viewport.useViewportStore.getState().activeChannels).toEqual([
       "A",
       "B",
@@ -272,8 +273,7 @@ describe("channelDisplayStore (issue #224)", () => {
       "D",
     ]);
 
-    const s = display.useChannelDisplayStore.getState();
-    s.toggleSolo("B");
+    session.toggleSolo("B");
     expect(viewport.useViewportStore.getState().activeChannels).toEqual(["B"]);
     expect(display.useChannelDisplayStore.getState().solo).toEqual({
       key: "B",
@@ -289,7 +289,7 @@ describe("channelDisplayStore (issue #224)", () => {
       savedActive: ["A", "B", "C", "D"],
     });
 
-    display.useChannelDisplayStore.getState().toggleSolo("B");
+    session.toggleSolo("B");
     expect(viewport.useViewportStore.getState().activeChannels).toEqual([
       "A",
       "B",
@@ -300,9 +300,9 @@ describe("channelDisplayStore (issue #224)", () => {
   });
 
   it("switching solo to another channel re-saves the isolated visibility", async () => {
-    const { display, viewport } = await importStores();
-    display.useChannelDisplayStore.getState().toggleSolo("B");
-    display.useChannelDisplayStore.getState().toggleSolo("C");
+    const { display, viewport, session } = await importStores();
+    session.toggleSolo("B");
+    session.toggleSolo("C");
     // Soloing C while B is soloed saves the currently visible set ([B]).
     expect(display.useChannelDisplayStore.getState().solo).toEqual({
       key: "C",
@@ -310,15 +310,15 @@ describe("channelDisplayStore (issue #224)", () => {
     });
     expect(viewport.useViewportStore.getState().activeChannels).toEqual(["C"]);
     // One unsolo restores [B] — the set saved when C was soloed.
-    display.useChannelDisplayStore.getState().toggleSolo("C");
+    session.toggleSolo("C");
     expect(viewport.useViewportStore.getState().activeChannels).toEqual(["B"]);
   });
 
   it("clearSolo (capture ingestion) restores the saved set once", async () => {
-    const { display, viewport } = await importStores();
-    display.useChannelDisplayStore.getState().toggleSolo("D");
+    const { display, viewport, session } = await importStores();
+    session.toggleSolo("D");
     expect(viewport.useViewportStore.getState().activeChannels).toEqual(["D"]);
-    display.useChannelDisplayStore.getState().clearSolo();
+    session.clearSolo();
     expect(viewport.useViewportStore.getState().activeChannels).toEqual([
       "A",
       "B",
@@ -327,7 +327,7 @@ describe("channelDisplayStore (issue #224)", () => {
     ]);
     expect(display.useChannelDisplayStore.getState().solo).toBeNull();
     // A second clear with no solo is a no-op.
-    display.useChannelDisplayStore.getState().clearSolo();
+    session.clearSolo();
     expect(viewport.useViewportStore.getState().activeChannels).toEqual([
       "A",
       "B",

@@ -24,6 +24,7 @@ import { useCursorStore } from "../../state/cursorStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useCaptureStore } from "../../state/captureStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -85,9 +86,7 @@ describe("Out-of-view Cursor Recovery (Issue #15)", () => {
   let capture: ParsedCapture;
 
   beforeEach(() => {
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
+    resetSession();
 
     capture = createTestCapture(1000);
     useCaptureStore.setState({ capture });
@@ -104,9 +103,7 @@ describe("Out-of-view Cursor Recovery (Issue #15)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
+    resetSession();
   });
 
   it("AC1 & AC3: Directional recovery badges appear iff cursor is outside X bounds with accent colors", () => {

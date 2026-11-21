@@ -24,8 +24,13 @@ import {
   type ChannelDisplayConfigs,
   type ChannelKey,
 } from "../components/canvas/channelDisplay";
-import { useViewportStore, type ChannelTag } from "./viewportStore";
-import { useReferenceStore } from "./referenceStore";
+import type { ChannelTag } from "./viewportStore";
+import {
+  readJson,
+  readPerFileMap,
+  writeJson,
+  writePerFileMap,
+} from "./storage";
 
 export const CHANNEL_DISPLAY_STORAGE_KEY = "fvf.channel-display";
 export const STACK_MODE_STORAGE_KEY = "fvf.stack-mode";
@@ -44,39 +49,13 @@ function isChannelKey(value: unknown): value is ChannelKey {
 export type StoredStackModes = Record<string, boolean>;
 
 function readStoredStackModes(): StoredStackModes {
-  try {
-    const raw = window.localStorage.getItem(STACK_MODE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const cleaned: StoredStackModes = {};
-    for (const [fileKey, value] of Object.entries(
-      parsed as Record<string, unknown>,
-    )) {
-      if (typeof fileKey === "string" && typeof value === "boolean") {
-        cleaned[fileKey] = value;
-      }
-    }
-    return cleaned;
-  } catch {
-    return {};
-  }
+  return readPerFileMap(STACK_MODE_STORAGE_KEY, (value) =>
+    typeof value === "boolean" ? value : undefined,
+  );
 }
 
 function writeStoredStackModes(modes: StoredStackModes): void {
-  try {
-    if (Object.keys(modes).length === 0) {
-      window.localStorage.removeItem(STACK_MODE_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(
-        STACK_MODE_STORAGE_KEY,
-        JSON.stringify(modes),
-      );
-    }
-  } catch {
-    // Best-effort persistence (private mode, disabled storage): the
-    // in-session settings still apply.
-  }
+  writePerFileMap(STACK_MODE_STORAGE_KEY, modes);
 }
 
 /**
@@ -87,78 +66,69 @@ function readStored(): {
   keyConfigs: ChannelDisplayConfigs;
   solo: SoloState | null;
 } {
-  try {
-    const raw = window.localStorage.getItem(CHANNEL_DISPLAY_STORAGE_KEY);
-    if (!raw) return { keyConfigs: {}, solo: null };
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
-      return { keyConfigs: {}, solo: null };
-    }
-    const record = parsed as Record<string, unknown>;
-    const keyConfigs: ChannelDisplayConfigs = {};
-    const entries =
-      typeof record.keyConfigs === "object" && record.keyConfigs !== null
-        ? (record.keyConfigs as Record<string, unknown>)
-        : {};
-    for (const [key, value] of Object.entries(entries)) {
-      if (!isChannelKey(key)) continue;
-      if (typeof value !== "object" || value === null) continue;
-      const config: ChannelDisplayConfig = {};
-      const { yScalePercent, offset, inverted } = value as Record<
-        string,
-        unknown
-      >;
-      if (
-        typeof yScalePercent === "number" &&
-        Number.isFinite(yScalePercent) &&
-        normalizeYScalePercent(yScalePercent) !== DEFAULT_Y_SCALE_PERCENT
-      ) {
-        config.yScalePercent = normalizeYScalePercent(yScalePercent);
+  return readJson(
+    CHANNEL_DISPLAY_STORAGE_KEY,
+    { keyConfigs: {}, solo: null },
+    (parsed) => {
+      if (typeof parsed !== "object" || parsed === null) {
+        return { keyConfigs: {}, solo: null };
       }
-      if (
-        typeof offset === "number" &&
-        Number.isFinite(offset) &&
-        normalizeOffset(offset) !== DEFAULT_OFFSET
-      ) {
-        config.offset = normalizeOffset(offset);
+      const record = parsed as Record<string, unknown>;
+      const keyConfigs: ChannelDisplayConfigs = {};
+      const entries =
+        typeof record.keyConfigs === "object" && record.keyConfigs !== null
+          ? (record.keyConfigs as Record<string, unknown>)
+          : {};
+      for (const [key, value] of Object.entries(entries)) {
+        if (!isChannelKey(key)) continue;
+        if (typeof value !== "object" || value === null) continue;
+        const config: ChannelDisplayConfig = {};
+        const { yScalePercent, offset, inverted } = value as Record<
+          string,
+          unknown
+        >;
+        if (
+          typeof yScalePercent === "number" &&
+          Number.isFinite(yScalePercent) &&
+          normalizeYScalePercent(yScalePercent) !== DEFAULT_Y_SCALE_PERCENT
+        ) {
+          config.yScalePercent = normalizeYScalePercent(yScalePercent);
+        }
+        if (
+          typeof offset === "number" &&
+          Number.isFinite(offset) &&
+          normalizeOffset(offset) !== DEFAULT_OFFSET
+        ) {
+          config.offset = normalizeOffset(offset);
+        }
+        if (inverted === true) config.inverted = true;
+        if (!isDefaultConfig(config)) keyConfigs[key] = config;
       }
-      if (inverted === true) config.inverted = true;
-      if (!isDefaultConfig(config)) keyConfigs[key] = config;
-    }
-    let solo: SoloState | null = null;
-    if (typeof record.solo === "object" && record.solo !== null) {
-      const rawSolo = record.solo as Record<string, unknown>;
-      const savedActiveRaw: unknown = rawSolo.savedActive;
-      if (isChannelKey(rawSolo.key) && Array.isArray(savedActiveRaw)) {
-        const savedActive = savedActiveRaw.filter(
-          (tag: unknown): tag is ChannelTag => typeof tag === "string",
-        );
-        solo = { key: rawSolo.key, savedActive };
+      let solo: SoloState | null = null;
+      if (typeof record.solo === "object" && record.solo !== null) {
+        const rawSolo = record.solo as Record<string, unknown>;
+        const savedActiveRaw: unknown = rawSolo.savedActive;
+        if (isChannelKey(rawSolo.key) && Array.isArray(savedActiveRaw)) {
+          const savedActive = savedActiveRaw.filter(
+            (tag: unknown): tag is ChannelTag => typeof tag === "string",
+          );
+          solo = { key: rawSolo.key, savedActive };
+        }
       }
-    }
-    return { keyConfigs, solo };
-  } catch {
-    return { keyConfigs: {}, solo: null };
-  }
+      return { keyConfigs, solo };
+    },
+  );
 }
 
 function writeStored(state: ChannelDisplayStoreState): void {
-  try {
-    if (Object.keys(state.keyConfigs).length === 0 && !state.solo) {
-      window.localStorage.removeItem(CHANNEL_DISPLAY_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(
-        CHANNEL_DISPLAY_STORAGE_KEY,
-        JSON.stringify({
-          keyConfigs: state.keyConfigs,
-          solo: state.solo,
-        }),
-      );
-    }
-  } catch {
-    // Best-effort persistence (private mode, disabled storage): the
-    // in-session settings still apply.
-  }
+  writeJson(
+    CHANNEL_DISPLAY_STORAGE_KEY,
+    { keyConfigs: state.keyConfigs, solo: state.solo },
+    {
+      isEmpty: (payload) =>
+        Object.keys(payload.keyConfigs).length === 0 && !payload.solo,
+    },
+  );
 }
 
 export interface ChannelDisplayStoreState {
@@ -184,16 +154,8 @@ export interface ChannelDisplayStoreState {
   /** Sets the vertical offset (0 prunes the field). */
   setOffset: (key: ChannelKey, offset: number) => void;
   setInverted: (key: ChannelKey, inverted: boolean) => void;
-  /**
-   * Solo quick-knob: isolates the channel (saving the current visibility
-   * set) or restores the saved set on the second click.
-   */
-  toggleSolo: (key: ChannelKey) => void;
-  /**
-   * Clears solo (restoring the saved visibility set); called on capture
-   * ingestion/replacement.
-   */
-  clearSolo: () => void;
+  /** Sets or clears the persisted solo record (coordinated by CaptureSession). */
+  setSolo: (solo: SoloState | null) => void;
   /** Per-key ↺: scale 100% + offset 0 + not inverted. */
   resetKey: (key: ChannelKey) => void;
   /**
@@ -342,47 +304,7 @@ export function createChannelDisplayStore() {
         }),
       })),
 
-    toggleSolo: (key) =>
-      commit(set, (state) => {
-        const ref = isRefChannelKey(key);
-        if (state.solo?.key === key) {
-          // Second click: restore the saved visibility set (primary
-          // channels in viewportStore, reference channels in the
-          // reference store — issue #96 keeps the two slots separate).
-          if (ref) {
-            useReferenceStore
-              .getState()
-              .setRefActiveChannels(state.solo.savedActive);
-          } else {
-            useViewportStore
-              .getState()
-              .setActiveChannels(state.solo.savedActive);
-          }
-          return { solo: null };
-        }
-        const savedActive = ref
-          ? [...useReferenceStore.getState().refActiveChannels]
-          : [...useViewportStore.getState().activeChannels];
-        if (ref) {
-          useReferenceStore.getState().setRefActiveChannels([key]);
-        } else {
-          useViewportStore.getState().setActiveChannels([key]);
-        }
-        return { solo: { key, savedActive } };
-      }),
-
-    clearSolo: () =>
-      commit(set, (state) => {
-        if (!state.solo) return {};
-        if (isRefChannelKey(state.solo.key)) {
-          useReferenceStore
-            .getState()
-            .setRefActiveChannels(state.solo.savedActive);
-        } else {
-          useViewportStore.getState().setActiveChannels(state.solo.savedActive);
-        }
-        return { solo: null };
-      }),
+    setSolo: (solo) => commit(set, () => ({ solo })),
 
     resetKey: (key) =>
       commit(set, (state) => {

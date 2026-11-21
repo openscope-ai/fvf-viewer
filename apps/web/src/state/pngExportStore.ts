@@ -11,6 +11,7 @@
  */
 
 import { create } from "zustand";
+import { readJson, writeJson } from "./storage";
 
 export const PNG_EXPORT_STORAGE_KEY = "fvf.png-export";
 
@@ -65,49 +66,38 @@ export function sanitizeFileNameDraft(raw: string): string {
 }
 
 function readStored(): Partial<PngExportSettings> {
-  try {
-    const raw = window.localStorage.getItem(PNG_EXPORT_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const record = parsed as Record<string, unknown>;
-    const settings: Partial<PngExportSettings> = {};
-    if (isTheme(record.theme)) settings.theme = record.theme;
-    if (isBackground(record.background))
-      settings.background = record.background;
-    if (isCard(record.readoutCard)) settings.readoutCard = record.readoutCard;
-    if (typeof record.cursors === "boolean") settings.cursors = record.cursors;
-    if (typeof record.grid === "boolean") settings.grid = record.grid;
-    if (typeof record.fileName === "string") {
-      settings.fileName = sanitizeFileNameDraft(record.fileName);
-    }
-    return settings;
-  } catch {
-    return {};
-  }
+  return readJson<Partial<PngExportSettings>>(
+    PNG_EXPORT_STORAGE_KEY,
+    {},
+    (parsed) => {
+      if (typeof parsed !== "object" || parsed === null) return {};
+      const record = parsed as Record<string, unknown>;
+      const settings: Partial<PngExportSettings> = {};
+      if (isTheme(record.theme)) settings.theme = record.theme;
+      if (isBackground(record.background))
+        settings.background = record.background;
+      if (isCard(record.readoutCard)) settings.readoutCard = record.readoutCard;
+      if (typeof record.cursors === "boolean")
+        settings.cursors = record.cursors;
+      if (typeof record.grid === "boolean") settings.grid = record.grid;
+      if (typeof record.fileName === "string") {
+        settings.fileName = sanitizeFileNameDraft(record.fileName);
+      }
+      return settings;
+    },
+  );
 }
 
 function writeStored(settings: PngExportSettings): void {
-  try {
-    if (
-      settings.theme === PNG_EXPORT_DEFAULTS.theme &&
-      settings.background === PNG_EXPORT_DEFAULTS.background &&
-      settings.readoutCard === PNG_EXPORT_DEFAULTS.readoutCard &&
-      settings.cursors === PNG_EXPORT_DEFAULTS.cursors &&
-      settings.grid === PNG_EXPORT_DEFAULTS.grid &&
-      settings.fileName === PNG_EXPORT_DEFAULTS.fileName
-    ) {
-      window.localStorage.removeItem(PNG_EXPORT_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(
-        PNG_EXPORT_STORAGE_KEY,
-        JSON.stringify(settings),
-      );
-    }
-  } catch {
-    // Best-effort persistence (private mode, disabled storage): the
-    // in-session settings still apply.
-  }
+  writeJson(PNG_EXPORT_STORAGE_KEY, settings, {
+    isEmpty: (s) =>
+      s.theme === PNG_EXPORT_DEFAULTS.theme &&
+      s.background === PNG_EXPORT_DEFAULTS.background &&
+      s.readoutCard === PNG_EXPORT_DEFAULTS.readoutCard &&
+      s.cursors === PNG_EXPORT_DEFAULTS.cursors &&
+      s.grid === PNG_EXPORT_DEFAULTS.grid &&
+      s.fileName === PNG_EXPORT_DEFAULTS.fileName,
+  });
 }
 
 /** True when the settings reproduce the historical export behavior. */

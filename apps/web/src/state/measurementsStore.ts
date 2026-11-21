@@ -13,26 +13,16 @@ import {
   type MeasurementAccumulator,
   updateAccumulator,
 } from "../components/measurements/measurementStats";
+import { readString, writeString } from "./storage";
 
 export const MEASUREMENTS_STORAGE_KEY = "fvf.measurements-open";
 
 export function loadMeasurementsOpen(): boolean {
-  if (typeof localStorage === "undefined") return false;
-  try {
-    const raw = localStorage.getItem(MEASUREMENTS_STORAGE_KEY);
-    return raw === "true";
-  } catch {
-    return false;
-  }
+  return readString(MEASUREMENTS_STORAGE_KEY) === "true";
 }
 
 export function saveMeasurementsOpen(open: boolean): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(MEASUREMENTS_STORAGE_KEY, String(open));
-  } catch {
-    // QuotaExceededError or storage disabled: non-fatal fallback
-  }
+  writeString(MEASUREMENTS_STORAGE_KEY, String(open));
 }
 
 export type MeasurementGatingMode = "visible" | "full";

@@ -5,7 +5,6 @@ import WaveformToolbar from "../WaveformToolbar";
 import "../../../index.css";
 import { useCaptureStore } from "../../../state/captureStore";
 import { useChannelNamesStore } from "../../../state/channelNamesStore";
-import { useCursorStore } from "../../../state/cursorStore";
 import { usePaletteStore } from "../../../state/paletteStore";
 import { useThemeStore } from "../../../state/themeStore";
 import { useBadgePopoverStore } from "./anchoredPopover";
@@ -15,6 +14,7 @@ import {
 } from "../../../state/channelDisplayStore";
 import { useViewportStore } from "../../../state/viewportStore";
 import type { ParsedCapture } from "../../../types/capture";
+import { resetSession } from "../../../state/captureSession";
 
 /**
  * Issue #224: the channel popover's Display section — Y-scale %, vertical
@@ -118,10 +118,7 @@ describe("Channel display settings (issue #224)", () => {
   beforeEach(() => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

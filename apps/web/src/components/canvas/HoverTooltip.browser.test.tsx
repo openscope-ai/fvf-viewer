@@ -16,11 +16,11 @@ import { yScaleKey } from "../../capture/channelUnits";
 import { formatTime } from "../cursors/siFormat";
 import { HOVER_DWELL_MS } from "./hoverTooltipPlugin";
 import { useCaptureStore } from "../../state/captureStore";
-import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -55,8 +55,7 @@ describe("Hover tooltip (issue #150, browser)", () => {
   let mountedUplot: uPlot | null;
 
   beforeEach(async () => {
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
@@ -80,8 +79,7 @@ describe("Hover tooltip (issue #150, browser)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");

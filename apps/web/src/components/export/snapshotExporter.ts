@@ -172,30 +172,31 @@ export function createSnapshotExporter(
           settings.readoutCard === "collapsed" ||
           (settings.readoutCard === "full" &&
             useReadoutCardStore.getState().collapsed),
-        rows: buildReadoutRows(
-          liveCapture,
-          cursorState,
-          viewportState.activeChannels,
-          effectiveXMin,
-          effectiveXMax,
-          {
+        rows: buildReadoutRows({
+          capture: liveCapture,
+          cursors: cursorState,
+          activeChannels: viewportState.activeChannels,
+          xMin: effectiveXMin,
+          xMax: effectiveXMax,
+          colors: {
             c1: effectiveCursorColor(renderTheme, colorsNow, "C1"),
             c2: effectiveCursorColor(renderTheme, colorsNow, "C2"),
             channel: (name: string) =>
               effectiveTraceColor(renderTheme, colorsNow, name),
           },
           customNames,
-          {
+          units: {
             time: displayNow.timeUnit,
             frequency: displayNow.frequencyUnit,
             voltage: displayNow.voltageUnit,
           },
-          {
+          semantics: {
             c1Binding: displayNow.bindings.C1,
             c2Binding: displayNow.bindings.C2,
             deltaLocked: displayNow.deltaLocked,
           },
-        ),
+          displayConfigs: useChannelDisplayStore.getState().keyConfigs,
+        }),
       };
     }
     if (settings.readoutCard === "excluded") {

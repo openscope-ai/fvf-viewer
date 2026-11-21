@@ -7,8 +7,8 @@ import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { useCaptureStore } from "../../state/captureStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { useCursorDisplayStore } from "../../state/cursorDisplayStore";
-import { useViewportStore } from "../../state/viewportStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -70,9 +70,7 @@ describe("Dual Measurement Cursors & Readout Panel (Issue #14)", () => {
   let capture: ParsedCapture;
 
   beforeEach(() => {
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
+    resetSession();
 
     capture = createTestCapture(1000);
     useCaptureStore.setState({ capture });
@@ -89,9 +87,7 @@ describe("Dual Measurement Cursors & Readout Panel (Issue #14)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
+    resetSession();
   });
 
   it("AC1: C1 and C2 toggle via toolbar buttons; default to 25% and 75% on initial activation", () => {

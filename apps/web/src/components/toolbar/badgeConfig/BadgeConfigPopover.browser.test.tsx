@@ -14,9 +14,9 @@ import {
   CURSOR_DISPLAY_STORAGE_KEY,
   useCursorDisplayStore,
 } from "../../../state/cursorDisplayStore";
-import { useViewportStore } from "../../../state/viewportStore";
 import { CURSOR_MOVEMENT_SUMMARY } from "../../cursors/cursorHelp";
 import type { ParsedCapture } from "../../../types/capture";
+import { resetSession } from "../../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -121,9 +121,7 @@ describe("Badge config popover (issue #204)", () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
     useCursorDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
@@ -146,9 +144,7 @@ describe("Badge config popover (issue #204)", () => {
     });
     hostElement.remove();
     window.localStorage.clear();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

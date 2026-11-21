@@ -16,6 +16,11 @@
 import { useCallback, useRef } from "react";
 import { useCaptureStore } from "../state/captureStore";
 import { useReferenceStore } from "../state/referenceStore";
+import {
+  beginPrimaryIngestion,
+  ingestPrimary,
+  ingestReference,
+} from "../state/captureSession";
 import { trackEvent } from "../analytics/tracker";
 
 /** Which capture slot an ingested file targets (issue #96). */
@@ -49,9 +54,7 @@ export function useFileIngestion() {
         // and parse state stay untouched.
         try {
           const buffer = await file.arrayBuffer();
-          await useReferenceStore
-            .getState()
-            .parseReferenceBuffer(buffer, file.name);
+          await ingestReference(buffer, file.name);
           if (useReferenceStore.getState().parseState === "success") {
             trackEvent("file_loaded", { source: "compare" });
           }
@@ -66,13 +69,13 @@ export function useFileIngestion() {
       // Allocate ticket from captureStore: immediately invalidates any
       // in-flight file read OR in-flight worker parse from an earlier selection,
       // transitioning the store to 'parsing' for this file.
-      const ticket = useCaptureStore.getState().allocateTicket(file.name);
+      const ticket = beginPrimaryIngestion(file.name);
       try {
         const buffer = await file.arrayBuffer();
         if (ticket !== useCaptureStore.getState().currentTicket()) {
           return;
         }
-        await useCaptureStore.getState().parseBuffer(buffer, file.name, ticket);
+        await ingestPrimary(buffer, file.name, ticket);
         if (
           ticket === useCaptureStore.getState().currentTicket() &&
           useCaptureStore.getState().parseState === "success"
@@ -101,7 +104,7 @@ export function useFileIngestion() {
       // Same ticket discipline as a picked file: the ticket invalidates any
       // in-flight selection, keeps the store in 'parsing' for this sample,
       // and routes fetch/read failures into the standard error modal path.
-      const ticket = useCaptureStore.getState().allocateTicket(fileName);
+      const ticket = beginPrimaryIngestion(fileName);
       try {
         const response = await fetch(url);
         if (!response.ok) {
@@ -111,7 +114,7 @@ export function useFileIngestion() {
         if (ticket !== useCaptureStore.getState().currentTicket()) {
           return;
         }
-        await useCaptureStore.getState().parseBuffer(buffer, fileName, ticket);
+        await ingestPrimary(buffer, fileName, ticket);
         if (
           ticket === useCaptureStore.getState().currentTicket() &&
           useCaptureStore.getState().parseState === "success"

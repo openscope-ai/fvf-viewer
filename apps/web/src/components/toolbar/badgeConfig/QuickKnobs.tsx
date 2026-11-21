@@ -19,6 +19,7 @@ import {
 } from "../../canvas/themePalette";
 import { usePaletteStore } from "../../../state/paletteStore";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
+import { toggleSolo } from "../../../state/captureSession";
 import { isChannelKey } from "../../canvas/channelDisplay";
 import { isLowContrastOnDark, previewStroke } from "./colorMath";
 
@@ -72,7 +73,6 @@ export function QuickKnobs({
   // channel popovers (one click isolates this channel, second click
   // restores the saved visibility set).
   const solo = useChannelDisplayStore((s) => s.solo);
-  const toggleSolo = useChannelDisplayStore((s) => s.toggleSolo);
   const soloed =
     kind === "channel" && isChannelKey(paletteKey) && solo?.key === paletteKey;
   const stroke = previewStroke(color, opacity);

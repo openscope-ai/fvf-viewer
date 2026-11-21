@@ -17,6 +17,7 @@ import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useThemeStore } from "../../state/themeStore";
 import { useZoomHistoryStore } from "../../state/zoomHistoryStore";
+import { resetSession } from "../../state/captureSession";
 
 function makeCapture(channelNames: string[], amplitude = 10): ParsedCapture {
   const n = 200;
@@ -70,9 +71,7 @@ describe("ViewportController (issue #356, pure TS without React)", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
-    useViewportStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({
       fileKey: null,
       refFileKey: null,

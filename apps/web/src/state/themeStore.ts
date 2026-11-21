@@ -7,6 +7,7 @@
 
 import { create } from "zustand";
 import type { ViewportTheme } from "../components/canvas/themePalette";
+import { readString, writeString } from "./storage";
 
 export const VIEWPORT_THEME_STORAGE_KEY = "fvf.viewport-theme";
 
@@ -15,21 +16,12 @@ function isViewportTheme(value: unknown): value is ViewportTheme {
 }
 
 function readStoredTheme(): ViewportTheme {
-  try {
-    const stored = window.localStorage.getItem(VIEWPORT_THEME_STORAGE_KEY);
-    return isViewportTheme(stored) ? stored : "dark";
-  } catch {
-    return "dark";
-  }
+  const stored = readString(VIEWPORT_THEME_STORAGE_KEY);
+  return isViewportTheme(stored) ? stored : "dark";
 }
 
 function writeStoredTheme(theme: ViewportTheme): void {
-  try {
-    window.localStorage.setItem(VIEWPORT_THEME_STORAGE_KEY, theme);
-  } catch {
-    // Persistence is best-effort (private mode, disabled storage): the
-    // in-session theme still applies.
-  }
+  writeString(VIEWPORT_THEME_STORAGE_KEY, theme);
 }
 
 export interface ThemeStoreState {

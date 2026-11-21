@@ -12,7 +12,7 @@ import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useMeasurementsStore } from "../../state/measurementsStore";
 import { useReferenceStore } from "../../state/referenceStore";
-import { useBadgePopoverStore } from "./badgeConfig/anchoredPopover";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -28,11 +28,7 @@ describe("WaveformToolbar (browser)", () => {
     hostElement.querySelector(`[data-testid='${testId}']`)!.parentElement!;
 
   beforeEach(() => {
-    useBadgePopoverStore.getState().setOpen(null);
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
-    useReferenceStore.getState().clear();
+    resetSession();
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
@@ -44,10 +40,7 @@ describe("WaveformToolbar (browser)", () => {
   });
 
   afterEach(() => {
-    useBadgePopoverStore.getState().setOpen(null);
-    useCursorStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
-    useReferenceStore.getState().clear();
+    resetSession();
     act(() => {
       root.unmount();
     });

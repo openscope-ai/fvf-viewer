@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import init, { engine_version } from "@fvf/fvf-wasm";
 import Oscilloscope from "./components/canvas/Oscilloscope";
 import WaveformToolbar from "./components/toolbar/WaveformToolbar";
@@ -8,20 +8,11 @@ import FileIngestion from "./components/ingestion/FileIngestion";
 import ErrorModal from "./components/modals/ErrorModal";
 import DesktopRoadblock from "./components/guards/DesktopRoadblock";
 import SiteFooter from "./components/footer/SiteFooter";
-import {
-  captureFileKey,
-  useChannelNamesStore,
-} from "./state/channelNamesStore";
-import { useLaneLayoutStore } from "./state/laneLayoutStore";
-import { isReferenceChannelId } from "./capture/channelCatalog";
-import type { ChannelKey } from "./components/canvas/channelDisplay";
 import useNarrowViewport from "./hooks/useNarrowViewport";
 import { useDocumentTitle } from "./hooks/useDocumentTitle";
 import { useCaptureStore } from "./state/captureStore";
 import { useReferenceStore } from "./state/referenceStore";
-import { useCursorStore } from "./state/cursorStore";
-import { useViewportStore } from "./state/viewportStore";
-import { useChannelDisplayStore } from "./state/channelDisplayStore";
+import { returnToLanding } from "./state/captureSession";
 
 export default function App() {
   const capture = useCaptureStore((state) => state.capture);
@@ -34,21 +25,6 @@ export default function App() {
   // reference's own parse errors surface through the modal below).
   const referenceError = useReferenceStore((state) => state.error);
   const clearReferenceError = useReferenceStore((state) => state.clearError);
-
-  // Issue #208: the banner brand lockup is the app's back-to-landing
-  // affordance. Discarding the capture is intentionally immediate (no
-  // confirmation step — a new capture is two clicks away); the loaded
-  // capture's view state (viewport, cursors) resets with it.
-  const returnToLanding = useCallback(() => {
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
-    // Issue #224: the solo quick-knob state resets with the loaded
-    // capture's other view state.
-    useChannelDisplayStore.getState().clearSolo();
-    // Issue #96: discarding the capture discards the comparison too.
-    useReferenceStore.getState().clear();
-    reset();
-  }, [reset]);
   const narrowViewport = useNarrowViewport();
   useDocumentTitle();
 
@@ -69,68 +45,6 @@ export default function App() {
       cancelled = true;
     };
   }, []);
-
-  // Issue #64: per-file channel-name persistence keyed by capture identity.
-  const setChannelNamesFileKey = useChannelNamesStore(
-    (state) => state.setFileKey,
-  );
-  useEffect(() => {
-    setChannelNamesFileKey(
-      captureFileKey(fileName, capture?.metadata.timestamp14),
-    );
-  }, [fileName, capture, setChannelNamesFileKey]);
-
-  // Issue #335: per-file channel-name persistence for File 2 comparison captures.
-  const refCapture = useReferenceStore((state) => state.capture);
-  const refFileName = useReferenceStore((state) => state.fileName);
-  const setChannelNamesRefFileKey = useChannelNamesStore(
-    (state) => state.setRefFileKey,
-  );
-  useEffect(() => {
-    setChannelNamesRefFileKey(
-      refCapture
-        ? captureFileKey(refFileName, refCapture.metadata.timestamp14)
-        : null,
-    );
-  }, [refFileName, refCapture, setChannelNamesRefFileKey]);
-
-  // Issue #251: Stack-view lane proportions persist per .fvf file through
-  // the same capture-identity keying; a different file starts equal.
-  const setLaneWeightsFileKey = useLaneLayoutStore((state) => state.setFileKey);
-  useEffect(() => {
-    setLaneWeightsFileKey(
-      captureFileKey(fileName, capture?.metadata.timestamp14),
-    );
-  }, [fileName, capture, setLaneWeightsFileKey]);
-
-  // Issue #271: per-file Stack/Overlay layout mode persistence keyed by capture identity.
-  const setChannelDisplayFileKey = useChannelDisplayStore(
-    (state) => state.setFileKey,
-  );
-  useEffect(() => {
-    setChannelDisplayFileKey(
-      captureFileKey(fileName, capture?.metadata.timestamp14),
-    );
-  }, [fileName, capture, setChannelDisplayFileKey]);
-
-  // Issue #96: replacing File 1 drops the File 2 comparison (its resampled
-  // lanes belong to the old primary time grid) and clears solo with it.
-  useEffect(() => {
-    useReferenceStore.getState().clear();
-    useChannelDisplayStore.getState().clearSolo();
-  }, [capture]);
-
-  // Issue #251: whenever the comparison goes away (File 1 replacement or
-  // an explicit teardown), the reference lanes' weights drop with it.
-  useEffect(() => {
-    if (refCapture) return;
-    const refKeys = Object.keys(useLaneLayoutStore.getState().weights).filter(
-      (key) => isReferenceChannelId(key),
-    );
-    if (refKeys.length > 0) {
-      useLaneLayoutStore.getState().dropKeys(refKeys as ChannelKey[]);
-    }
-  }, [refCapture]);
 
   return (
     <div className="app-frame">
@@ -154,7 +68,7 @@ export default function App() {
                 onReturnToLanding={returnToLanding}
               />
               <WaveformToolbar />
-              <Oscilloscope capture={capture} />
+              <Oscilloscope />
               <MeasurementsTable capture={capture} />
             </>
           ) : null}

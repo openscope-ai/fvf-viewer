@@ -13,13 +13,13 @@ import {
   measureYAxisSize,
 } from "./axesConfig";
 import { useThemeStore } from "../../state/themeStore";
-import { useCaptureStore } from "../../state/captureStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useLaneLayoutStore } from "../../state/laneLayoutStore";
 import { drawStackLaneDecorations } from "./stackLaneDecorations";
 import { getLiveRenderState } from "./liveRenderState";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -100,9 +100,7 @@ describe("Y-axis width and axis geometry (Issue #60)", () => {
 
   beforeEach(() => {
     useThemeStore.getState().setTheme("dark");
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useLaneLayoutStore.getState().equalize();
     hostElement = document.createElement("div");
     hostElement.style.width = "800px";
@@ -117,9 +115,7 @@ describe("Y-axis width and axis geometry (Issue #60)", () => {
     });
     hostElement.remove();
     useThemeStore.getState().setTheme("dark");
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useLaneLayoutStore.getState().equalize();
   });
 
@@ -383,9 +379,7 @@ describe("Stack mode Retina title rendering and physical lane SI unit derivation
 
   beforeEach(() => {
     useThemeStore.getState().setTheme("dark");
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useLaneLayoutStore.getState().equalize();
     hostElement = document.createElement("div");
     hostElement.style.width = "800px";
@@ -400,9 +394,7 @@ describe("Stack mode Retina title rendering and physical lane SI unit derivation
     });
     hostElement.remove();
     useThemeStore.getState().setTheme("dark");
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useLaneLayoutStore.getState().equalize();
   });
 

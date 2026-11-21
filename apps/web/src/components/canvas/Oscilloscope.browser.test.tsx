@@ -20,15 +20,14 @@ import { BOX_ZOOM_MIN_DRAG_PX } from "./plugins/boxZoomPlugin";
 import { laneBandsCss, laneTickFilter } from "./stackLaneDecorations";
 import { getLiveRenderState } from "./liveRenderState";
 import { useCaptureStore } from "../../state/captureStore";
+import { ingestPrimary, resetSession } from "../../state/captureSession";
 import { useViewportStore } from "../../state/viewportStore";
 import {
   STACK_MODE_STORAGE_KEY,
   useChannelDisplayStore,
 } from "../../state/channelDisplayStore";
-import {
-  captureFileKey,
-  useChannelNamesStore,
-} from "../../state/channelNamesStore";
+import { useChannelNamesStore } from "../../state/channelNamesStore";
+import { captureFileKey } from "../../state/storage";
 import {
   LANE_WEIGHTS_STORAGE_KEY,
   useLaneLayoutStore,
@@ -62,13 +61,11 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
   let root: Root;
 
   beforeEach(async () => {
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
     // The display store hydrates at module init: a previous test file's
     // persisted record (e.g. stackMode) survives window.localStorage
     // .clear(), so reset the in-memory state explicitly.
-    useChannelDisplayStore.getState().reset();
-    useLaneLayoutStore.getState().setFileKey(null);
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
@@ -86,10 +83,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
-    useLaneLayoutStore.getState().setFileKey(null);
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
@@ -2056,9 +2050,7 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
       expect(useChannelDisplayStore.getState().stackMode).toBe(true);
 
       // Now ingest a brand new, previously unseen capture
-      await useCaptureStore
-        .getState()
-        .parseBuffer(await fixture(fourChUrl), "fresh-unseen.fvf");
+      await ingestPrimary(await fixture(fourChUrl), "fresh-unseen.fvf");
       const capture = useCaptureStore.getState().capture!;
 
       let mountedUplot: uPlot | null = null;
@@ -2105,16 +2097,15 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
 
     it("AC2: Opening a capture file previously viewed and saved in Stack mode restores Stack mode and saved lane weights", async () => {
       // Parse file to get capture identity
-      await useCaptureStore
-        .getState()
-        .parseBuffer(await fixture(fourChUrl), "saved-stack.fvf");
-      const capture = useCaptureStore.getState().capture!;
+      const savedBuf = await fixture(fourChUrl);
+      await ingestPrimary(savedBuf, "saved-stack.fvf");
+      const firstCapture = useCaptureStore.getState().capture!;
       const fileKey = captureFileKey(
         "saved-stack.fvf",
-        capture.metadata.timestamp14,
+        firstCapture.metadata.timestamp14,
       )!;
 
-      // Seed localStorage with saved Stack mode and custom lane weights
+      // Seed localStorage with saved Stack mode and custom lane weights, then reopen
       window.localStorage.setItem(
         STACK_MODE_STORAGE_KEY,
         JSON.stringify({ [fileKey]: true }),
@@ -2123,6 +2114,8 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
         LANE_WEIGHTS_STORAGE_KEY,
         JSON.stringify({ [fileKey]: { A: 2.0, B: 0.5, C: 1.0, D: 0.5 } }),
       );
+      await ingestPrimary(await fixture(fourChUrl), "saved-stack.fvf");
+      const capture = useCaptureStore.getState().capture!;
 
       let mountedUplot: uPlot | null = null;
       await act(async () => {
@@ -2155,20 +2148,21 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     });
 
     it("AC3 + AC4: Direct Stack mode renders lane axes and bands from frame 1", async () => {
-      await useCaptureStore
-        .getState()
-        .parseBuffer(await fixture(fourChUrl), "direct-stack.fvf");
-      const capture = useCaptureStore.getState().capture!;
+      const directBuf = await fixture(fourChUrl);
+      await ingestPrimary(directBuf, "direct-stack.fvf");
+      const firstCapture = useCaptureStore.getState().capture!;
       const fileKey = captureFileKey(
         "direct-stack.fvf",
-        capture.metadata.timestamp14,
+        firstCapture.metadata.timestamp14,
       )!;
 
-      // Seed localStorage so file opens directly in Stack mode
+      // Seed localStorage so reopening the file enters Stack mode directly
       window.localStorage.setItem(
         STACK_MODE_STORAGE_KEY,
         JSON.stringify({ [fileKey]: true }),
       );
+      await ingestPrimary(await fixture(fourChUrl), "direct-stack.fvf");
+      const capture = useCaptureStore.getState().capture!;
 
       let frame1Uplot: uPlot | null = null;
       const frame1Scales: Record<

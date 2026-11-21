@@ -5,9 +5,8 @@ import uPlot from "uplot";
 import Oscilloscope from "./Oscilloscope";
 import "../../index.css";
 import { useThemeStore } from "../../state/themeStore";
-import { useCaptureStore } from "../../state/captureStore";
-import { useViewportStore } from "../../state/viewportStore";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -106,8 +105,7 @@ describe("t=0 trigger reference (Issue #61)", () => {
 
   beforeEach(() => {
     useThemeStore.getState().setTheme("dark");
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
     hostElement = document.createElement("div");
     hostElement.style.width = "800px";
     hostElement.style.height = "600px";
@@ -121,8 +119,7 @@ describe("t=0 trigger reference (Issue #61)", () => {
     });
     hostElement.remove();
     useThemeStore.getState().setTheme("dark");
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
+    resetSession();
   });
 
   it("AC2: the t=0 graticule line renders in the brighter accent tone", async () => {

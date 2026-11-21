@@ -10,12 +10,12 @@ import { useCaptureStore } from "../../state/captureStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useReferenceStore } from "../../state/referenceStore";
 import { useViewportStore } from "../../state/viewportStore";
-import { useCursorStore } from "../../state/cursorStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
 import { AXIS_LABEL_SIZE_PX } from "./axesConfig";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -83,11 +83,7 @@ describe("Issue #338: Real-world zoom, pan, hide, remove, switch sequence", () =
   beforeEach(async () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });

@@ -8,6 +8,7 @@
  */
 
 import { create } from "zustand";
+import { readJson, writeJson } from "./storage";
 import type { CursorId } from "./cursorStore";
 
 /** Time display units; `auto` = the SI ladder (`siFormat.formatTime`). */
@@ -97,10 +98,7 @@ function defaultsCopy(): PersistedCursorDisplay {
 }
 
 function readStored(): PersistedCursorDisplay {
-  try {
-    const raw = window.localStorage.getItem(CURSOR_DISPLAY_STORAGE_KEY);
-    if (!raw) return defaultsCopy();
-    const parsed: unknown = JSON.parse(raw);
+  return readJson(CURSOR_DISPLAY_STORAGE_KEY, defaultsCopy(), (parsed) => {
     if (typeof parsed !== "object" || parsed === null) {
       return defaultsCopy();
     }
@@ -135,44 +133,32 @@ function readStored(): PersistedCursorDisplay {
       if (oneOf(FEATURE_TYPES, ff.C2)) clean.findFeatures.C2 = ff.C2;
     }
     return clean;
-  } catch {
-    return defaultsCopy();
-  }
+  });
 }
 
 function persist(state: CursorDisplayStoreState): void {
-  try {
-    const isDefault =
-      state.timeUnit === DEFAULTS.timeUnit &&
-      state.frequencyUnit === DEFAULTS.frequencyUnit &&
-      state.voltageUnit === DEFAULTS.voltageUnit &&
-      state.lineStyles.C1 === "solid" &&
-      state.lineStyles.C2 === "solid" &&
-      state.bindings.C1 === "all" &&
-      state.bindings.C2 === "all" &&
-      state.deltaLocked === false &&
-      state.findFeatures.C1 === "rising" &&
-      state.findFeatures.C2 === "rising";
-    if (isDefault) {
-      window.localStorage.removeItem(CURSOR_DISPLAY_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(
-        CURSOR_DISPLAY_STORAGE_KEY,
-        JSON.stringify({
-          timeUnit: state.timeUnit,
-          frequencyUnit: state.frequencyUnit,
-          voltageUnit: state.voltageUnit,
-          lineStyles: state.lineStyles,
-          bindings: state.bindings,
-          deltaLocked: state.deltaLocked,
-          findFeatures: state.findFeatures,
-        }),
-      );
-    }
-  } catch {
-    // Best-effort persistence (private mode, disabled storage): the
-    // in-session selection still applies.
-  }
+  const payload: PersistedCursorDisplay = {
+    timeUnit: state.timeUnit,
+    frequencyUnit: state.frequencyUnit,
+    voltageUnit: state.voltageUnit,
+    lineStyles: state.lineStyles,
+    bindings: state.bindings,
+    deltaLocked: state.deltaLocked,
+    findFeatures: state.findFeatures,
+  };
+  writeJson(CURSOR_DISPLAY_STORAGE_KEY, payload, {
+    isEmpty: (p) =>
+      p.timeUnit === DEFAULTS.timeUnit &&
+      p.frequencyUnit === DEFAULTS.frequencyUnit &&
+      p.voltageUnit === DEFAULTS.voltageUnit &&
+      p.lineStyles.C1 === "solid" &&
+      p.lineStyles.C2 === "solid" &&
+      p.bindings.C1 === "all" &&
+      p.bindings.C2 === "all" &&
+      p.deltaLocked === false &&
+      p.findFeatures.C1 === "rising" &&
+      p.findFeatures.C2 === "rising",
+  });
 }
 
 export interface CursorDisplayStoreState {

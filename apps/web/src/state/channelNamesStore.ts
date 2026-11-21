@@ -12,6 +12,7 @@ import {
   normalizeChannelTag,
   parseChannelId,
 } from "../capture/channelCatalog";
+import { readPerFileMap, writePerFileMap } from "./storage";
 
 export const CHANNEL_NAMES_STORAGE_KEY = "fvf.channel-names";
 
@@ -21,55 +22,26 @@ export const CHANNEL_NAME_MAX_LENGTH = 24;
 export type StoredChannelNames = Record<string, Record<string, string>>;
 
 function readStoredNames(): StoredChannelNames {
-  try {
-    const raw = window.localStorage.getItem(CHANNEL_NAMES_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const cleaned: StoredChannelNames = {};
-    for (const [fileKey, names] of Object.entries(
-      parsed as Record<string, unknown>,
+  return readPerFileMap(CHANNEL_NAMES_STORAGE_KEY, (names) => {
+    if (typeof names !== "object" || names === null) return undefined;
+    const fileNames: Record<string, string> = {};
+    for (const [tag, value] of Object.entries(
+      names as Record<string, unknown>,
     )) {
       if (
-        typeof fileKey !== "string" ||
-        typeof names !== "object" ||
-        names === null
-      )
-        continue;
-      const fileNames: Record<string, string> = {};
-      for (const [tag, value] of Object.entries(
-        names as Record<string, unknown>,
-      )) {
-        if (
-          typeof tag === "string" &&
-          typeof value === "string" &&
-          value.trim()
-        ) {
-          fileNames[tag] = value;
-        }
+        typeof tag === "string" &&
+        typeof value === "string" &&
+        value.trim()
+      ) {
+        fileNames[tag] = value;
       }
-      cleaned[fileKey] = fileNames;
     }
-    return cleaned;
-  } catch {
-    return {};
-  }
+    return fileNames;
+  });
 }
 
 function writeStoredNames(names: StoredChannelNames): void {
-  try {
-    if (Object.keys(names).length === 0) {
-      window.localStorage.removeItem(CHANNEL_NAMES_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(
-        CHANNEL_NAMES_STORAGE_KEY,
-        JSON.stringify(names),
-      );
-    }
-  } catch {
-    // Persistence is best-effort (private mode, disabled storage): the
-    // in-session names still apply.
-  }
+  writePerFileMap(CHANNEL_NAMES_STORAGE_KEY, names);
 }
 
 export interface ChannelNamesState {
@@ -216,13 +188,4 @@ export function formatReadoutChannelName(
 ): string {
   const name = channelDisplayName(channel, label, customName);
   return normalizeChannelTag(name);
-}
-
-/** Capture identity used for per-file persistence. */
-export function captureFileKey(
-  fileName: string | null | undefined,
-  timestamp14: string | null | undefined,
-): string | null {
-  if (!fileName && !timestamp14) return null;
-  return `${fileName ?? "(unnamed)"}::${timestamp14 ?? "(undated)"}`;
 }

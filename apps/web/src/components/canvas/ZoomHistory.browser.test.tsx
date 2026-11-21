@@ -6,12 +6,10 @@ import fourChUrl from "../../../../../crates/fvf-wasm/tests/fixtures/synthetic/a
 import Oscilloscope from "./Oscilloscope";
 import WaveformToolbar from "../toolbar/WaveformToolbar";
 import { useCaptureStore } from "../../state/captureStore";
-import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { ingestPrimary, resetSession } from "../../state/captureSession";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
-import { useCursorStore } from "../../state/cursorStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useThemeStore } from "../../state/themeStore";
-import { useViewportStore } from "../../state/viewportStore";
 import { useZoomHistoryStore } from "../../state/zoomHistoryStore";
 
 (
@@ -51,10 +49,7 @@ describe("Zoom and pan viewport history (Issue #287)", () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
@@ -363,9 +358,7 @@ describe("Zoom and pan viewport history (Issue #287)", () => {
 
     // Load new capture
     await act(async () => {
-      await useCaptureStore
-        .getState()
-        .parseBuffer(await fixture(fourChUrl), "another.fvf");
+      await ingestPrimary(await fixture(fourChUrl), "another.fvf");
       await new Promise((r) => setTimeout(r, 80));
     });
 

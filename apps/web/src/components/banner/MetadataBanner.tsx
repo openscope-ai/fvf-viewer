@@ -26,8 +26,7 @@ import { useViewportStore } from "../../state/viewportStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useReferenceStore } from "../../state/referenceStore";
-import { useBadgePopoverStore } from "../toolbar/badgeConfig/anchoredPopover";
-import { isReferenceChannelId } from "../../capture/channelCatalog";
+import { clearReference } from "../../state/captureSession";
 import { effectiveTraceColor } from "../canvas/themePalette";
 import {
   GITHUB_REPOSITORY_URL,
@@ -62,7 +61,6 @@ export default function MetadataBanner({
   const customColors = usePaletteStore((state) => state.customColors);
   const hasComparison = useReferenceStore((state) => state.capture !== null);
   const refFileName = useReferenceStore((state) => state.fileName);
-  const clearReference = useReferenceStore((state) => state.clear);
   const model = buildMetadataModel(capture, fileName, customNames);
   const compareFileName = refFileName ?? "Reference capture";
 
@@ -94,13 +92,6 @@ export default function MetadataBanner({
                 type="button"
                 className="banner-open-btn banner-compare-remove-btn"
                 onClick={() => {
-                  const openKey = useBadgePopoverStore.getState().openKey;
-                  const openChannelId = openKey?.startsWith("channel:")
-                    ? openKey.slice("channel:".length)
-                    : null;
-                  if (openChannelId && isReferenceChannelId(openChannelId)) {
-                    useBadgePopoverStore.getState().setOpen(null);
-                  }
                   clearReference();
                 }}
                 aria-label="Remove comparison capture (File 2)"

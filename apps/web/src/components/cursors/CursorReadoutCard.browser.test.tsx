@@ -24,6 +24,7 @@ import {
 } from "../export/pngSnapshot";
 import type { ReadoutCardSnapshot } from "./readoutSnapshot";
 import type { ParsedCapture } from "../../types/capture";
+import { resetSession } from "../../state/captureSession";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -201,9 +202,7 @@ describe("Draggable cursor readout card (Issue #58)", () => {
     localStorage.removeItem(CURSOR_DISPLAY_STORAGE_KEY);
     useCursorDisplayStore.getState().reset();
     useReadoutCardStore.getState().reset();
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
+    resetSession();
     usePaletteStore.getState().resetPalette();
     useThemeStore.getState().setTheme("dark");
     useChannelNamesStore.getState().setFileKey(null);
@@ -225,9 +224,7 @@ describe("Draggable cursor readout card (Issue #58)", () => {
     hostElement.remove();
     localStorage.removeItem(READOUT_CARD_STORAGE_KEY);
     useReadoutCardStore.getState().reset();
-    useCursorStore.getState().reset();
-    useViewportStore.getState().reset();
-    useCaptureStore.getState().reset();
+    resetSession();
     usePaletteStore.getState().resetPalette();
     useThemeStore.getState().setTheme("dark");
     useChannelNamesStore.getState().setFileKey(null);

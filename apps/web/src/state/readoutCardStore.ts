@@ -7,6 +7,7 @@
  */
 
 import { create } from "zustand";
+import { readJson, writeJson } from "./storage";
 import type { CardPoint } from "../components/cursors/readoutCardPosition";
 
 export const READOUT_CARD_STORAGE_KEY = "fvf.cursor-readout-card";
@@ -51,10 +52,9 @@ function isValidPoint(value: unknown): value is CardPoint {
 }
 
 export function readStoredReadoutCardState(): StoredReadoutCardState {
-  try {
-    const stored = window.localStorage.getItem(READOUT_CARD_STORAGE_KEY);
-    if (!stored) return DEFAULT_STORED_STATE;
-    const parsed = JSON.parse(stored) as Record<string, unknown>;
+  return readJson(READOUT_CARD_STORAGE_KEY, DEFAULT_STORED_STATE, (raw) => {
+    if (typeof raw !== "object" || raw === null) return DEFAULT_STORED_STATE;
+    const parsed = raw as Record<string, unknown>;
     const position =
       parsed.position === null || parsed.position === undefined
         ? null
@@ -75,23 +75,13 @@ export function readStoredReadoutCardState(): StoredReadoutCardState {
       position,
       collapsed,
     };
-  } catch {
-    return DEFAULT_STORED_STATE;
-  }
+  });
 }
 
 export function writeStoredReadoutCardState(
   state: StoredReadoutCardState,
 ): void {
-  try {
-    window.localStorage.setItem(
-      READOUT_CARD_STORAGE_KEY,
-      JSON.stringify(state),
-    );
-  } catch {
-    // Persistence is best-effort (private mode, disabled storage): the
-    // in-session position still applies.
-  }
+  writeJson(READOUT_CARD_STORAGE_KEY, state);
 }
 
 export function createReadoutCardStore() {

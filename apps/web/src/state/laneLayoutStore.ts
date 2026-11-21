@@ -18,6 +18,7 @@ import {
   CHANNEL_DISPLAY_KEYS,
   type ChannelKey,
 } from "../components/canvas/channelDisplay";
+import { readPerFileMap, writePerFileMap } from "./storage";
 
 export const LANE_WEIGHTS_STORAGE_KEY = "fvf.lane-weights";
 
@@ -38,56 +39,27 @@ function isChannelKey(value: unknown): value is ChannelKey {
 }
 
 function readStoredWeights(): StoredLaneWeights {
-  try {
-    const raw = window.localStorage.getItem(LANE_WEIGHTS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const cleaned: StoredLaneWeights = {};
-    for (const [fileKey, weights] of Object.entries(
-      parsed as Record<string, unknown>,
+  return readPerFileMap(LANE_WEIGHTS_STORAGE_KEY, (weights) => {
+    if (typeof weights !== "object" || weights === null) return undefined;
+    const fileWeights: Partial<Record<ChannelKey, number>> = {};
+    for (const [key, value] of Object.entries(
+      weights as Record<string, unknown>,
     )) {
       if (
-        typeof fileKey !== "string" ||
-        typeof weights !== "object" ||
-        weights === null
-      )
-        continue;
-      const fileWeights: Partial<Record<ChannelKey, number>> = {};
-      for (const [key, value] of Object.entries(
-        weights as Record<string, unknown>,
-      )) {
-        if (
-          isChannelKey(key) &&
-          typeof value === "number" &&
-          Number.isFinite(value) &&
-          value > 0
-        ) {
-          fileWeights[key] = value;
-        }
+        isChannelKey(key) &&
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        value > 0
+      ) {
+        fileWeights[key] = value;
       }
-      cleaned[fileKey] = fileWeights;
     }
-    return cleaned;
-  } catch {
-    return {};
-  }
+    return fileWeights;
+  });
 }
 
 function writeStoredWeights(weights: StoredLaneWeights): void {
-  try {
-    if (Object.keys(weights).length === 0) {
-      window.localStorage.removeItem(LANE_WEIGHTS_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(
-        LANE_WEIGHTS_STORAGE_KEY,
-        JSON.stringify(weights),
-      );
-    }
-  } catch {
-    // Best-effort persistence (private mode, disabled storage): the
-    // in-session weights still apply.
-  }
+  writePerFileMap(LANE_WEIGHTS_STORAGE_KEY, weights);
 }
 
 export interface LaneLayoutState {

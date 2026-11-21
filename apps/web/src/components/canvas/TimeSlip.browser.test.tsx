@@ -11,11 +11,10 @@ import { useCaptureStore } from "../../state/captureStore";
 import { yScaleKey } from "../../capture/channelUnits";
 import { useCursorStore } from "../../state/cursorStore";
 import { useReferenceStore } from "../../state/referenceStore";
-import { useViewportStore } from "../../state/viewportStore";
-import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
+import { resetSession } from "../../state/captureSession";
 
 /**
  * Issue #97 acceptance: the T₂ trigger glyph handle pinned to the top
@@ -91,11 +90,7 @@ describe("Time slip for File 2 (issue #97)", () => {
   };
 
   beforeEach(async () => {
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
     useThemeStore.getState().setTheme("dark");
@@ -113,11 +108,7 @@ describe("Time slip for File 2 (issue #97)", () => {
       root.unmount();
     });
     hostElement.remove();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
-    useChannelDisplayStore.getState().reset();
+    resetSession();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
     window.localStorage.clear();
   });

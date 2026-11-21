@@ -10,6 +10,7 @@ import { computeCaptureFit } from "./Oscilloscope";
 import { yScaleKey } from "../../capture/channelUnits";
 import { useCaptureStore } from "../../state/captureStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { toggleSolo, resetSession } from "../../state/captureSession";
 import { useChannelNamesStore } from "../../state/channelNamesStore";
 import { useCursorStore } from "../../state/cursorStore";
 import { usePaletteStore } from "../../state/paletteStore";
@@ -128,11 +129,7 @@ describe("Reset View (issue #248)", () => {
   beforeEach(async () => {
     useBadgePopoverStore.getState().setOpen(null);
     window.localStorage.clear();
-    useChannelDisplayStore.getState().reset();
-    useCaptureStore.getState().reset();
-    useReferenceStore.getState().clear();
-    useViewportStore.getState().reset();
-    useCursorStore.getState().reset();
+    resetSession();
     useThemeStore.getState().setTheme("dark");
     usePaletteStore.getState().resetPalette();
     useChannelNamesStore.setState({ fileKey: null, names: {} });
@@ -299,7 +296,7 @@ describe("Reset View (issue #248)", () => {
         names: { A: "Custom A" },
       });
       // Solo A: saves the visibility set and isolates A.
-      useChannelDisplayStore.getState().toggleSolo("A");
+      toggleSolo("A");
       useChannelDisplayStore.getState().setYScale("A", 200);
     });
     await settle();

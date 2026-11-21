@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCaptureStore } from "../../state/captureStore";
 import { useZoomHistoryStore } from "../../state/zoomHistoryStore";
 import { useReferenceStore } from "../../state/referenceStore";
-import { useLaneLayoutStore } from "../../state/laneLayoutStore";
+import { resetView } from "../../state/captureSession";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import {
   CHANNEL_NAME_MAX_LENGTH,
@@ -34,7 +34,6 @@ import { useThemeStore } from "../../state/themeStore";
 import { usePaletteStore } from "../../state/paletteStore";
 import { useViewportStore, type ChannelTag } from "../../state/viewportStore";
 import {
-  getChannelCatalog,
   useChannelCatalog,
   type ChannelSlot,
 } from "../../capture/channelCatalog";
@@ -83,8 +82,6 @@ export default function WaveformToolbar({
   const cycleChannelBadge = useViewportStore(
     (state) => state.cycleChannelBadge,
   );
-  const resetBounds = useViewportStore((state) => state.resetBounds);
-  const requestFit = useViewportStore((state) => state.requestFit);
 
   const c1Active = useCursorStore((state) => state.c1Active);
   const c2Active = useCursorStore((state) => state.c2Active);
@@ -198,49 +195,10 @@ export default function WaveformToolbar({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const resetTransforms = useChannelDisplayStore(
-    (state) => state.resetTransforms,
-  );
-
   const handleResetView = useCallback(() => {
     onResetView?.();
-    // Issue #248: every channel's display transforms (Y-scale %, vertical
-    // offset, invert — visible and hidden, primary and reference) snap
-    // back to defaults.
-    resetTransforms();
-
-    // Issue #263: Clear active Solo state (restoring non-soloed channels).
-    useChannelDisplayStore.getState().clearSolo();
-
-    // Issue #263: Restore visibility for all channels in the loaded capture.
-    const currentCatalog = getChannelCatalog();
-    const allChannels =
-      channelsOverride ?? currentCatalog.primary.map((ch) => ch.id);
-    if (allChannels.length > 0) {
-      useViewportStore.getState().setActiveChannels(allChannels);
-    }
-
-    // Zero the File 2 time slip while a comparison is active and re-activate
-    // all reference channels.
-    const refStore = useReferenceStore.getState();
-    if (refStore.capture) {
-      refStore.setTimeSlip(0);
-      refStore.setRefActiveChannels(
-        currentCatalog.reference.map((ch) => ch.id),
-      );
-    }
-
-    // Issue #263: In Stack mode, reset custom dragged lane proportions back
-    // to equal 1/N proportions in laneLayoutStore.
-    if (useChannelDisplayStore.getState().stackMode) {
-      useLaneLayoutStore.getState().equalize();
-    }
-
-    // Reset the mirrored bounds; the canvas applies the real fit bounds in
-    // response to the fit request and re-syncs them through its scale hooks.
-    resetBounds();
-    requestFit();
-  }, [onResetView, resetTransforms, channelsOverride, resetBounds, requestFit]);
+    resetView({ channelsOverride });
+  }, [onResetView, channelsOverride]);
 
   return (
     <div

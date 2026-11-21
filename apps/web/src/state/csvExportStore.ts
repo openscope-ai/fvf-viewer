@@ -7,6 +7,7 @@
  */
 
 import { create } from "zustand";
+import { readJson, writeJson } from "./storage";
 
 export const CSV_EXPORT_STORAGE_KEY = "fvf.csv-export";
 
@@ -32,13 +33,9 @@ function isDataset(v: unknown): v is CsvDataset {
 }
 
 export function loadCsvExportSettings(): CsvExportSettings {
-  if (typeof localStorage === "undefined") return { ...CSV_EXPORT_DEFAULTS };
-  try {
-    const raw = localStorage.getItem(CSV_EXPORT_STORAGE_KEY);
-    if (!raw) return { ...CSV_EXPORT_DEFAULTS };
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object")
-      return { ...CSV_EXPORT_DEFAULTS };
+  return readJson(CSV_EXPORT_STORAGE_KEY, { ...CSV_EXPORT_DEFAULTS }, (raw) => {
+    if (!raw || typeof raw !== "object") return { ...CSV_EXPORT_DEFAULTS };
+    const parsed = raw as Record<string, unknown>;
     return {
       delimiter: isDelimiter(parsed.delimiter)
         ? parsed.delimiter
@@ -47,18 +44,11 @@ export function loadCsvExportSettings(): CsvExportSettings {
         ? parsed.dataset
         : CSV_EXPORT_DEFAULTS.dataset,
     };
-  } catch {
-    return { ...CSV_EXPORT_DEFAULTS };
-  }
+  });
 }
 
 export function saveCsvExportSettings(settings: CsvExportSettings): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(CSV_EXPORT_STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    // QuotaExceededError or storage disabled: non-fatal session fallback
-  }
+  writeJson(CSV_EXPORT_STORAGE_KEY, settings);
 }
 
 export interface CsvExportStoreState {
