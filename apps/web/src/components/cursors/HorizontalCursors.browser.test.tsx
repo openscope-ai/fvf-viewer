@@ -1,3 +1,4 @@
+import type uPlot from "uplot";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -10,6 +11,11 @@ import { useViewportStore } from "../../state/viewportStore";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
 import type { ParsedCapture } from "../../types/capture";
 import { resetSession } from "../../state/captureSession";
+import { getLiveRenderState } from "../canvas/liveRenderState";
+import {
+  laneBandCss,
+  visibleYRangeForScale,
+} from "../canvas/stackLaneDecorations";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -396,5 +402,422 @@ describe("Horizontal (Y) Measurement Cursors (Issue #281)", () => {
     expect(readoutValY1?.textContent).toContain("2.000 V");
     expect(readoutValY2?.textContent).toContain("0.000 V");
     expect(deltaY?.textContent).toContain("2.000 V");
+  });
+});
+
+describe("Horizontal (Y) Cursors in Stacked View (Issue #364)", () => {
+  let hostElement: HTMLDivElement;
+  let root: Root;
+  let capture: ParsedCapture;
+
+  const getUPlot = (): uPlot => {
+    const container = hostElement.querySelector(".oscilloscope-container") as
+      (HTMLElement & { __uplot?: uPlot }) | null;
+    if (!container?.__uplot) {
+      throw new Error("Expected mounted uPlot instance");
+    }
+    return container.__uplot;
+  };
+
+  const renderStacked = async () => {
+    act(() => {
+      useChannelDisplayStore.getState().setStackMode(true);
+      root.render(
+        <div
+          style={{
+            width: "800px",
+            height: "600px",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <WaveformToolbar />
+          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+            <Oscilloscope capture={capture} />
+          </div>
+        </div>,
+      );
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 80));
+    });
+  };
+
+  beforeEach(() => {
+    resetSession();
+    capture = createTestCapture(1000);
+    useCaptureStore.setState({ capture });
+
+    hostElement = document.createElement("div");
+    hostElement.style.width = "800px";
+    hostElement.style.height = "600px";
+    document.body.appendChild(hostElement);
+    root = createRoot(hostElement);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    hostElement.remove();
+    resetSession();
+  });
+
+  it("AC1: activating Y1/Y2 in stacked view places them at 75%/25% of the selected channel's lane", async () => {
+    await renderStacked();
+    const u = getUPlot();
+    const renderState = getLiveRenderState(capture);
+    const bandA = laneBandCss(u, renderState, "y0")!;
+    expect(bandA).not.toBeNull();
+    const laneHeight = bandA.bottom - bandA.top;
+    expect(laneHeight).toBeGreaterThan(20);
+
+    act(() => {
+      useCursorStore.getState().toggleHorizontalCursor("Y1");
+      useCursorStore.getState().toggleHorizontalCursor("Y2");
+    });
+
+    const lineY1 = hostElement.querySelector(
+      "[data-testid='cursor-line-y1']",
+    ) as HTMLDivElement;
+    const lineY2 = hostElement.querySelector(
+      "[data-testid='cursor-line-y2']",
+    ) as HTMLDivElement;
+    expect(lineY1.style.display).toBe("block");
+    expect(lineY2.style.display).toBe("block");
+
+    const top1 = parseFloat(lineY1.style.top);
+    const top2 = parseFloat(lineY2.style.top);
+
+    // 75% up from lane bottom = 25% down from lane top; 25% up = 75% down
+    expect(top1).toBeGreaterThanOrEqual(bandA.top);
+    expect(top1).toBeLessThanOrEqual(bandA.bottom);
+    expect(top2).toBeGreaterThanOrEqual(bandA.top);
+    expect(top2).toBeLessThanOrEqual(bandA.bottom);
+    expect(top1).toBeCloseTo(bandA.top + 0.25 * laneHeight, 0);
+    expect(top2).toBeCloseTo(bandA.top + 0.75 * laneHeight, 0);
+
+    const visibleA = visibleYRangeForScale(
+      u.scales.y0!.min!,
+      u.scales.y0!.max!,
+      renderState,
+      "y0",
+    );
+    expect(useCursorStore.getState().y1Value!).toBeCloseTo(
+      visibleA.min + 0.75 * (visibleA.max - visibleA.min),
+      3,
+    );
+    expect(useCursorStore.getState().y2Value!).toBeCloseTo(
+      visibleA.min + 0.25 * (visibleA.max - visibleA.min),
+      3,
+    );
+  });
+
+  it("AC2: switching selected channel in stacked view moves Y1/Y2 into the new lane preserving relative position and updating readout units", async () => {
+    await renderStacked();
+
+    act(() => {
+      useCursorStore.getState().toggleHorizontalCursor("Y1");
+      useCursorStore.getState().toggleHorizontalCursor("Y2");
+    });
+
+    // Switch selected channel from A to B
+    await act(async () => {
+      useViewportStore.getState().setSelectedChannel("B");
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    const u = getUPlot();
+    const renderState = getLiveRenderState(capture);
+    const bandB = laneBandCss(u, renderState, "y1")!;
+    expect(bandB).not.toBeNull();
+    const laneBHeight = bandB.bottom - bandB.top;
+
+    const lineY1 = hostElement.querySelector(
+      "[data-testid='cursor-line-y1']",
+    ) as HTMLDivElement;
+    const lineY2 = hostElement.querySelector(
+      "[data-testid='cursor-line-y2']",
+    ) as HTMLDivElement;
+    expect(lineY1.style.display).toBe("block");
+    expect(lineY2.style.display).toBe("block");
+
+    const top1 = parseFloat(lineY1.style.top);
+    const top2 = parseFloat(lineY2.style.top);
+
+    // Both cursors must now live inside Lane B at 75% (top+25%) and 25% (top+75%)
+    expect(top1).toBeGreaterThanOrEqual(bandB.top);
+    expect(top1).toBeLessThanOrEqual(bandB.bottom);
+    expect(top2).toBeGreaterThanOrEqual(bandB.top);
+    expect(top2).toBeLessThanOrEqual(bandB.bottom);
+    expect(top1).toBeCloseTo(bandB.top + 0.25 * laneBHeight, 0);
+    expect(top2).toBeCloseTo(bandB.top + 0.75 * laneBHeight, 0);
+
+    const visibleB = visibleYRangeForScale(
+      u.scales.y1!.min!,
+      u.scales.y1!.max!,
+      renderState,
+      "y1",
+    );
+    const expectedY1 = visibleB.min + 0.75 * (visibleB.max - visibleB.min);
+    const expectedY2 = visibleB.min + 0.25 * (visibleB.max - visibleB.min);
+    expect(useCursorStore.getState().y1Value!).toBeCloseTo(expectedY1, 3);
+    expect(useCursorStore.getState().y2Value!).toBeCloseTo(expectedY2, 3);
+
+    const readout = hostElement.querySelector(
+      "[data-testid='cursor-readout-horizontal']",
+    );
+    expect(readout?.textContent).toContain("B:");
+    expect(readout?.textContent).toContain("mA");
+  });
+
+  it("AC3: dragging and Ctrl+Up/Down stepping clamp Y1/Y2 to the selected lane's top and bottom edges", async () => {
+    await renderStacked();
+    const u = getUPlot();
+    const renderState = getLiveRenderState(capture);
+    const bandA = laneBandCss(u, renderState, "y0")!;
+    const visibleA = visibleYRangeForScale(
+      u.scales.y0!.min!,
+      u.scales.y0!.max!,
+      renderState,
+      "y0",
+    );
+
+    act(() => {
+      useCursorStore.getState().toggleHorizontalCursor("Y1");
+    });
+
+    const lineY1 = hostElement.querySelector(
+      "[data-testid='cursor-line-y1']",
+    ) as HTMLDivElement;
+    const plotRect = u.over.getBoundingClientRect();
+
+    // Drag far below Channel A's lane (into Channel B's lane)
+    act(() => {
+      lineY1.dispatchEvent(
+        new MouseEvent("mousedown", {
+          button: 0,
+          clientY: plotRect.top + (bandA.top + bandA.bottom) / 2,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent("mousemove", {
+          clientY: plotRect.bottom - 5,
+          buttons: 1,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent("mouseup", {
+          button: 0,
+          bubbles: true,
+        }),
+      );
+    });
+
+    expect(useCursorStore.getState().y1Value!).toBeCloseTo(visibleA.min, 3);
+    expect(parseFloat(lineY1.style.top)).toBeCloseTo(bandA.bottom, 0);
+    // Clamping at edge must not trigger a recovery badge
+    expect(
+      hostElement.querySelector("[data-testid='cursor-recovery-badge-y1']"),
+    ).toBeNull();
+
+    // Ctrl+ArrowDown at bottom edge must stay clamped at visibleA.min
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          ctrlKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    expect(useCursorStore.getState().y1Value!).toBeCloseTo(visibleA.min, 3);
+
+    // Drag above top edge of Lane A
+    act(() => {
+      lineY1.dispatchEvent(
+        new MouseEvent("mousedown", {
+          button: 0,
+          clientY: plotRect.top + bandA.bottom - 5,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent("mousemove", {
+          clientY: plotRect.top - 40,
+          buttons: 1,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent("mouseup", {
+          button: 0,
+          bubbles: true,
+        }),
+      );
+    });
+
+    expect(useCursorStore.getState().y1Value!).toBeCloseTo(visibleA.max, 3);
+    expect(parseFloat(lineY1.style.top)).toBeCloseTo(bandA.top, 0);
+
+    // Ctrl+ArrowUp at top edge must stay clamped at visibleA.max
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowUp",
+          ctrlKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    expect(useCursorStore.getState().y1Value!).toBeCloseTo(visibleA.max, 3);
+  });
+
+  it("AC4: out-of-lane Y cursors are hidden, show recovery badges, and recover to 67%/33% of the lane", async () => {
+    await renderStacked();
+    const u = getUPlot();
+    const renderState = getLiveRenderState(capture);
+    const bandA = laneBandCss(u, renderState, "y0")!;
+    const visibleA = visibleYRangeForScale(
+      u.scales.y0!.min!,
+      u.scales.y0!.max!,
+      renderState,
+      "y0",
+    );
+
+    // Place Y1 above Lane A's visible max and Y2 below Lane A's visible min
+    // (note: Y2's value still falls inside uPlot's stretched full-canvas y0 scale,
+    // which previously caused it to bleed into Lane B without a recovery badge!)
+    act(() => {
+      useCursorStore.getState().toggleHorizontalCursor("Y1");
+      useCursorStore.getState().toggleHorizontalCursor("Y2");
+      useCursorStore
+        .getState()
+        .setHorizontalCursorValue("Y1", visibleA.max + 2.0);
+      useCursorStore
+        .getState()
+        .setHorizontalCursorValue("Y2", visibleA.min - 2.0);
+    });
+
+    const lineY1 = hostElement.querySelector(
+      "[data-testid='cursor-line-y1']",
+    ) as HTMLDivElement;
+    const lineY2 = hostElement.querySelector(
+      "[data-testid='cursor-line-y2']",
+    ) as HTMLDivElement;
+    expect(lineY1.style.display).toBe("none");
+    expect(lineY2.style.display).toBe("none");
+
+    const badgeY1 = hostElement.querySelector(
+      "[data-testid='cursor-recovery-badge-y1']",
+    ) as HTMLButtonElement;
+    const badgeY2 = hostElement.querySelector(
+      "[data-testid='cursor-recovery-badge-y2']",
+    ) as HTMLButtonElement;
+    expect(badgeY1).not.toBeNull();
+    expect(badgeY2).not.toBeNull();
+
+    // Recover Y1 -> 67% of Lane A
+    act(() => {
+      badgeY1.click();
+    });
+    expect(useCursorStore.getState().y1Value!).toBeCloseTo(
+      visibleA.min + 0.67 * (visibleA.max - visibleA.min),
+      3,
+    );
+    expect(lineY1.style.display).toBe("block");
+    expect(parseFloat(lineY1.style.top)).toBeGreaterThanOrEqual(bandA.top);
+    expect(parseFloat(lineY1.style.top)).toBeLessThanOrEqual(bandA.bottom);
+    expect(
+      hostElement.querySelector("[data-testid='cursor-recovery-badge-y1']"),
+    ).toBeNull();
+
+    // Recover Y2 -> 33% of Lane A
+    act(() => {
+      badgeY2.click();
+    });
+    expect(useCursorStore.getState().y2Value!).toBeCloseTo(
+      visibleA.min + 0.33 * (visibleA.max - visibleA.min),
+      3,
+    );
+    expect(lineY2.style.display).toBe("block");
+    expect(parseFloat(lineY2.style.top)).toBeGreaterThanOrEqual(bandA.top);
+    expect(parseFloat(lineY2.style.top)).toBeLessThanOrEqual(bandA.bottom);
+    expect(
+      hostElement.querySelector("[data-testid='cursor-recovery-badge-y2']"),
+    ).toBeNull();
+  });
+
+  it("AC5: toggling between overlay and stacked view preserves Y1/Y2 values with accurate positions and out-of-view state", async () => {
+    // Start in overlay mode
+    act(() => {
+      useChannelDisplayStore.getState().setStackMode(false);
+      root.render(
+        <div
+          style={{
+            width: "800px",
+            height: "600px",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <WaveformToolbar />
+          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+            <Oscilloscope capture={capture} />
+          </div>
+        </div>,
+      );
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    act(() => {
+      useCursorStore.getState().toggleHorizontalCursor("Y1");
+      useCursorStore.getState().toggleHorizontalCursor("Y2");
+      useCursorStore.getState().setHorizontalCursorValue("Y1", 1.5);
+      useCursorStore.getState().setHorizontalCursorValue("Y2", -1.5);
+    });
+
+    // Toggle to stacked mode
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(true);
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    expect(useCursorStore.getState().y1Value).toBe(1.5);
+    expect(useCursorStore.getState().y2Value).toBe(-1.5);
+
+    const u = getUPlot();
+    const renderState = getLiveRenderState(capture);
+    const bandA = laneBandCss(u, renderState, "y0")!;
+    const lineY1 = hostElement.querySelector(
+      "[data-testid='cursor-line-y1']",
+    ) as HTMLDivElement;
+    const lineY2 = hostElement.querySelector(
+      "[data-testid='cursor-line-y2']",
+    ) as HTMLDivElement;
+    expect(lineY1.style.display).toBe("block");
+    expect(lineY2.style.display).toBe("block");
+    expect(parseFloat(lineY1.style.top)).toBeGreaterThanOrEqual(bandA.top);
+    expect(parseFloat(lineY1.style.top)).toBeLessThanOrEqual(bandA.bottom);
+    expect(parseFloat(lineY2.style.top)).toBeGreaterThanOrEqual(bandA.top);
+    expect(parseFloat(lineY2.style.top)).toBeLessThanOrEqual(bandA.bottom);
+
+    // Toggle back to overlay mode
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(false);
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    expect(useCursorStore.getState().y1Value).toBe(1.5);
+    expect(useCursorStore.getState().y2Value).toBe(-1.5);
+    expect(lineY1.style.display).toBe("block");
+    expect(lineY2.style.display).toBe("block");
+    expect(
+      hostElement.querySelector("[data-testid='cursor-recovery-badge-y1']"),
+    ).toBeNull();
   });
 });

@@ -314,6 +314,11 @@ export interface ChannelCatalogOptions {
    * alignment or `trailingSeriesCount` for PNG export).
    */
   referenceLaneCount?: number;
+  /**
+   * Optional override for the active primary channel list (used when projecting
+   * live uPlot scales before a visibility-triggered layout pass runs).
+   */
+  activeChannels?: readonly string[];
 }
 
 /** Imperative snapshot of the current `ChannelCatalog` from Zustand stores. */
@@ -335,7 +340,7 @@ export function getChannelCatalog(
     primaryCapture,
     referenceCapture: reference.capture,
     referenceLaneCount: options?.referenceLaneCount,
-    activeChannels: viewport.activeChannels,
+    activeChannels: options?.activeChannels ?? viewport.activeChannels,
     selectedChannel: viewport.selectedChannel,
     refActiveChannels: reference.refActiveChannels,
     customNames,

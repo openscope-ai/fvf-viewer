@@ -17,6 +17,8 @@ import type { ChartRenderState } from "./chartRenderState";
 export interface LiveRenderStateOptions {
   /** Explicit reference lane count (defaults to `useReferenceStore.getState().lanes?.length ?? 0`). */
   referenceLaneCount?: number;
+  /** Optional active primary channel list override for pre-layout scale projection. */
+  activeChannels?: readonly string[];
 }
 
 /** Captures the current live render state from Zustand stores for a given capture. */
@@ -29,6 +31,7 @@ export function getLiveRenderState(
     options?.referenceLaneCount ?? refState.lanes?.length ?? 0;
   const catalog = getChannelCatalog(capture, {
     referenceLaneCount: refLaneCount,
+    activeChannels: options?.activeChannels,
   });
   const displayState = useChannelDisplayStore.getState();
   const laneWeights = useLaneLayoutStore.getState().weights;

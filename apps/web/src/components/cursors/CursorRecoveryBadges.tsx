@@ -30,6 +30,15 @@ import { usePaletteStore } from "../../state/paletteStore";
 import { effectiveColorForKey, type PaletteKey } from "../canvas/themePalette";
 import { displayToReadoutValue } from "../canvas/channelDisplay";
 import { useChannelDisplayStore } from "../../state/channelDisplayStore";
+import { useLaneLayoutStore } from "../../state/laneLayoutStore";
+import { useReferenceStore } from "../../state/referenceStore";
+import { getChannelCatalog } from "../../capture/channelCatalog";
+import { yScaleKey } from "../../capture/channelUnits";
+import {
+  isValueAboveRange,
+  isValueBelowRange,
+  visibleYRangeForScale,
+} from "../canvas/stackLaneDecorations";
 import type { ParsedCapture } from "../../types/capture";
 
 export interface CursorRecoveryBadgesProps {
@@ -60,11 +69,15 @@ export const CursorRecoveryBadges: React.FC<CursorRecoveryBadgesProps> = ({
     (state) => state.selectHorizontalCursor,
   );
   const selectedChannel = useViewportStore((state) => state.selectedChannel);
+  const activeChannels = useViewportStore((state) => state.activeChannels);
   const yMin = useViewportStore((state) => state.yMin);
   const yMax = useViewportStore((state) => state.yMax);
   const theme = useThemeStore((state) => state.theme);
   const customColors = usePaletteStore((state) => state.customColors);
   const displayConfigs = useChannelDisplayStore((state) => state.keyConfigs);
+  const stackMode = useChannelDisplayStore((state) => state.stackMode);
+  const laneWeights = useLaneLayoutStore((state) => state.weights);
+  const refLanes = useReferenceStore((state) => state.lanes);
 
   const xMin = useViewportStore((state) => state.xMin);
   const xMax = useViewportStore((state) => state.xMax);
@@ -87,12 +100,33 @@ export const CursorRecoveryBadges: React.FC<CursorRecoveryBadgesProps> = ({
   const c2Left = c2Active && t2 < effectiveXMin;
   const c2Right = c2Active && t2 > effectiveXMax;
 
-  // Horizontal out-of-view checks
+  // Horizontal out-of-view checks (Issue #281, #364)
+  const selectedChIdx = Math.max(
+    0,
+    capture.channels.findIndex((c) => c.name === selectedChannel),
+  );
   const selectedChInfo =
-    capture.metadata.channels.find((c) => c.name === selectedChannel) ??
-    capture.metadata.channels[0];
-  const effectiveYMin = yMin ?? selectedChInfo?.windowMin ?? -1;
-  const effectiveYMax = yMax ?? selectedChInfo?.windowMax ?? 1;
+    capture.metadata.channels[selectedChIdx] ?? capture.metadata.channels[0];
+  const rawYMin = yMin ?? selectedChInfo?.windowMin ?? -1;
+  const rawYMax = yMax ?? selectedChInfo?.windowMax ?? 1;
+  const visibleY =
+    yMin !== null && yMax !== null
+      ? visibleYRangeForScale(
+          yMin,
+          yMax,
+          {
+            stackMode,
+            laneWeights,
+            catalog: getChannelCatalog(capture, {
+              referenceLaneCount: refLanes?.length ?? 0,
+              activeChannels,
+            }),
+          },
+          yScaleKey(selectedChIdx),
+        )
+      : { min: rawYMin, max: rawYMax };
+  const effectiveYMin = visibleY.min;
+  const effectiveYMax = visibleY.max;
 
   const y1Val =
     y1Value !== null
@@ -103,10 +137,14 @@ export const CursorRecoveryBadges: React.FC<CursorRecoveryBadgesProps> = ({
       ? y2Value
       : effectiveYMin + 0.25 * (effectiveYMax - effectiveYMin);
 
-  const y1Top = y1Active && y1Val > effectiveYMax;
-  const y1Bottom = y1Active && y1Val < effectiveYMin;
-  const y2Top = y2Active && y2Val > effectiveYMax;
-  const y2Bottom = y2Active && y2Val < effectiveYMin;
+  const y1Top =
+    y1Active && isValueAboveRange(y1Val, effectiveYMin, effectiveYMax);
+  const y1Bottom =
+    y1Active && isValueBelowRange(y1Val, effectiveYMin, effectiveYMax);
+  const y2Top =
+    y2Active && isValueAboveRange(y2Val, effectiveYMin, effectiveYMax);
+  const y2Bottom =
+    y2Active && isValueBelowRange(y2Val, effectiveYMin, effectiveYMax);
 
   if (
     !c1Left &&

@@ -30,6 +30,14 @@ import {
 } from "../../state/cursorDisplayStore";
 import { useViewportStore } from "../../state/viewportStore";
 import { yScaleKey } from "../../capture/channelUnits";
+import { getLiveRenderState } from "../canvas/liveRenderState";
+import {
+  isValueAboveRange,
+  isValueBelowRange,
+  laneBandCss,
+  laneFractionRange,
+  visibleYRangeForScale,
+} from "../canvas/stackLaneDecorations";
 import { getCursorHandleAriaLabel, getCursorHandleTitle } from "./cursorHelp";
 import type { ParsedCapture } from "../../types/capture";
 
@@ -361,17 +369,30 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
       c2Line.style.display = "none";
     }
 
-    // Update Y1 & Y2 (Issue #281)
+    // Update Y1 & Y2 (Issue #281, #364)
     const selectedChannel =
       useViewportStore.getState().selectedChannel ?? capture.channels[0]?.name;
     const chIdx = capture.channels.findIndex((c) => c.name === selectedChannel);
     if (chIdx !== -1) {
       const scaleKey = yScaleKey(chIdx);
       const info = capture.metadata.channels[chIdx];
-      const scaleMin = uplot.scales[scaleKey]?.min ?? info?.windowMin ?? -1;
-      const scaleMax = uplot.scales[scaleKey]?.max ?? info?.windowMax ?? 1;
-      const yMin = Number.isFinite(scaleMin) ? scaleMin : -1;
-      const yMax = Number.isFinite(scaleMax) ? scaleMax : 1;
+      const liveScaleMin = uplot.scales[scaleKey]?.min;
+      const liveScaleMax = uplot.scales[scaleKey]?.max;
+      const hasLiveScale =
+        liveScaleMin != null &&
+        liveScaleMax != null &&
+        Number.isFinite(liveScaleMin) &&
+        Number.isFinite(liveScaleMax);
+      const rawMin = hasLiveScale ? liveScaleMin : (info?.windowMin ?? -1);
+      const rawMax = hasLiveScale ? liveScaleMax : (info?.windowMax ?? 1);
+      const renderState = getLiveRenderState(capture);
+      const inStackedLane =
+        hasLiveScale && laneFractionRange(renderState, scaleKey) !== null;
+      const visible = inStackedLane
+        ? visibleYRangeForScale(rawMin, rawMax, renderState, scaleKey)
+        : { min: rawMin, max: rawMax };
+      const yMin = Number.isFinite(visible.min) ? visible.min : -1;
+      const yMax = Number.isFinite(visible.max) ? visible.max : 1;
 
       const y1Color = effectiveCursor("Y1");
       const y2Color = effectiveCursor("Y2");
@@ -384,18 +405,26 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
         if (state.y1Value === null) {
           state.setHorizontalCursorValue("Y1", val1);
         }
-        const pos1 = uplot.valToPos(val1, scaleKey);
-        y1Line.style.top = `${pos1}px`;
-        y1Line.style.display = "block";
-        y1Line.style.backgroundColor = y1Color;
-        y1Handle.style.backgroundColor = y1Color;
-        y1Handle.style.color = handleTextColor;
-        if (state.selectedYCursor === "Y1") {
-          y1Line.style.boxShadow = `0 0 10px ${y1Color}`;
-          y1Handle.style.boxShadow = `0 0 8px #ffffff`;
+        const outOfLane1 =
+          inStackedLane &&
+          (isValueBelowRange(val1, yMin, yMax) ||
+            isValueAboveRange(val1, yMin, yMax));
+        if (outOfLane1) {
+          y1Line.style.display = "none";
         } else {
-          y1Line.style.boxShadow = "none";
-          y1Handle.style.boxShadow = "none";
+          const pos1 = uplot.valToPos(val1, scaleKey);
+          y1Line.style.top = `${pos1}px`;
+          y1Line.style.display = "block";
+          y1Line.style.backgroundColor = y1Color;
+          y1Handle.style.backgroundColor = y1Color;
+          y1Handle.style.color = handleTextColor;
+          if (state.selectedYCursor === "Y1") {
+            y1Line.style.boxShadow = `0 0 10px ${y1Color}`;
+            y1Handle.style.boxShadow = `0 0 8px #ffffff`;
+          } else {
+            y1Line.style.boxShadow = "none";
+            y1Handle.style.boxShadow = "none";
+          }
         }
       } else {
         y1Line.style.display = "none";
@@ -408,18 +437,26 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
         if (state.y2Value === null) {
           state.setHorizontalCursorValue("Y2", val2);
         }
-        const pos2 = uplot.valToPos(val2, scaleKey);
-        y2Line.style.top = `${pos2}px`;
-        y2Line.style.display = "block";
-        y2Line.style.backgroundColor = y2Color;
-        y2Handle.style.backgroundColor = y2Color;
-        y2Handle.style.color = handleTextColor;
-        if (state.selectedYCursor === "Y2") {
-          y2Line.style.boxShadow = `0 0 10px ${y2Color}`;
-          y2Handle.style.boxShadow = `0 0 8px #ffffff`;
+        const outOfLane2 =
+          inStackedLane &&
+          (isValueBelowRange(val2, yMin, yMax) ||
+            isValueAboveRange(val2, yMin, yMax));
+        if (outOfLane2) {
+          y2Line.style.display = "none";
         } else {
-          y2Line.style.boxShadow = "none";
-          y2Handle.style.boxShadow = "none";
+          const pos2 = uplot.valToPos(val2, scaleKey);
+          y2Line.style.top = `${pos2}px`;
+          y2Line.style.display = "block";
+          y2Line.style.backgroundColor = y2Color;
+          y2Handle.style.backgroundColor = y2Color;
+          y2Handle.style.color = handleTextColor;
+          if (state.selectedYCursor === "Y2") {
+            y2Line.style.boxShadow = `0 0 10px ${y2Color}`;
+            y2Handle.style.boxShadow = `0 0 8px #ffffff`;
+          } else {
+            y2Line.style.boxShadow = "none";
+            y2Handle.style.boxShadow = "none";
+          }
         }
       } else {
         y2Line.style.display = "none";
@@ -480,8 +517,30 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
     const chIdx = capture.channels.findIndex((c) => c.name === selectedChannel);
     if (chIdx === -1) return;
     const scaleKey = yScaleKey(chIdx);
-    const yPx = getPlotY(pendingClientY);
-    const val = uplot.posToVal(yPx, scaleKey);
+    const renderState = getLiveRenderState(capture);
+    const band = laneBandCss(uplot, renderState, scaleKey);
+    let yPx = getPlotY(pendingClientY);
+    if (band) {
+      yPx = Math.min(Math.max(yPx, band.top), band.bottom);
+    }
+    let val = uplot.posToVal(yPx, scaleKey);
+    if (band) {
+      const scale = uplot.scales[scaleKey];
+      if (
+        scale?.min != null &&
+        scale?.max != null &&
+        Number.isFinite(scale.min) &&
+        Number.isFinite(scale.max)
+      ) {
+        const visible = visibleYRangeForScale(
+          scale.min,
+          scale.max,
+          renderState,
+          scaleKey,
+        );
+        val = Math.min(Math.max(val, visible.min), visible.max);
+      }
+    }
     useCursorStore
       .getState()
       .setHorizontalCursorValue(activeDraggingYCursor, val);
@@ -754,12 +813,34 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
             const scaleKey = yScaleKey(chIdx);
             const scale = uplot.scales[scaleKey];
             const info = capture.metadata.channels[chIdx];
-            const scaleMin = scale?.min ?? info?.windowMin ?? -1;
-            const scaleMax = scale?.max ?? info?.windowMax ?? 1;
-            const span = scaleMax > scaleMin ? scaleMax - scaleMin : 2;
+            const hasLive =
+              scale?.min != null &&
+              scale?.max != null &&
+              Number.isFinite(scale.min) &&
+              Number.isFinite(scale.max);
+            const rawMin = hasLive ? scale.min! : (info?.windowMin ?? -1);
+            const rawMax = hasLive ? scale.max! : (info?.windowMax ?? 1);
+            const renderState = getLiveRenderState(capture);
+            const inStackedLane =
+              hasLive && laneFractionRange(renderState, scaleKey) !== null;
+            const visible = inStackedLane
+              ? visibleYRangeForScale(rawMin, rawMax, renderState, scaleKey)
+              : { min: rawMin, max: rawMax };
+            const span =
+              visible.max > visible.min ? visible.max - visible.min : 2;
             const step = span * 0.01 * (event.key === "ArrowUp" ? 1 : -1);
             event.preventDefault();
-            state.stepHorizontalCursor(selectedY, step);
+            if (inStackedLane) {
+              const current =
+                (selectedY === "Y1" ? state.y1Value : state.y2Value) ?? 0;
+              const clamped = Math.min(
+                Math.max(current + step, visible.min),
+                visible.max,
+              );
+              state.setHorizontalCursorValue(selectedY, clamped);
+            } else {
+              state.stepHorizontalCursor(selectedY, step);
+            }
           }
         }
       }
@@ -830,48 +911,86 @@ export function cursorPlugin(options: CursorPluginOptions): uPlot.Plugin {
           updateVisuals();
         });
 
-        // Channel switch re-binding (Issue #281)
-        let lastSelectedChannel = useViewportStore.getState().selectedChannel;
-        unsubscribeViewport = useViewportStore.subscribe((vpState) => {
-          if (
-            vpState.selectedChannel &&
-            vpState.selectedChannel !== lastSelectedChannel
-          ) {
-            const prevName = lastSelectedChannel;
-            lastSelectedChannel = vpState.selectedChannel;
-            const capture = options.getCapture();
-            if (capture && prevName) {
-              const prevIdx = capture.channels.findIndex(
-                (c) => c.name === prevName,
-              );
-              const nextIdx = capture.channels.findIndex(
-                (c) => c.name === lastSelectedChannel,
-              );
-              if (prevIdx !== -1 && nextIdx !== -1) {
-                const prevScaleKey = yScaleKey(prevIdx);
-                const nextScaleKey = yScaleKey(nextIdx);
-                const prevScale = uplot?.scales[prevScaleKey];
-                const nextScale = uplot?.scales[nextScaleKey];
-                const prevInfo = capture.metadata.channels[prevIdx];
-                const nextInfo = capture.metadata.channels[nextIdx];
-                const prevMin = prevScale?.min ?? prevInfo?.windowMin ?? -1;
-                const prevMax = prevScale?.max ?? prevInfo?.windowMax ?? 1;
-                const nextMin = nextScale?.min ?? nextInfo?.windowMin ?? -1;
-                const nextMax = nextScale?.max ?? nextInfo?.windowMax ?? 1;
-                useCursorStore
-                  .getState()
-                  .rebindHorizontalCursors(
-                    prevMin,
-                    prevMax,
-                    nextMin,
-                    nextMax,
-                    lastSelectedChannel,
-                  );
+        // Channel switch re-binding (Issue #281, #364)
+        let lastSelectedChannel =
+          useViewportStore.getState().selectedChannel ??
+          options.getCapture()?.channels[0]?.name ??
+          null;
+        unsubscribeViewport = useViewportStore.subscribe(
+          (vpState, prevVpState) => {
+            if (
+              vpState.selectedChannel &&
+              vpState.selectedChannel !== lastSelectedChannel
+            ) {
+              const prevName = lastSelectedChannel;
+              lastSelectedChannel = vpState.selectedChannel;
+              const capture = options.getCapture();
+              if (capture && prevName) {
+                const prevIdx = capture.channels.findIndex(
+                  (c) => c.name === prevName,
+                );
+                const nextIdx = capture.channels.findIndex(
+                  (c) => c.name === lastSelectedChannel,
+                );
+                if (prevIdx !== -1 && nextIdx !== -1) {
+                  const prevScaleKey = yScaleKey(prevIdx);
+                  const nextScaleKey = yScaleKey(nextIdx);
+                  const prevScale = uplot?.scales[prevScaleKey];
+                  const nextScale = uplot?.scales[nextScaleKey];
+                  const prevInfo = capture.metadata.channels[prevIdx];
+                  const nextInfo = capture.metadata.channels[nextIdx];
+                  const prevHasLive =
+                    prevScale?.min != null &&
+                    prevScale?.max != null &&
+                    Number.isFinite(prevScale.min) &&
+                    Number.isFinite(prevScale.max);
+                  const nextHasLive =
+                    nextScale?.min != null &&
+                    nextScale?.max != null &&
+                    Number.isFinite(nextScale.min) &&
+                    Number.isFinite(nextScale.max);
+                  // Live uPlot scales still reflect prevVpState.activeChannels
+                  // until Oscilloscope's post-render layout effect runs.
+                  const renderState = getLiveRenderState(capture, {
+                    activeChannels: prevVpState.activeChannels,
+                  });
+                  const prevVisible = prevHasLive
+                    ? visibleYRangeForScale(
+                        prevScale.min!,
+                        prevScale.max!,
+                        renderState,
+                        prevScaleKey,
+                      )
+                    : {
+                        min: prevInfo?.windowMin ?? -1,
+                        max: prevInfo?.windowMax ?? 1,
+                      };
+                  const nextVisible = nextHasLive
+                    ? visibleYRangeForScale(
+                        nextScale.min!,
+                        nextScale.max!,
+                        renderState,
+                        nextScaleKey,
+                      )
+                    : {
+                        min: nextInfo?.windowMin ?? -1,
+                        max: nextInfo?.windowMax ?? 1,
+                      };
+                  useCursorStore
+                    .getState()
+                    .rebindHorizontalCursors(
+                      prevVisible.min,
+                      prevVisible.max,
+                      nextVisible.min,
+                      nextVisible.max,
+                      lastSelectedChannel,
+                    );
+                }
               }
+              updateVisuals();
             }
-            updateVisuals();
-          }
-        });
+          },
+        );
 
         updateVisuals();
       },

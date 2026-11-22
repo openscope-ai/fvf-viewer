@@ -91,6 +91,77 @@ export function laneBandCss(
 }
 
 /**
+ * Fractional vertical band `[start, start + fraction]` (top-first, in `[0, 1]`)
+ * of one channel's lane in Stack mode, or null when Stack mode is off or the
+ * channel has no visible lane.
+ */
+export function laneFractionRange(
+  state: LaneLayoutState,
+  scaleKey: string,
+): { start: number; fraction: number } | null {
+  if (!state.stackMode) return null;
+  const lanes = state.catalog.visibleLanes();
+  const fractions = laneFractions(
+    lanes.map((lane) => lane.displayKey),
+    state.laneWeights,
+  );
+  let start = 0;
+  for (let i = 0; i < lanes.length; i++) {
+    const fraction = fractions[i]!;
+    if (lanes[i]!.scaleKey === scaleKey) {
+      return { start, fraction };
+    }
+    start += fraction;
+  }
+  return null;
+}
+
+/**
+ * Visible value range `[min, max]` for one channel's scale.
+ *
+ * In Overlay mode this is the full scale `[scaleMin, scaleMax]`. In Stack mode,
+ * uPlot's scale is stretched across the entire plot height so the trace sits in
+ * its lane band `[start, start + fraction]`; this helper projects back to the
+ * values visible inside that lane.
+ */
+export function visibleYRangeForScale(
+  scaleMin: number,
+  scaleMax: number,
+  state: LaneLayoutState,
+  scaleKey: string,
+): { min: number; max: number } {
+  const band = laneFractionRange(state, scaleKey);
+  if (!band) return { min: scaleMin, max: scaleMax };
+  const span = scaleMax - scaleMin;
+  return {
+    min: scaleMax - (band.start + band.fraction) * span,
+    max: scaleMax - band.start * span,
+  };
+}
+
+const RANGE_EPSILON_FACTOR = 1e-9;
+
+/** True when `val` lies strictly above `max` (tolerant of floating-point edge drift). */
+export function isValueAboveRange(
+  val: number,
+  min: number,
+  max: number,
+): boolean {
+  const eps = Math.abs(max - min) * RANGE_EPSILON_FACTOR;
+  return val > max + eps;
+}
+
+/** True when `val` lies strictly below `min` (tolerant of floating-point edge drift). */
+export function isValueBelowRange(
+  val: number,
+  min: number,
+  max: number,
+): boolean {
+  const eps = Math.abs(max - min) * RANGE_EPSILON_FACTOR;
+  return val < min - eps;
+}
+
+/**
  * uPlot ortho-line `filter` (axis, ticks, grid): nulls out every split
  * whose canvas position lies outside the channel's lane band (identity
  * when not stacked).

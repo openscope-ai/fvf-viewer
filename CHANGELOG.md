@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.14.2] - 2026-11-22
+
+[v0.14.1...v0.14.2](https://github.com/openscope-ai/fvf-viewer/compare/v0.14.1...v0.14.2)
+
+### Fixed
+
+- Scope horizontal cursors (`Y1`/`Y2`) to the selected channel's lane in stacked view (Ref #364):
+  - Project stacked uPlot scales back to each lane's visible value range via `visibleYRangeForScale` so `Y1`/`Y2` activate at 75%/25% of the selected lane, move into the new lane preserving relative position when switching channels, and clamp drag and `Ctrl+Up/Down` stepping to the lane's vertical edges.
+  - Hide `Y1`/`Y2` lines that fall outside the selected lane's visible range and trigger the existing top/bottom recovery badges to snap them back to 67%/33% of the lane, while preserving stored cursor values across overlay ↔ stacked toggles.
+
 ## [0.14.1] - 2026-11-21
 
 [v0.14.0...v0.14.1](https://github.com/openscope-ai/fvf-viewer/compare/v0.14.0...v0.14.1)
