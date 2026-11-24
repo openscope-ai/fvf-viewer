@@ -6,7 +6,11 @@ import {
   isValueAboveRange,
   isValueBelowRange,
   laneFractionRange,
+  subtractIntervals,
+  suppressAdjacentLaneBoundaryLabels,
   visibleYRangeForScale,
+  type LaneBand,
+  type LaneLabelAxisInput,
 } from "./stackLaneDecorations";
 import { stackLaneBoundsWeighted } from "./viewportController";
 
@@ -141,5 +145,197 @@ describe("stackLaneDecorations visible range projection (Issue #364)", () => {
     expect(isValueBelowRange(-3.3 - 1e-14, -3.3, 3.3)).toBe(false);
     expect(isValueAboveRange(3.31, -3.3, 3.3)).toBe(true);
     expect(isValueBelowRange(-3.31, -3.3, 3.3)).toBe(true);
+  });
+});
+
+describe("suppressAdjacentLaneBoundaryLabels (Issue #371)", () => {
+  function makeBands(heights: number[]): LaneBand[] {
+    let top = 0;
+    return heights.map((h, idx) => {
+      const band: LaneBand = {
+        scaleKey: `y${idx}`,
+        key: (["A", "B", "C", "D"] as const)[idx]!,
+        top,
+        bottom: top + h,
+      };
+      top += h;
+      return band;
+    });
+  }
+
+  it("hides upper lane's bottom label and keeps lower lane's top label when colliding on boundary", () => {
+    const bands = makeBands([200, 200]);
+    const axes = new Map<string, LaneLabelAxisInput>([
+      [
+        "y0",
+        {
+          scaleKey: "y0",
+          splits: [1.5, 0, -1.5],
+          values: ["1.5", "0", "-1.5"],
+          yPositions: [0, 100, 200],
+        },
+      ],
+      [
+        "y1",
+        {
+          scaleKey: "y1",
+          splits: [12, 6, 0, -12],
+          values: ["12", "6", "0", "-12"],
+          yPositions: [200, 267, 333, 400],
+        },
+      ],
+    ]);
+
+    const out = suppressAdjacentLaneBoundaryLabels(bands, axes, 13);
+    expect(out.get("y0")).toEqual(["1.5", "0", null]);
+    expect(out.get("y1")).toEqual(["12", "6", "0", "-12"]);
+  });
+
+  it("suppresses when adjacent labels overlap within half-height without exact equality", () => {
+    const bands = makeBands([150, 150]);
+    const axes = new Map<string, LaneLabelAxisInput>([
+      [
+        "y0",
+        {
+          scaleKey: "y0",
+          splits: [1, -1],
+          values: ["1", "-1"],
+          yPositions: [40, 146],
+        },
+      ],
+      [
+        "y1",
+        {
+          scaleKey: "y1",
+          splits: [5, -5],
+          values: ["5", "-5"],
+          yPositions: [154, 260],
+        },
+      ],
+    ]);
+
+    const out = suppressAdjacentLaneBoundaryLabels(bands, axes, 13);
+    expect(out.get("y0")).toEqual(["1", null]);
+    expect(out.get("y1")).toEqual(["5", "-5"]);
+  });
+
+  it("does not suppress when labels are separated by at least collisionHeightPx", () => {
+    const bands = makeBands([200, 200]);
+    const axes = new Map<string, LaneLabelAxisInput>([
+      [
+        "y0",
+        {
+          scaleKey: "y0",
+          splits: [1, 0, -1],
+          values: ["1", "0", "-1"],
+          yPositions: [0, 90, 185],
+        },
+      ],
+      [
+        "y1",
+        {
+          scaleKey: "y1",
+          splits: [10, 0, -10],
+          values: ["10", "0", "-10"],
+          yPositions: [200, 300, 400],
+        },
+      ],
+    ]);
+
+    const out = suppressAdjacentLaneBoundaryLabels(bands, axes, 13);
+    expect(out.get("y0")).toEqual(["1", "0", "-1"]);
+    expect(out.get("y1")).toEqual(["10", "0", "-10"]);
+  });
+
+  it("ignores pre-nulled out-of-band splits and handles 4 lanes including a min-height lane", () => {
+    // 4 lanes, lane B at minimum ~10% height (60px of 600px)
+    const bands = makeBands([180, 60, 180, 180]);
+    const axes = new Map<string, LaneLabelAxisInput>([
+      [
+        "y0",
+        {
+          scaleKey: "y0",
+          splits: [2, 1, 0, -1, -2],
+          values: ["2", "1", "0", null, null],
+          yPositions: [0, 90, 180, 270, 360],
+        },
+      ],
+      [
+        "y1",
+        {
+          scaleKey: "y1",
+          splits: [5, 0, -5],
+          values: ["5", "0", "-5"],
+          yPositions: [180, 210, 240],
+        },
+      ],
+      [
+        "y2",
+        {
+          scaleKey: "y2",
+          splits: [3, 0, -3],
+          values: ["3", "0", "-3"],
+          yPositions: [240, 330, 420],
+        },
+      ],
+      [
+        "y3",
+        {
+          scaleKey: "y3",
+          splits: [8, 0, -8],
+          values: ["8", "0", "-8"],
+          yPositions: [425, 510, 600],
+        },
+      ],
+    ]);
+
+    const out = suppressAdjacentLaneBoundaryLabels(bands, axes, 13);
+    // Boundary y0/y1 (180): y0's "0" suppressed; y1 keeps "5"
+    expect(out.get("y0")).toEqual(["2", "1", null, null, null]);
+    // Boundary y1/y2 (240): y1's "-5" suppressed; y2 keeps "3"
+    expect(out.get("y1")).toEqual(["5", "0", null]);
+    // Boundary y2/y3 (420 vs 425 = 5 < 13): y2's "-3" suppressed; y3 keeps "8" and outer "-8"
+    expect(out.get("y2")).toEqual(["3", "0", null]);
+    expect(out.get("y3")).toEqual(["8", "0", "-8"]);
+  });
+});
+
+describe("subtractIntervals (issue #373)", () => {
+  it("returns the full interval when no gaps apply", () => {
+    expect(subtractIntervals(10, 100, [])).toEqual([[10, 100]]);
+    expect(
+      subtractIntervals(10, 100, [
+        [0, 5],
+        [105, 120],
+      ]),
+    ).toEqual([[10, 100]]);
+    expect(subtractIntervals(50, 50, [])).toEqual([]);
+  });
+
+  it("splits around interior gaps and merges overlapping/unsorted gaps", () => {
+    expect(subtractIntervals(0, 100, [[40, 60]])).toEqual([
+      [0, 40],
+      [60, 100],
+    ]);
+    expect(
+      subtractIntervals(10, 100, [
+        [50, 70],
+        [20, 35],
+        [30, 55],
+      ]),
+    ).toEqual([
+      [10, 20],
+      [70, 100],
+    ]);
+  });
+
+  it("handles gaps touching or covering the interval bounds", () => {
+    expect(
+      subtractIntervals(10, 100, [
+        [0, 25],
+        [85, 120],
+      ]),
+    ).toEqual([[25, 85]]);
+    expect(subtractIntervals(10, 100, [[5, 110]])).toEqual([]);
   });
 });

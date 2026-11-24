@@ -24,7 +24,7 @@
 import uPlot from "uplot";
 import type { ParsedCapture } from "../../../types/capture";
 import { useChannelDisplayStore } from "../../../state/channelDisplayStore";
-import { laneBandsCss } from "../stackLaneDecorations";
+import { type LaneBand, laneBandsCss } from "../stackLaneDecorations";
 import { cssPxRatio } from "../axesConfig";
 import { getLiveRenderState } from "../liveRenderState";
 import { stackLaneBoundsWeighted } from "../viewportController";
@@ -61,6 +61,8 @@ interface BoxZoomDragState {
   /** Drag origin, plot-area-relative CSS px. */
   startX: number;
   startY: number;
+  /** Starting lane band in Stack mode, or null in Overlay mode. */
+  laneBand: LaneBand | null;
 }
 
 /**
@@ -78,6 +80,17 @@ export function boxZoomPlugin(
   // CSS pixels (identical coordinate space as `posToVal`). Inline
   // positioning/disabling keeps the drag mechanics independent of stylesheet
   // load order; visual styling lives in index.css.
+  const laneTint = document.createElement("div");
+  laneTint.className = "box-zoom-lane-tint";
+  laneTint.setAttribute("data-testid", "box-zoom-lane-tint");
+  laneTint.style.position = "absolute";
+  laneTint.style.left = "0px";
+  laneTint.style.width = "100%";
+  laneTint.style.top = "0px";
+  laneTint.style.height = "0px";
+  laneTint.style.pointerEvents = "none";
+  laneTint.style.display = "none";
+
   const overlay = document.createElement("div");
   overlay.className = "box-zoom-overlay";
   overlay.setAttribute("data-testid", "box-zoom-overlay");
@@ -107,16 +120,19 @@ export function boxZoomPlugin(
     overlayFrame = requestAnimationFrame(() => {
       overlayFrame = 0;
       if (!drag) return;
+      const clampedY = drag.laneBand
+        ? Math.min(Math.max(currentY, drag.laneBand.top), drag.laneBand.bottom)
+        : currentY;
       overlay.style.left = `${Math.min(drag.startX, currentX)}px`;
-      overlay.style.top = `${Math.min(drag.startY, currentY)}px`;
+      overlay.style.top = `${Math.min(drag.startY, clampedY)}px`;
       overlay.style.width = `${Math.abs(currentX - drag.startX)}px`;
-      overlay.style.height = `${Math.abs(currentY - drag.startY)}px`;
+      overlay.style.height = `${Math.abs(clampedY - drag.startY)}px`;
     });
   }
 
   function showOverlay(): void {
-    overlay.style.left = "0px";
-    overlay.style.top = "0px";
+    overlay.style.left = `${drag?.startX ?? 0}px`;
+    overlay.style.top = `${drag?.startY ?? 0}px`;
     overlay.style.width = "0px";
     overlay.style.height = "0px";
     overlay.style.display = "block";
@@ -130,6 +146,9 @@ export function boxZoomPlugin(
     overlay.style.display = "none";
     overlay.style.width = "0px";
     overlay.style.height = "0px";
+    laneTint.style.display = "none";
+    laneTint.style.top = "0px";
+    laneTint.style.height = "0px";
   }
 
   function detachDragListeners(): void {
@@ -158,9 +177,22 @@ export function boxZoomPlugin(
     )
       return;
     const start = toPlotPos(event);
-    drag = { startX: start.x, startY: start.y };
+    let laneBand: LaneBand | null = null;
+    const isStacked = useChannelDisplayStore.getState().stackMode;
+    const capture = options.getCapture?.() ?? null;
+    if (isStacked && capture) {
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
+      laneBand =
+        bands.find((b) => start.y >= b.top && start.y <= b.bottom) ??
+        bands[bands.length - 1] ??
+        null;
+    }
+    const startY = laneBand
+      ? Math.min(Math.max(start.y, laneBand.top), laneBand.bottom)
+      : start.y;
+    drag = { startX: start.x, startY, laneBand };
     currentX = start.x;
-    currentY = start.y;
+    currentY = startY;
     showOverlay();
     // Track and commit at document level so the drag survives the pointer
     // temporarily leaving the plot area (clamped at its edges).
@@ -176,6 +208,11 @@ export function boxZoomPlugin(
       detachDragListeners();
       hideOverlay();
       return;
+    }
+    if (drag.laneBand !== null && laneTint.style.display !== "block") {
+      laneTint.style.top = `${drag.laneBand.top}px`;
+      laneTint.style.height = `${drag.laneBand.bottom - drag.laneBand.top}px`;
+      laneTint.style.display = "block";
     }
     const pos = toPlotPos(event);
     currentX = pos.x;
@@ -309,6 +346,7 @@ export function boxZoomPlugin(
       init(u) {
         uplot = u;
         plotArea = u.over;
+        plotArea.appendChild(laneTint);
         plotArea.appendChild(overlay);
         plotArea.addEventListener("mousedown", onPlotMouseDown);
       },
@@ -318,6 +356,9 @@ export function boxZoomPlugin(
         u.over.removeEventListener("mousedown", onPlotMouseDown);
         if (overlay.parentElement === u.over) {
           u.over.removeChild(overlay);
+        }
+        if (laneTint.parentElement === u.over) {
+          u.over.removeChild(laneTint);
         }
         plotArea = null;
         uplot = null;

@@ -52,7 +52,7 @@ export function getLiveRenderState(
       axisText: palette.axisText,
       triggerAccent: palette.triggerAccent,
       triggerGlyphClear: palette.background,
-      separatorColor: palette.grid,
+      separatorColor: palette.laneSeparator,
       drawLaneHandles: true,
       fillBackground: true,
       omitGrid: false,

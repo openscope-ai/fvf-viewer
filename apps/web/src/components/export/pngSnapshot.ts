@@ -18,6 +18,7 @@ import {
   cssPxRatio,
   syncChartAdapters,
 } from "../canvas/axesConfig";
+import { DARK_THEME, LIGHT_THEME } from "../canvas/themePalette";
 import type { ChartRenderState, LaneWeights } from "../canvas/chartRenderState";
 import type { ChannelDisplayConfigs } from "../canvas/channelDisplay";
 import {
@@ -501,7 +502,7 @@ const RENDER_CHROME = {
     ticks: "#C8C8C8",
     trigger: "#888888",
     triggerGlyphClear: "#FFFFFF",
-    separator: "#C8C8C8",
+    separator: LIGHT_THEME.laneSeparator,
   },
   dark: {
     axisText: "#888888",
@@ -509,7 +510,7 @@ const RENDER_CHROME = {
     ticks: "#333333",
     trigger: "#555555",
     triggerGlyphClear: "#000000",
-    separator: "#222222",
+    separator: DARK_THEME.laneSeparator,
   },
 } as const;
 

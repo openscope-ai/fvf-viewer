@@ -18,11 +18,18 @@ import type { ChartRenderState } from "./chartRenderState";
 import {
   drawStackLaneDecorations,
   laneBandCss,
+  laneBandsCss,
   laneClippedPathBuilder,
   laneTickFilter,
+  suppressAdjacentLaneBoundaryLabels,
   type LaneAxisTitle,
+  type LaneLabelAxisInput,
 } from "./stackLaneDecorations";
-import { computeGroundFlags, drawGroundFlags } from "./groundFlags";
+import {
+  computeGroundFlags,
+  drawGroundFlags,
+  suppressLabelsIntersectingGroundFlag,
+} from "./groundFlags";
 import {
   drawT2Glyph,
   drawTriggerGlyph,
@@ -64,11 +71,17 @@ export const CANVAS_PADDING: [number, number, number, number] = [
   18, 12, 10, 10,
 ];
 
-export const AXIS_FONT = "11px system-ui, -apple-system, sans-serif";
+export const AXIS_FONT_SIZE_PX = 11;
+/** Half-height (CSS px) of a vertically centered 11px y-axis tick label. */
+export const TICK_LABEL_HALF_HEIGHT_PX = 6;
+/** Minimum vertical center-to-center distance (CSS px) before two boundary tick labels collide. */
+export const TICK_LABEL_COLLISION_HEIGHT_PX = TICK_LABEL_HALF_HEIGHT_PX * 2 + 1;
+
+export const AXIS_FONT = `${AXIS_FONT_SIZE_PX}px system-ui, -apple-system, sans-serif`;
 
 /** Canvas font string scaled by device-pixel ratio for unscaled 2D contexts (issue #270). */
 export function axisFont(pxRatio: number = 1): string {
-  return `${11 * pxRatio}px system-ui, -apple-system, sans-serif`;
+  return `${AXIS_FONT_SIZE_PX * pxRatio}px system-ui, -apple-system, sans-serif`;
 }
 
 /**
@@ -310,6 +323,116 @@ export interface BuildChartSpecInput {
   readonly onReady?: (u: uPlot) => void;
 }
 
+interface InternalAxisValues {
+  scale?: string;
+  side?: number;
+  show?: boolean;
+  _splits?: number[];
+  _values?: Array<string | number | null>;
+}
+
+const rawAxisValuesCache = new WeakMap<
+  object,
+  {
+    baseValues: readonly (string | number | null)[];
+    lastAssigned: Array<string | number | null>;
+  }
+>();
+
+function resolveBaseAxisValues(
+  axis: InternalAxisValues,
+): readonly (string | number | null)[] | null {
+  const current = axis._values;
+  if (!Array.isArray(current)) return null;
+  const cached = rawAxisValuesCache.get(axis);
+  if (cached && cached.lastAssigned === current) {
+    return cached.baseValues;
+  }
+  const baseValues = [...current];
+  rawAxisValuesCache.set(axis, { baseValues, lastAssigned: current });
+  return baseValues;
+}
+
+function assignAxisValues(
+  axis: InternalAxisValues,
+  next: Array<string | number | null>,
+): void {
+  const cached = rawAxisValuesCache.get(axis);
+  if (cached) {
+    cached.lastAssigned = next;
+  }
+  axis._values = next;
+}
+
+function applyYAxisLabelSuppression(u: uPlot, state: ChartRenderState): void {
+  if (!Array.isArray(u.axes) || typeof u.valToPos !== "function") return;
+  const axesByScale = new Map<
+    string,
+    { axis: InternalAxisValues; input: LaneLabelAxisInput }
+  >();
+
+  for (let i = 1; i < u.axes.length; i += 1) {
+    const axis = u.axes[i] as InternalAxisValues | undefined;
+    if (!axis || axis.show === false || axis.side !== 3 || !axis.scale) {
+      continue;
+    }
+    const baseValues = resolveBaseAxisValues(axis);
+    const splits = axis._splits;
+    if (!baseValues || !Array.isArray(splits)) continue;
+
+    const scaleKey = axis.scale;
+    const yPositions = splits.map((val) =>
+      val == null ? Number.NaN : u.valToPos(val, scaleKey),
+    );
+    axesByScale.set(scaleKey, {
+      axis,
+      input: {
+        scaleKey,
+        splits,
+        values: baseValues,
+        yPositions,
+      },
+    });
+  }
+
+  let valuesByScale: Map<string, Array<string | number | null>>;
+  if (state.stackMode) {
+    const bands = laneBandsCss(u, state);
+    const inputMap = new Map<string, LaneLabelAxisInput>();
+    for (const [scaleKey, entry] of axesByScale) {
+      inputMap.set(scaleKey, entry.input);
+    }
+    valuesByScale = suppressAdjacentLaneBoundaryLabels(bands, inputMap);
+  } else {
+    valuesByScale = new Map();
+    for (const [scaleKey, entry] of axesByScale) {
+      valuesByScale.set(scaleKey, [...entry.input.values]);
+    }
+  }
+
+  for (const flag of computeGroundFlags(u, state)) {
+    const entry = axesByScale.get(flag.scaleKey);
+    const current = valuesByScale.get(flag.scaleKey);
+    if (!entry || !current) continue;
+    valuesByScale.set(
+      flag.scaleKey,
+      suppressLabelsIntersectingGroundFlag(
+        current,
+        entry.input.yPositions,
+        flag,
+        TICK_LABEL_HALF_HEIGHT_PX + 0.5,
+      ),
+    );
+  }
+
+  for (const [scaleKey, entry] of axesByScale) {
+    const next = valuesByScale.get(scaleKey);
+    if (next) {
+      assignAxisValues(entry.axis, next);
+    }
+  }
+}
+
 /**
  * Unified uPlot `Options` builder (issue #355, ADR 0010 Decision 5):
  * constructs scales, X and per-channel Y axes, series with lane-clipped path
@@ -467,6 +590,7 @@ export function buildChartSpec(input: BuildChartSpecInput): Options {
           if (state.stackMode) {
             syncUnifiedStackAxes(u);
           }
+          applyYAxisLabelSuppression(u, state);
           if (state.chrome.fillBackground) {
             u.ctx.save();
             u.ctx.fillStyle = state.chrome.background;

@@ -19,10 +19,13 @@ export const MARKER_HEIGHT_PX = 8;
 export const FLAG_INSET_PX = 2;
 /** Hit-strip half-height around the flag (CSS px). */
 export const MARKER_HIT_HALF_PX = 10;
+/** Font size and half-height (CSS px) of the tag letter drawn beside the flag. */
+export const FLAG_LETTER_FONT_SIZE_PX = 10;
+export const FLAG_LETTER_HALF_HEIGHT_PX = 5;
 /** Chevron arm length for the edge-clamp directional cue (CSS px). */
 export const CLAMP_CHEVRON_PX = 4;
 /** Gap between the clamped flag and its chevron cue (CSS px). */
-const CHEVRON_GAP_PX = 1.5;
+export const CHEVRON_GAP_PX = 1.5;
 
 export type GroundFlagCue = "up" | "down" | null;
 
@@ -173,6 +176,62 @@ export function computeGroundFlags(
 }
 
 /**
+ * Vertical footprint `[top, bottom]` (plot-relative CSS px) of one ground flag
+ * including its triangle, tag letter, and any edge-clamp directional chevron.
+ */
+export function groundFlagVerticalFootprint(
+  flag: Pick<GroundFlag, "clampedY" | "cue" | "bandTop" | "bandBottom">,
+): { top: number; bottom: number } {
+  const letterTop = flag.clampedY - FLAG_LETTER_HALF_HEIGHT_PX;
+  const letterBottom = flag.clampedY + FLAG_LETTER_HALF_HEIGHT_PX;
+  if (flag.cue === "up") {
+    return {
+      top: Math.min(
+        flag.bandTop - (CHEVRON_GAP_PX + CLAMP_CHEVRON_PX),
+        letterTop,
+      ),
+      bottom: letterBottom,
+    };
+  }
+  if (flag.cue === "down") {
+    return {
+      top: letterTop,
+      bottom: Math.max(
+        flag.bandBottom + (CHEVRON_GAP_PX + CLAMP_CHEVRON_PX),
+        letterBottom,
+      ),
+    };
+  }
+  return { top: letterTop, bottom: letterBottom };
+}
+
+/**
+ * Nulls out any y-axis tick labels of a channel whose vertical glyph box
+ * intersects that channel's ground flag footprint (issue #372).
+ */
+export function suppressLabelsIntersectingGroundFlag<
+  T extends string | number | null,
+>(
+  values: readonly T[],
+  yPositions: readonly number[],
+  flag: Pick<GroundFlag, "clampedY" | "cue" | "bandTop" | "bandBottom">,
+  labelHalfHeightPx: number,
+): Array<T | null> {
+  const fp = groundFlagVerticalFootprint(flag);
+  const next: Array<T | null> = [...values];
+  const len = Math.min(next.length, yPositions.length);
+  for (let i = 0; i < len; i += 1) {
+    if (next[i] == null) continue;
+    const y = yPositions[i]!;
+    if (!Number.isFinite(y)) continue;
+    if (y + labelHalfHeightPx > fp.top && y - labelHalfHeightPx < fp.bottom) {
+      next[i] = null;
+    }
+  }
+  return next;
+}
+
+/**
  * Strokes the flags onto a uPlot canvas: a filled right-pointing
  * triangle with its tag letter inside the channel's own axis column at
  * the (clamped) displayed 0V baseline.
@@ -187,7 +246,7 @@ export function drawGroundFlags(
   const ctx = u.ctx;
 
   ctx.save();
-  ctx.font = `${10 * pxRatio}px ui-monospace, monospace`;
+  ctx.font = `${FLAG_LETTER_FONT_SIZE_PX * pxRatio}px ui-monospace, monospace`;
   for (const flag of flags) {
     const apexCss = flag.colRight - FLAG_INSET_PX;
     const baseCss = apexCss - MARKER_WIDTH_PX;

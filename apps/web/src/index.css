@@ -1419,6 +1419,15 @@ body,
   border: 1px solid rgba(0, 191, 255, 0.9);
 }
 
+/* Stack-mode box-zoom starting-lane highlight tint (issue #373). */
+.oscilloscope-container .box-zoom-lane-tint {
+  background: rgba(0, 191, 255, 0.06);
+}
+
+.oscilloscope-container[data-theme="light"] .box-zoom-lane-tint {
+  background: rgba(30, 144, 255, 0.07);
+}
+
 .oscilloscope-empty {
   display: flex;
   align-items: center;

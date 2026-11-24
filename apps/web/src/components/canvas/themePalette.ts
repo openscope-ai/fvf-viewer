@@ -11,6 +11,7 @@ export type ViewportTheme = "dark" | "light";
 export interface ThemePalette {
   background: string;
   grid: string;
+  laneSeparator: string;
   ticks: string;
   axisText: string;
   cursor1: string;
@@ -31,6 +32,7 @@ export interface ThemePalette {
 export const DARK_THEME: ThemePalette = {
   background: "#000000",
   grid: "#222222",
+  laneSeparator: "#4A5568",
   ticks: "#333333",
   axisText: "#888888",
   cursor1: "#E040FB",
@@ -64,6 +66,7 @@ export const DARK_THEME: ThemePalette = {
 export const LIGHT_THEME: ThemePalette = {
   background: "#FFFFFF",
   grid: "#C8C8C8",
+  laneSeparator: "#64748B",
   ticks: "#ADADAD",
   axisText: "#555555",
   cursor1: "#6A1B9A",

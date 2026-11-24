@@ -55,6 +55,10 @@ interface AxisLayout {
   _pos: number;
   _size: number;
   _lpos: number;
+  _splits?: number[];
+  _values?: (string | null)[];
+  ticks?: { filter?: (u: uPlot, splits: number[]) => (number | null)[] };
+  grid?: { filter?: (u: uPlot, splits: number[]) => (number | null)[] };
 }
 
 function axisFor(u: uPlot, scaleKey: string): AxisLayout {
@@ -633,5 +637,334 @@ describe("Ground flags on per-channel y-axis columns (issue #249)", () => {
       await new Promise((r) => setTimeout(r, 30));
     });
     expect(useViewportStore.getState().selectedChannel).toBe("A");
+  }, 60_000);
+
+  it("issue #372 AC1+AC2+AC6: suppresses channel's intersecting tick label at offset 0 in Overlay, Stack, and PNG exports while keeping ticks/grid", async () => {
+    const uplot = await mountFullUi();
+    const capture = useCaptureStore.getState().capture!;
+    await act(async () => {
+      useViewportStore.getState().setActiveChannels(["A", "B"]);
+    });
+    await settle(150);
+
+    const assertZeroSuppressed = (label: string, stackMode: boolean): void => {
+      const axisA = axisFor(uplot, yScaleKey(0));
+      const splits = axisA._splits ?? [];
+      const values = axisA._values ?? [];
+      const zeroIdx = splits.findIndex((s) => Math.abs(s) < 1e-6);
+      expect(zeroIdx, `${label}: zero split`).toBeGreaterThanOrEqual(0);
+      expect(values[zeroIdx], `${label}: 0 label hidden`).toBeNull();
+      expect(
+        values.some((v) => v != null),
+        `${label}: non-overlapping labels stay visible`,
+      ).toBe(true);
+      expect(axisA.ticks?.filter?.(uplot, splits)[zeroIdx]).not.toBeNull();
+      if (!stackMode) {
+        expect(axisA.grid?.filter?.(uplot, splits)[zeroIdx]).not.toBeNull();
+      }
+    };
+
+    // Overlay mode at offset 0
+    await act(async () => {
+      uplot.setScale("y0", { min: -2, max: 2 });
+    });
+    await settle(100);
+    assertZeroSuppressed("Overlay", false);
+
+    // Pixel check: in Overlay mode, tick-label column at 0V has flag letter ink (#888888), not tick label ink (#FFD700).
+    const pxRatio = uplot.width > 0 ? uplot.ctx.canvas.width / uplot.width : 1;
+    const axisAOverlay = axisFor(uplot, yScaleKey(0));
+    const plotTopCss = uplot.bbox.top / pxRatio;
+    const zeroYOverlay = uplot.valToPos(0, yScaleKey(0));
+    const overlayLetterRect = {
+      x0: axisAOverlay._lpos + 1,
+      x1: axisAOverlay._pos - 16,
+      y0: plotTopCss + zeroYOverlay - 5,
+      y1: plotTopCss + zeroYOverlay + 5,
+    };
+    expect(canvasHasColor(uplot, "#888888", overlayLetterRect)).toBe(true);
+    expect(canvasHasColor(uplot, "#FFD700", overlayLetterRect)).toBe(false);
+
+    // PNG exports in Overlay mode at offset 0
+    const screen = composeSnapshotCanvas(uplot, capture, {
+      cursor1: "#E040FB",
+      cursor2: "#B0B0B0",
+      background: "#000000",
+      legend: [],
+      selected: null,
+    });
+    expect(
+      compositeHasColor(
+        screen.canvas,
+        screen.pixelRatio,
+        "#FFD700",
+        overlayLetterRect,
+      ),
+    ).toBe(false);
+
+    const series: PrintSeriesSpec[] = capture.channels.map((ch, idx) => ({
+      label: ch.name,
+      color: ["#B8860B", "#1E90FF", "#B22222", "#228B22"][idx]!,
+      show: idx < 2,
+    }));
+    const printAtZero = await composePrintSnapshot(
+      uplot,
+      capture,
+      {
+        cursor1: "#6A1B9A",
+        cursor2: "#4B5563",
+        background: "#FFFFFF",
+        legend: [],
+        selected: null,
+      },
+      {
+        series,
+        omitGrid: true,
+        renderContext: buildPrintRenderContext(capture, series, "light"),
+      },
+    );
+    expect(
+      compositeHasColor(
+        printAtZero.canvas,
+        printAtZero.pixelRatio,
+        "#555555",
+        overlayLetterRect,
+      ),
+    ).toBe(true);
+    expect(
+      compositeHasColor(
+        printAtZero.canvas,
+        printAtZero.pixelRatio,
+        "#B8860B",
+        overlayLetterRect,
+      ),
+    ).toBe(false);
+
+    // Moving offset away restores "0" in live canvas and print PNG
+    act(() => {
+      useChannelDisplayStore.getState().setOffset("A", 1.25);
+    });
+    await settle(100);
+    const axisAMoved = axisFor(uplot, yScaleKey(0));
+    const movedZeroIdx = (axisAMoved._splits ?? []).findIndex(
+      (s) => Math.abs(s) < 1e-6,
+    );
+    expect(axisAMoved._values?.[movedZeroIdx]).toBe("0");
+    expect(canvasHasColor(uplot, "#FFD700", overlayLetterRect)).toBe(true);
+
+    const printMoved = await composePrintSnapshot(
+      uplot,
+      capture,
+      {
+        cursor1: "#6A1B9A",
+        cursor2: "#4B5563",
+        background: "#FFFFFF",
+        legend: [],
+        selected: null,
+      },
+      {
+        series,
+        omitGrid: true,
+        renderContext: buildPrintRenderContext(capture, series, "light"),
+      },
+    );
+    expect(
+      compositeHasColor(
+        printMoved.canvas,
+        printMoved.pixelRatio,
+        "#B8860B",
+        overlayLetterRect,
+      ),
+    ).toBe(true);
+
+    // Stack mode at offset 0
+    act(() => {
+      useChannelDisplayStore.getState().setOffset("A", 0);
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+    await settle(250);
+    assertZeroSuppressed("Stack", true);
+  });
+
+  it("issue #372 AC3+AC4: updates suppression live during strip drag, Ctrl+drag, keyboard nudge, reset, and edge clamping", async () => {
+    const uplot = await mountFullUi();
+    await act(async () => {
+      useViewportStore.getState().setActiveChannels(["A"]);
+    });
+    await settle(150);
+    await act(async () => {
+      uplot.setScale("y0", { min: -10, max: 10 });
+    });
+    await settle(150);
+
+    const zeroIdxOf = (): number => {
+      const splits = axisFor(uplot, yScaleKey(0))._splits ?? [];
+      return splits.findIndex((s) => Math.abs(s) < 1e-6);
+    };
+    const zeroIdx = zeroIdxOf();
+    expect(zeroIdx).toBeGreaterThanOrEqual(0);
+    expect(axisFor(uplot, yScaleKey(0))._values?.[zeroIdx]).toBeNull();
+
+    // Live strip drag WITHOUT releasing mouseup restores "0" mid-drag
+    const strip = stripFor("A");
+    const rect = strip.getBoundingClientRect();
+    await act(async () => {
+      strip.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          clientX: rect.left + 10,
+          clientY: rect.top + 10,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent("mousemove", {
+          bubbles: true,
+          cancelable: true,
+          buttons: 1,
+          clientX: rect.left + 10,
+          clientY: rect.top - 50,
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 80));
+    });
+    expect(axisFor(uplot, yScaleKey(0))._values?.[zeroIdx]).toBe("0");
+    await act(async () => {
+      document.dispatchEvent(
+        new MouseEvent("mouseup", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          clientX: rect.left + 10,
+          clientY: rect.top - 50,
+        }),
+      );
+    });
+
+    // Double-click resets offset to 0 and re-suppresses "0"
+    await act(async () => {
+      strip.dispatchEvent(
+        new MouseEvent("dblclick", { bubbles: true, cancelable: true }),
+      );
+    });
+    await settle(100);
+    expect(axisFor(uplot, yScaleKey(0))._values?.[zeroIdx]).toBeNull();
+
+    // Keyboard nudge (Shift+ArrowUp -> offset +10 -> clamped at top edge) restores "0" and suppresses top tick "10"
+    await act(async () => {
+      strip.focus();
+      strip.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowUp",
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    await settle(100);
+    const axisAfterNudge = axisFor(uplot, yScaleKey(0));
+    expect(axisAfterNudge._values?.[zeroIdx]).toBe("0");
+
+    // Push past top edge so flag clamps "up" at bandTop: top edge label "10" is suppressed (AC4)
+    act(() => {
+      useChannelDisplayStore.getState().setOffset("A", 12000);
+    });
+    await settle(100);
+    expect(strip.dataset.clamped).toBe("up");
+    const topIdx = (axisFor(uplot, yScaleKey(0))._splits ?? []).findIndex(
+      (s) => Math.abs(s - 10) < 1e-6,
+    );
+    if (topIdx >= 0) {
+      expect(axisFor(uplot, yScaleKey(0))._values?.[topIdx]).toBeNull();
+    }
+
+    // Enter resets to 0 and restores non-flag labels while suppressing "0"
+    await act(async () => {
+      strip.focus();
+      strip.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+    await settle(100);
+    expect(axisFor(uplot, yScaleKey(0))._values?.[zeroIdx]).toBeNull();
+    if (topIdx >= 0) {
+      expect(axisFor(uplot, yScaleKey(0))._values?.[topIdx]).not.toBeNull();
+    }
+
+    // Ctrl+drag on trace moves flag away and restores "0" live
+    const mid = Math.floor(
+      useCaptureStore.getState().capture!.timestamps.length / 2,
+    );
+    const traceX = uplot.valToPos(
+      useCaptureStore.getState().capture!.timestamps[mid]!,
+      "x",
+    );
+    const traceY = uplot.valToPos(uplot.data[1]![mid]!, yScaleKey(0));
+    const overRect = uplot.over.getBoundingClientRect();
+    const startX = overRect.left + traceX;
+    const startY = overRect.top + traceY;
+    await act(async () => {
+      uplot.over.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          ctrlKey: true,
+          clientX: startX,
+          clientY: startY,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent("mousemove", {
+          bubbles: true,
+          cancelable: true,
+          buttons: 1,
+          ctrlKey: true,
+          clientX: startX,
+          clientY: startY - 60,
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 80));
+    });
+    expect(axisFor(uplot, yScaleKey(0))._values?.[zeroIdx]).toBe("0");
+    await act(async () => {
+      document.dispatchEvent(
+        new MouseEvent("mouseup", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          clientX: startX,
+          clientY: startY - 60,
+        }),
+      );
+    });
+  });
+
+  it("issue #372 AC5: reference-channel flag (Ref-A) suppresses its own 0 label and restores when moved", async () => {
+    await useReferenceStore
+      .getState()
+      .parseReferenceBuffer(await fixture(twoChMinUrlQ), "file2.fvf");
+    const uplot = await mountFullUi();
+    const capture = useCaptureStore.getState().capture!;
+    const refScaleKey = yScaleKey(capture.channels.length);
+
+    await act(async () => {
+      uplot.setScale(refScaleKey, { min: -5, max: 5 });
+    });
+    await settle(100);
+
+    const refAxis = axisFor(uplot, refScaleKey);
+    const zeroIdx = (refAxis._splits ?? []).findIndex(
+      (s) => Math.abs(s) < 1e-6,
+    );
+    expect(zeroIdx).toBeGreaterThanOrEqual(0);
+    expect(refAxis._values?.[zeroIdx]).toBeNull();
+
+    act(() => {
+      useChannelDisplayStore.getState().setOffset("Ref-A", 2);
+    });
+    await settle(100);
+    expect(axisFor(uplot, refScaleKey)._values?.[zeroIdx]).toBe("0");
   }, 60_000);
 });

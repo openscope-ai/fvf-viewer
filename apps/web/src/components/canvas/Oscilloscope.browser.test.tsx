@@ -1003,6 +1003,286 @@ describe("Oscilloscope canvas wrapper (browser)", () => {
     expect(uplot.scales.x?.max).not.toBe(before.xMax);
   });
 
+  function boxZoomLaneTint(): HTMLElement {
+    const tint = hostElement.querySelector(
+      '[data-testid="box-zoom-lane-tint"]',
+    ) as HTMLElement | null;
+    expect(tint).not.toBeNull();
+    return tint!;
+  }
+
+  it("AC (Issue #373): Stack-mode box zoom clamps the overlay to the starting lane band, tints that lane, and zooms only that lane identically", async () => {
+    hostElement.style.display = "flex";
+    hostElement.style.flexDirection = "column";
+    const { capture, uplot } = await mountCapture();
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    try {
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
+      expect(bands.length).toBe(4);
+      const lane1 = bands[1]!;
+      const rect = uplot.over.getBoundingClientRect();
+      const overlay = boxZoomOverlay();
+      const tint = boxZoomLaneTint();
+      const before = snapshotScales(uplot);
+
+      const startX = 120;
+      const clientStartY = Math.round(
+        rect.top + (lane1.top + lane1.bottom) / 2,
+      );
+      const startY = clientStartY - rect.top;
+      const clientCrossDownY = Math.round(rect.top + bands[3]!.bottom - 10);
+      const clientCrossUpY = Math.round(rect.top + bands[0]!.top + 10);
+
+      // mousedown does not flash the lane tint yet
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mousedown",
+          rect.left + startX,
+          clientStartY,
+          1,
+        );
+      });
+      expect(overlay.style.display).toBe("block");
+      expect(tint.style.display).toBe("none");
+
+      // Drag downward past lane boundaries into lane 3: overlay clamps at lane1.bottom
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mousemove",
+          rect.left + 260,
+          clientCrossDownY,
+          1,
+        );
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      });
+      expect(tint.style.display).toBe("block");
+      expect(parseFloat(tint.style.top)).toBeCloseTo(lane1.top, 1);
+      expect(parseFloat(tint.style.height)).toBeCloseTo(
+        lane1.bottom - lane1.top,
+        1,
+      );
+
+      let overlayTop = parseFloat(overlay.style.top);
+      let overlayBottom = overlayTop + parseFloat(overlay.style.height);
+      expect(overlayTop).toBeCloseTo(startY, 1);
+      expect(overlayBottom).toBeLessThanOrEqual(lane1.bottom + 0.5);
+      expect(overlayBottom).toBeCloseTo(lane1.bottom, 1);
+
+      // Drag upward past lane boundaries into lane 0: overlay clamps at lane1.top
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mousemove",
+          rect.left + 260,
+          clientCrossUpY,
+          1,
+        );
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      });
+      overlayTop = parseFloat(overlay.style.top);
+      overlayBottom = overlayTop + parseFloat(overlay.style.height);
+      expect(overlayTop).toBeGreaterThanOrEqual(lane1.top - 0.5);
+      expect(overlayTop).toBeCloseTo(lane1.top, 1);
+      expect(overlayBottom).toBeCloseTo(startY, 1);
+
+      // Commit drag inside lane 3: only X and lane 1 zoom, and range matches clamped rectangle
+      const expectedY1Min = Math.min(
+        uplot.posToVal(lane1.bottom, lane1.scaleKey),
+        uplot.posToVal(startY, lane1.scaleKey),
+      );
+      const expectedY1Max = Math.max(
+        uplot.posToVal(lane1.bottom, lane1.scaleKey),
+        uplot.posToVal(startY, lane1.scaleKey),
+      );
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mouseup",
+          rect.left + 260,
+          clientCrossDownY,
+          0,
+        );
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+
+      expect(overlay.style.display).toBe("none");
+      expect(tint.style.display).toBe("none");
+      expect(uplot.scales.x?.min).not.toBe(before.xMin);
+      expect(uplot.scales.x?.max).not.toBe(before.xMax);
+
+      const afterY = yScaleSnapshot(uplot);
+      expect(afterY[bands[0]!.scaleKey]).toEqual(
+        before.yScales[bands[0]!.scaleKey],
+      );
+      expect(afterY[bands[2]!.scaleKey]).toEqual(
+        before.yScales[bands[2]!.scaleKey],
+      );
+      expect(afterY[bands[3]!.scaleKey]).toEqual(
+        before.yScales[bands[3]!.scaleKey],
+      );
+      // Confirm lane 1 zoomed to the exact visible bounds implied by the clamped rectangle
+      const after1 = afterY[lane1.scaleKey]!;
+      expect(after1.min).not.toBe(before.yScales[lane1.scaleKey]!.min);
+      expect(after1.max).not.toBe(before.yScales[lane1.scaleKey]!.max);
+      expect(uplot.posToVal(lane1.top, lane1.scaleKey)).toBeCloseTo(
+        expectedY1Max,
+        4,
+      );
+      expect(uplot.posToVal(lane1.bottom, lane1.scaleKey)).toBeCloseTo(
+        expectedY1Min,
+        4,
+      );
+    } finally {
+      await act(async () => {
+        useChannelDisplayStore.getState().setStackMode(false);
+      });
+    }
+  });
+
+  it("AC (Issue #373): Escape and blur clear Stack drag tint, bare clicks do not show tint, and Overlay mode remains unclamped without tint", async () => {
+    const { capture, uplot } = await mountCapture();
+    const overlay = boxZoomOverlay();
+    const tint = boxZoomLaneTint();
+    const rect = uplot.over.getBoundingClientRect();
+
+    // Overlay mode: full-height unclamped drag and no lane tint
+    const plotHeight = rect.height;
+    await act(async () => {
+      dispatchMouse(uplot.over, "mousedown", rect.left + 80, rect.top + 30, 1);
+      dispatchMouse(
+        uplot.over,
+        "mousemove",
+        rect.left + 260,
+        rect.top + plotHeight - 30,
+        1,
+      );
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+    expect(tint.style.display).toBe("none");
+    expect(overlay.style.display).toBe("block");
+    expect(parseFloat(overlay.style.height)).toBeCloseTo(plotHeight - 60, 1);
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(overlay.style.display).toBe("none");
+
+    // Stack mode: bare click shows no tint; Escape & blur clear tint and leave scales unchanged
+    await act(async () => {
+      useChannelDisplayStore.getState().setStackMode(true);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    try {
+      const bands = laneBandsCss(uplot, getLiveRenderState(capture));
+      const lane0 = bands[0]!;
+      const before = snapshotScales(uplot);
+      const clickY = (lane0.top + lane0.bottom) / 2;
+
+      // Bare click
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mousedown",
+          rect.left + 100,
+          rect.top + clickY,
+          1,
+        );
+      });
+      expect(tint.style.display).toBe("none");
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mouseup",
+          rect.left + 100,
+          rect.top + clickY,
+          0,
+        );
+      });
+      expect(tint.style.display).toBe("none");
+      expectScalesUnchanged(uplot, before);
+
+      // Escape cancels drag and clears tint
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mousedown",
+          rect.left + 100,
+          rect.top + clickY,
+          1,
+        );
+        dispatchMouse(
+          uplot.over,
+          "mousemove",
+          rect.left + 240,
+          rect.top + clickY + 25,
+          1,
+        );
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      });
+      expect(tint.style.display).toBe("block");
+      await act(async () => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Escape",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      expect(overlay.style.display).toBe("none");
+      expect(tint.style.display).toBe("none");
+      expectScalesUnchanged(uplot, before);
+
+      // Window blur clears tint
+      await act(async () => {
+        dispatchMouse(
+          uplot.over,
+          "mousedown",
+          rect.left + 100,
+          rect.top + clickY,
+          1,
+        );
+        dispatchMouse(
+          uplot.over,
+          "mousemove",
+          rect.left + 240,
+          rect.top + clickY + 25,
+          1,
+        );
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      });
+      expect(tint.style.display).toBe("block");
+      await act(async () => {
+        window.dispatchEvent(new Event("blur"));
+      });
+      expect(overlay.style.display).toBe("none");
+      expect(tint.style.display).toBe("none");
+      expectScalesUnchanged(uplot, before);
+    } finally {
+      await act(async () => {
+        useChannelDisplayStore.getState().setStackMode(false);
+      });
+    }
+  });
+
   // ---------------------------------------------------------------------
   // Issue #38: light/dark viewport theme toggle
   // ---------------------------------------------------------------------

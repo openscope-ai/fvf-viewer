@@ -92,7 +92,7 @@ function makeRenderState(opts: {
       axisText: palette.axisText,
       triggerAccent: palette.triggerAccent,
       triggerGlyphClear: palette.background,
-      separatorColor: palette.grid,
+      separatorColor: palette.laneSeparator,
       drawLaneHandles: opts.chromeKind === "live",
       fillBackground: !(opts.transparent ?? false),
       omitGrid: opts.omitGrid ?? false,

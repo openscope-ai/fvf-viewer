@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _This changelog records the public release history; releases appear here as they are published. Public history begins with 0.8.1._
 
+## [0.14.3] - 2026-11-24
+
+[v0.14.2...v0.14.3](https://github.com/openscope-ai/fvf-viewer/compare/v0.14.2...v0.14.3)
+
+### Changed
+
+- Make Stack-view lane boundaries distinct across both y-axis columns and the plot area using a full-opacity theme separator color (while breaking cleanly around boundary tick labels), and vertically clamp the Stack-mode box-zoom rectangle with a starting-lane highlight tint during drags (Ref #373).
+
+### Fixed
+
+- Prevent adjacent lanes' Y-axis tick labels from overlapping at shared lane boundaries in Stack mode by suppressing the upper lane's bottom colliding label while keeping the lower lane's top label, tick marks, grid lines, and PNG export parity (Ref #371).
+- Suppress y-axis tick labels intersecting a channel's ground flag (including edge-clamped flags and reference channels) in Overlay, Stack, and PNG export so the flag letter remains legible and hidden labels restore live as the flag moves away (Ref #372).
+
 ## [0.14.2] - 2026-11-22
 
 [v0.14.1...v0.14.2](https://github.com/openscope-ai/fvf-viewer/compare/v0.14.1...v0.14.2)

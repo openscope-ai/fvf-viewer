@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   type CustomColors,
+  DARK_THEME,
+  LIGHT_THEME,
   PALETTE_KEYS,
   channelTag,
   defaultColorForKey,
@@ -113,5 +115,12 @@ describe("user-configurable palette resolution (issue #40)", () => {
     expect(channelTag("Input C")).toBe("C");
     expect(channelTag("C")).toBe("C");
     expect(channelTag("input a")).toBe("a");
+  });
+
+  it("defines dedicated laneSeparator colors distinct from grid in dark and light themes (issue #373)", () => {
+    expect(DARK_THEME.laneSeparator).toBe("#4A5568");
+    expect(LIGHT_THEME.laneSeparator).toBe("#64748B");
+    expect(DARK_THEME.laneSeparator).not.toBe(DARK_THEME.grid);
+    expect(LIGHT_THEME.laneSeparator).not.toBe(LIGHT_THEME.grid);
   });
 });
